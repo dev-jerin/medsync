@@ -86,7 +86,7 @@ $display_user_id = $_SESSION['display_user_id'];
             display: flex;
             flex-direction: column;
             padding: 1.5rem;
-            transition: width 0.3s ease;
+            transition: width 0.3s ease, left 0.3s ease-in-out;
         }
 
         .sidebar-header {
@@ -200,6 +200,76 @@ $display_user_id = $_SESSION['display_user_id'];
         .welcome-message p {
             color: #6c757d;
         }
+
+        /* --- Hamburger Menu & Overlay --- */
+        .hamburger-btn {
+            display: none; /* Hidden by default on desktop */
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: var(--primary-color);
+            cursor: pointer;
+            margin-right: 1rem;
+        }
+
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 998; /* Below sidebar, above content */
+        }
+
+        /* --- Responsive Design --- */
+        @media (max-width: 992px) {
+            .sidebar {
+                position: fixed;
+                left: -260px; /* Hide sidebar off-screen */
+                height: 100%;
+                z-index: 999;
+                transition: left 0.3s ease-in-out;
+                overflow-y: auto; /* Allow vertical scrolling on mobile */
+            }
+
+            .sidebar.active {
+                left: 0; /* Show sidebar */
+            }
+
+            .main-content {
+                /* On mobile, main content takes full width */
+                width: 100%;
+            }
+            
+            .hamburger-btn {
+                display: block; /* Show hamburger on mobile */
+            }
+
+            .main-header {
+                /* Re-order for mobile view */
+                justify-content: flex-start;
+            }
+
+            .main-header h1 {
+                order: 2; /* h1 comes after hamburger */
+                flex-grow: 1;
+                text-align: center;
+            }
+            
+            .user-profile-widget {
+                order: 3; /* Profile widget at the end */
+            }
+
+            .hamburger-btn {
+                order: 1; /* Hamburger at the start */
+            }
+
+            .overlay.active {
+                display: block;
+            }
+        }
     </style>
 </head>
 <body>
@@ -232,6 +302,10 @@ $display_user_id = $_SESSION['display_user_id'];
 
         <main class="main-content">
             <header class="main-header">
+                <!-- Hamburger button for mobile -->
+                <button class="hamburger-btn" id="hamburger-btn" aria-label="Open Menu">
+                    <i class="fas fa-bars"></i>
+                </button>
                 <h1>Dashboard</h1>
                 <div class="user-profile-widget">
                     <i class="fas fa-user-circle"></i>
@@ -251,5 +325,41 @@ $display_user_id = $_SESSION['display_user_id'];
             </div>
         </main>
     </div>
+    
+    <!-- Overlay for mobile menu -->
+    <div class="overlay" id="overlay"></div>
+
+    <script>
+        // --- JavaScript for Hamburger Menu ---
+        const hamburgerBtn = document.getElementById('hamburger-btn');
+        const sidebar = document.querySelector('.sidebar');
+        const overlay = document.getElementById('overlay');
+
+        /**
+         * Closes the mobile menu by removing the 'active' class
+         * from the sidebar and overlay.
+         */
+        function closeMenu() {
+            sidebar.classList.remove('active');
+            overlay.classList.remove('active');
+        }
+
+        // Toggles the 'active' class on the sidebar and overlay when the hamburger is clicked.
+        hamburgerBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('active');
+            overlay.classList.toggle('active');
+        });
+
+        // Closes the menu when the overlay is clicked.
+        overlay.addEventListener('click', closeMenu);
+        
+        // Optional: Close the menu when a navigation link is clicked.
+        // This is useful for single-page applications or when links navigate on the same page.
+        const navLinks = document.querySelectorAll('.sidebar-nav a');
+        navLinks.forEach(link => {
+            // Add a click event listener to each navigation link
+            link.addEventListener('click', closeMenu);
+        });
+    </script>
 </body>
 </html>
