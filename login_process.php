@@ -21,12 +21,12 @@ if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST
 }
 
 // --- Form Data Retrieval ---
-$login_identifier = trim($_POST['username']); // Can be username or user_id
+$login_identifier = trim($_POST['username']); // Can be username, email, or user_id
 $password = $_POST['password'];
 
 // --- Basic Validation ---
 if (empty($login_identifier) || empty($password)) {
-    $_SESSION['login_error'] = "Username/User ID and password are required.";
+    $_SESSION['login_error'] = "Username/Email/User ID and password are required.";
     header("Location: login.php");
     exit();
 }
@@ -35,12 +35,12 @@ if (empty($login_identifier) || empty($password)) {
 // --- Database Authentication ---
 $conn = getDbConnection();
 
-// Prepare a statement to fetch user data based on username OR display_user_id.
+// Prepare a statement to fetch user data based on username, email, OR display_user_id.
 // This prevents SQL injection.
-$sql = "SELECT id, username, password, role, display_user_id FROM users WHERE username = ? OR display_user_id = ? LIMIT 1";
+$sql = "SELECT id, username, password, role, display_user_id FROM users WHERE username = ? OR display_user_id = ? OR email = ? LIMIT 1";
 $stmt = $conn->prepare($sql);
-// Bind the same identifier to both placeholders
-$stmt->bind_param("ss", $login_identifier, $login_identifier);
+// Bind the same identifier to all three placeholders
+$stmt->bind_param("sss", $login_identifier, $login_identifier, $login_identifier);
 $stmt->execute();
 $result = $stmt->get_result();
 

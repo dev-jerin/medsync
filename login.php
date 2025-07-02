@@ -195,7 +195,7 @@ if (isset($_SESSION['user_id'])) {
                 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                 
                 <div class="form-group">
-                    <label for="username">Username or User ID</label>
+                    <label for="username">Username, Email, or User ID</label>
                     <input type="text" id="username" name="username" required>
                 </div>
 
