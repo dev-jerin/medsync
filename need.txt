@@ -1,0 +1,6 @@
+issue :
+1. after entering otp for forgot password use should redirect to another website for entering new password.
+2. During registration email of staff, doctor and admin should be checked to avoid conflict.
+
+need :
+1. Upon registration user should receive greetings to their mail along with their user id.
