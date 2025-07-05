@@ -5,7 +5,7 @@
  * Generates a display_user_id in the format 'Uxxxx'.
  */
 
-require_once 'config.php';
+require_once './config.php';
 
 // --- Security & Session Checks ---
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {

@@ -14,7 +14,7 @@ require 'PHPMailer/src/PHPMailer.php';
 require 'PHPMailer/src/SMTP.php';
 
 // Include the database configuration file
-require_once 'config.php';
+require_once './config.php';
 
 // --- Security Check: Ensure the request is a POST request ---
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {

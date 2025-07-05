@@ -1,5 +1,5 @@
 <?php
-require_once 'config.php';
+require_once './config.php';
 
 // --- Session Security ---
 // 1. Check if user is logged in
