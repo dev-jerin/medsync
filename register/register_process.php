@@ -9,24 +9,24 @@
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-require 'PHPMailer/src/Exception.php';
-require 'PHPMailer/src/PHPMailer.php';
-require 'PHPMailer/src/SMTP.php';
+require '../PHPMailer/src/Exception.php';
+require '../PHPMailer/src/PHPMailer.php';
+require '../PHPMailer/src/SMTP.php';
 
 // Include the database configuration file
-require_once './config.php';
+require_once '../config.php';
 
 // --- Security Check: Ensure the request is a POST request ---
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     $_SESSION['register_error'] = "Invalid request method.";
-    header("Location: register.php");
+    header("Location: ../register.php");
     exit();
 }
 
 // --- Security Check: Validate CSRF Token ---
 if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
     $_SESSION['register_error'] = "CSRF validation failed. Please try again.";
-    header("Location: register.php");
+    header("Location: ../register.php");
     exit();
 }
 
@@ -44,17 +44,17 @@ $role = 'user'; // Default role for new registrations
 // --- Server-Side Validation ---
 if (empty($name) || empty($username) || empty($email) || empty($date_of_birth) || empty($gender) || empty($password)) {
     $_SESSION['register_error'] = "All fields are required.";
-    header("Location: register.php");
+    header("Location: ../register.php");
     exit();
 }
 if ($password !== $confirm_password) {
     $_SESSION['register_error'] = "Passwords do not match.";
-    header("Location: register.php");
+    header("Location: ../register.php");
     exit();
 }
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     $_SESSION['register_error'] = "Invalid email format.";
-    header("Location: register.php");
+    header("Location: ../register.php");
     exit();
 }
 // Optional: More specific validation for username, name, etc., can be added here.
@@ -71,7 +71,7 @@ if ($stmt_check->num_rows > 0) {
     $_SESSION['register_error'] = "Username or email is already taken.";
     $stmt_check->close();
     $conn->close();
-    header("Location: register.php");
+    header("Location: ../register.php");
     exit();
 }
 $stmt_check->close();
@@ -132,13 +132,13 @@ try {
     $mail->send();
 
     // Redirect to the OTP verification page
-    header("Location: verify_otp.php");
+    header("Location: ../register/verify_otp.php");
     exit();
 
 } catch (Exception $e) {
     // If email sending fails, show an error.
     $_SESSION['register_error'] = "Could not send OTP. Please check your email and try again. Mailer Error: {$mail->ErrorInfo}";
-    header("Location: register.php");
+    header("Location: ../register.php");
     exit();
 }
 

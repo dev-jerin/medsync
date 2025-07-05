@@ -5,21 +5,21 @@
  * Generates a display_user_id in the format 'Uxxxx'.
  */
 
-require_once './config.php';
+require_once '../config.php';
 
 // --- Security & Session Checks ---
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     $_SESSION['verify_error'] = "Invalid request method.";
-    header("Location: verify_otp.php");
+    header("Location: ../register/verify_otp.php");
     exit();
 }
 if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
     $_SESSION['verify_error'] = "CSRF validation failed. Please try again.";
-    header("Location: verify_otp.php");
+    header("Location: ../register/verify_otp.php");
     exit();
 }
 if (!isset($_SESSION['registration_data'])) {
-    header("Location: register.php");
+    header("Location: ../register.php");
     exit();
 }
 
@@ -30,7 +30,7 @@ $session_data = $_SESSION['registration_data'];
 // 1. Check if the submitted OTP matches the one in the session.
 if ($submitted_otp != $session_data['otp']) {
     $_SESSION['verify_error'] = "Invalid OTP. Please try again.";
-    header("Location: verify_otp.php");
+    header("Location: ../register/verify_otp.php");
     exit();
 }
 
@@ -39,7 +39,7 @@ $otp_expiry_time = 600;
 if (time() - $session_data['timestamp'] > $otp_expiry_time) {
     $_SESSION['verify_error'] = "OTP has expired. Please start the registration process again.";
     unset($_SESSION['registration_data']);
-    header("Location: register.php");
+    header("Location: ../register.php");
     exit();
 }
 
@@ -87,12 +87,12 @@ if ($stmt_insert->execute()) {
     
     // Set success message and redirect to the login page
     $_SESSION['register_success'] = "Registration successful! Your User ID is " . $display_user_id . ". You can now log in.";
-    header("Location: login.php");
+    header("Location: ../login.php");
     exit();
 } else {
     // If insertion fails, redirect with an error.
     $_SESSION['verify_error'] = "Database error: Could not create account. Please try again later.";
-    header("Location: verify_otp.php");
+    header("Location: ../register/verify_otp.php");
     exit();
 }
 

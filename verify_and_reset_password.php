@@ -4,7 +4,7 @@
  * Processes the submission to validate OTP and update the password.
  */
 
-require_once './config.php';
+require_once 'config.php';
 
 // --- Security Check: Ensure user has started the reset process ---
 if (!isset($_SESSION['password_reset'])) {

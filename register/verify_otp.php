@@ -1,10 +1,10 @@
 <?php
 // Include the configuration file to initialize session and CSRF token
-require_once './config.php';
+require_once '../config.php';
 
 // If the user hasn't started the registration process, redirect them.
 if (!isset($_SESSION['registration_data'])) {
-    header("Location: register.php");
+    header("Location: ../register.php");
     exit();
 }
 ?>
@@ -19,6 +19,12 @@ if (!isset($_SESSION['registration_data'])) {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!--Favicon-->
+    <link rel="apple-touch-icon" sizes="180x180" href="../images/favicon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="../images/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../images/favicon/favicon-16x16.png">
+    <link rel="manifest" href="../images/favicon/site.webmanifest">
     
     <!-- Font Awesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -72,7 +78,7 @@ if (!isset($_SESSION['registration_data'])) {
             }
             ?>
 
-            <form action="verify_process.php" method="POST">
+            <form action="../register/verify_process.php" method="POST">
                 <!-- CSRF Token for security -->
                 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                 

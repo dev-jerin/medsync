@@ -1,6 +1,6 @@
 <?php
 // Include the configuration file to initialize session and CSRF token
-require_once './config.php';
+require_once 'config.php';
 
 // If a user is already logged in, redirect them to their dashboard
 if (isset($_SESSION['user_id'])) {

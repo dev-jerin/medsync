@@ -759,7 +759,7 @@ if (empty($_SESSION['csrf_token'])) {
                 <!-- Hero Image -->
                 <div class="hero-image-container">
                     <div class="hero-image-container">
-    <img src=".\images\health.png" alt="Modern Healthcare Illustration" class="hero-image">
+    <img src="images/health.png" alt="Modern Healthcare Illustration" class="hero-image">
 </div>
                 </div>
             </div>

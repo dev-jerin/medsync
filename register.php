@@ -1,6 +1,6 @@
 <?php
 // Include the configuration file to initialize session and CSRF token
-require_once './config.php';
+require_once 'config.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -229,7 +229,7 @@ require_once './config.php';
             }
             ?>
 
-            <form id="registerForm" action="register_process.php" method="POST" onsubmit="return validateForm()">
+            <form id="registerForm" action="register/register_process.php" method="POST" onsubmit="return validateForm()">
                 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
 
                 <div class="form-group">
