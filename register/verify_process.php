@@ -1,11 +1,19 @@
 <?php
 /**
- * Processes the OTP submitted by the user.
- * If the OTP is correct and not expired, it creates the user account in the database.
- * Generates a display_user_id in the format 'Uxxxx'.
+ * Processes the OTP, creates the user account, and sends a welcome email.
  */
 
+// --- PHPMailer Inclusion ---
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+require '../PHPMailer/src/Exception.php';
+require '../PHPMailer/src/PHPMailer.php';
+require '../PHPMailer/src/SMTP.php';
+
+// --- Other Required Files ---
 require_once '../config.php';
+require_once 'welcome_email_template.php'; // Include the new email template file
 
 // --- Security & Session Checks ---
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
@@ -27,14 +35,14 @@ if (!isset($_SESSION['registration_data'])) {
 $submitted_otp = trim($_POST['otp']);
 $session_data = $_SESSION['registration_data'];
 
-// 1. Check if the submitted OTP matches the one in the session.
+// 1. Check if the submitted OTP is correct
 if ($submitted_otp != $session_data['otp']) {
     $_SESSION['verify_error'] = "Invalid OTP. Please try again.";
     header("Location: ../register/verify_otp.php");
     exit();
 }
 
-// 2. Check if the OTP has expired (10 minutes / 600 seconds).
+// 2. Check for OTP expiry (10 minutes)
 $otp_expiry_time = 600; 
 if (time() - $session_data['timestamp'] > $otp_expiry_time) {
     $_SESSION['verify_error'] = "OTP has expired. Please start the registration process again.";
@@ -43,18 +51,13 @@ if (time() - $session_data['timestamp'] > $otp_expiry_time) {
     exit();
 }
 
-
-// --- Database Insertion (Final Step) ---
-// **IMPORTANT**: Assumes your `users` table has columns: `name`, `date_of_birth`, `gender`.
-// You must add these columns to your database table.
+// --- Database Insertion ---
 $conn = getDbConnection();
-
 $sql_insert = "INSERT INTO users (username, name, email, password, role, date_of_birth, gender, display_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 $stmt_insert = $conn->prepare($sql_insert);
 
 $display_user_id_placeholder = 'TEMP'; // Temporary placeholder
 
-// Bind parameters from the session data
 $stmt_insert->bind_param(
     "ssssssss",
     $session_data['username'],
@@ -67,36 +70,63 @@ $stmt_insert->bind_param(
     $display_user_id_placeholder
 );
 
-// Execute the statement
 if ($stmt_insert->execute()) {
-    // Get the auto-incremented `id` of the new user.
     $last_id = $stmt_insert->insert_id;
-    
-    // Generate the display_user_id (e.g., U0001, U0002).
     $display_user_id = 'U' . str_pad($last_id, 4, '0', STR_PAD_LEFT);
     
-    // Update the record with the correct display_user_id.
+    // Update the record with the final display_user_id
     $sql_update_id = "UPDATE users SET display_user_id = ? WHERE id = ?";
     $stmt_update_id = $conn->prepare($sql_update_id);
     $stmt_update_id->bind_param("si", $display_user_id, $last_id);
     $stmt_update_id->execute();
     $stmt_update_id->close();
 
-    // Clean up the session
+    // --- Send Welcome Email ---
+    $mail = new PHPMailer(true);
+    try {
+        // Server settings
+        $mail->isSMTP();
+        $mail->Host       = 'smtp.gmail.com';
+        $mail->SMTPAuth   = true;
+        $mail->Username   = 'medsync.calysta@gmail.com';
+        $mail->Password   = 'sswyqzegdpyixbyw'; // Your App Password
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port       = 587;
+
+        // Recipients
+        $mail->setFrom('medsync.calysta@gmail.com', 'MedSync');
+        $mail->addAddress($session_data['email'], $session_data['name']);
+
+        // Content
+        $mail->isHTML(true);
+        $mail->Subject = 'Welcome to MedSync, ' . $session_data['name'] . '!';
+        // Get the HTML body from our template function
+        $mail->Body    = getWelcomeEmailTemplate(
+            $session_data['name'],
+            $session_data['username'],
+            $display_user_id,
+            $session_data['email']
+        );
+        $mail->AltBody = "Welcome to MedSync! Your User ID is {$display_user_id}.";
+
+        $mail->send();
+    } catch (Exception $e) {
+        // Optional: Log the email error, but don't block the user's registration
+        // error_log("Welcome email could not be sent. Mailer Error: {$mail->ErrorInfo}");
+    }
+
+    // Clean up the session and redirect
     unset($_SESSION['registration_data']);
-    
-    // Set success message and redirect to the login page
     $_SESSION['register_success'] = "Registration successful! Your User ID is " . $display_user_id . ". You can now log in.";
     header("Location: ../login.php");
     exit();
+
 } else {
-    // If insertion fails, redirect with an error.
-    $_SESSION['verify_error'] = "Database error: Could not create account. Please try again later.";
+    $_SESSION['verify_error'] = "Database error: Could not create account.";
     header("Location: ../register/verify_otp.php");
     exit();
 }
 
 $stmt_insert->close();
 $conn->close();
-
 ?>
