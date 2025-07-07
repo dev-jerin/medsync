@@ -4,3 +4,4 @@ issue :
 
 need :
 1. Upon registration user should receive greetings to their mail along with their username,email userid.
+2. location
