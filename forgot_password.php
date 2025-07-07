@@ -187,7 +187,7 @@ if (isset($_SESSION['user_id'])) {
             }
             ?>
 
-            <form action="send_reset_otp.php" method="POST">
+            <form action="forgot_password/send_reset_otp.php" method="POST">
                 <!-- CSRF Token for security -->
                 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                 

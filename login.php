@@ -188,6 +188,13 @@ if (isset($_SESSION['user_id'])) {
                 echo '<div class="message-box error-message">' . htmlspecialchars($_SESSION['login_error']) . '</div>';
                 unset($_SESSION['login_error']);
             }
+            // **NEW** Display password reset message or other general login messages
+            if (isset($_SESSION['login_message'])) {
+                $message = $_SESSION['login_message'];
+                $message_type = $message['type'] === 'success' ? 'success-message' : 'error-message';
+                echo '<div class="message-box ' . $message_type . '">' . htmlspecialchars($message['text']) . '</div>';
+                unset($_SESSION['login_message']);
+            }
             ?>
 
             <form action="login_process.php" method="POST">
