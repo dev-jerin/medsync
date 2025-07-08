@@ -7,9 +7,8 @@
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-require '../PHPMailer/src/Exception.php';
-require '../PHPMailer/src/PHPMailer.php';
-require '../PHPMailer/src/SMTP.php';
+require '../vendor/PHPMailer/PHPMailer/src/PHPMailer.php';
+require '../vendor/PHPMailer/PHPMailer/src/SMTP.php';
 
 // --- Other Required Files ---
 require_once '../config.php';
