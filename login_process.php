@@ -36,8 +36,8 @@ if (empty($login_identifier) || empty($password)) {
 $conn = getDbConnection();
 
 // Prepare a statement to fetch user data based on username, email, OR display_user_id.
-// This prevents SQL injection.
-$sql = "SELECT id, username, password, role, display_user_id FROM users WHERE username = ? OR display_user_id = ? OR email = ? LIMIT 1";
+// IMPORTANT: Fetch the 'active' column as well.
+$sql = "SELECT id, username, password, role, display_user_id, active FROM users WHERE username = ? OR display_user_id = ? OR email = ? LIMIT 1";
 $stmt = $conn->prepare($sql);
 // Bind the same identifier to all three placeholders
 $stmt->bind_param("sss", $login_identifier, $login_identifier, $login_identifier);
@@ -50,6 +50,16 @@ if ($result->num_rows === 1) {
 
     // --- Verify Password ---
     if (password_verify($password, $user['password'])) {
+
+        // --- Check if the account is active ---
+        if ($user['active'] == 0) {
+            $_SESSION['login_message'] = [
+                'type' => 'error',
+                'text' => 'Your account is currently inactive. Please contact support for assistance.'
+            ];
+            header("Location: login.php");
+            exit();
+        }
         
         // --- Login Successful ---
 
