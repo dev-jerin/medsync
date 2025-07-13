@@ -1,5 +1,6 @@
 <?php
 // --- CONFIG & SESSION START ---
+// Assumes config.php is in the same directory
 require_once 'config.php'; 
 
 // --- SESSION SECURITY & ROLE CHECK ---
@@ -18,580 +19,6 @@ if (isset($_SESSION['loggedin_time']) && (time() - $_SESSION['loggedin_time'] > 
 }
 $_SESSION['loggedin_time'] = time();
 
-/**
- * Generates a unique, sequential display ID for a new user based on their role.
- * Uses a dedicated counter table with row locking to prevent race conditions.
- * e.g., A0001, D0001, S0001, U0001
- *
- * @param string $role The role of the user ('admin', 'doctor', 'staff', 'user').
- * @param mysqli $conn The database connection object.
- * @return string The formatted display ID.
- * @throws Exception If the role is invalid or a database error occurs.
- */
-function generateDisplayId($role, $conn) {
-    $prefix_map = [
-        'admin' => 'A',
-        'doctor' => 'D',
-        'staff' => 'S',
-        'user' => 'U'
-    ];
-
-    if (!isset($prefix_map[$role])) {
-        throw new Exception("Invalid role specified for ID generation.");
-    }
-    $prefix = $prefix_map[$role];
-
-    // Start transaction for safe counter update
-    $conn->begin_transaction();
-    try {
-        // Lock the row for the specific role to prevent race conditions
-        $stmt = $conn->prepare("SELECT last_id FROM role_counters WHERE role_prefix = ? FOR UPDATE");
-        $stmt->bind_param("s", $prefix);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        if ($result->num_rows === 0) {
-            throw new Exception("Role prefix '$prefix' not found in counters table.");
-        }
-        $row = $result->fetch_assoc();
-        $new_id_num = $row['last_id'] + 1;
-
-        // Update the counter
-        $update_stmt = $conn->prepare("UPDATE role_counters SET last_id = ? WHERE role_prefix = ?");
-        $update_stmt->bind_param("is", $new_id_num, $prefix);
-        $update_stmt->execute();
-        
-        // Commit the transaction
-        $conn->commit();
-
-        // Format the new ID with leading zeros
-        return $prefix . str_pad($new_id_num, 4, '0', STR_PAD_LEFT);
-
-    } catch (Exception $e) {
-        // Rollback on error
-        $conn->rollback();
-        // Re-throw the exception to be caught by the main handler
-        throw $e;
-    }
-}
-
-
-// ===================================================================================
-// --- API ENDPOINT LOGIC (Handles all AJAX requests) ---
-// ===================================================================================
-if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHOD'] === 'POST')) {
-    set_error_handler(function($severity, $message, $file, $line) {
-        if (!(error_reporting() & $severity)) { return; }
-        throw new ErrorException($message, 0, $severity, $file, $line);
-    });
-
-    header('Content-Type: application/json');
-    $response = ['success' => false, 'message' => 'An unknown error occurred.'];
-
-    try {
-        $conn = getDbConnection(); 
-
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-                throw new Exception('Invalid CSRF token. Please refresh and try again.');
-            }
-        }
-
-        if (isset($_POST['action'])) {
-            $action = $_POST['action'];
-            switch ($action) {
-                case 'addUser':
-                    // --- Start Transaction ---
-                    $conn->begin_transaction();
-                    try {
-                        if (empty($_POST['name']) || empty($_POST['username']) || empty($_POST['email']) || empty($_POST['role']) || empty($_POST['password']) || empty($_POST['phone'])) {
-                            throw new Exception('Please fill all required fields.');
-                        }
-                        $name = $_POST['name'];
-                        $username = $_POST['username'];
-                        $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
-                        if (!$email) throw new Exception('Invalid email format.');
-                        
-                        $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
-                        $role = $_POST['role'];
-                        $phone = $_POST['phone'];
-                        $gender = !empty($_POST['gender']) ? $_POST['gender'] : null;
-
-                        $display_user_id = generateDisplayId($role, $conn);
-
-                        $stmt = $conn->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
-                        $stmt->bind_param("ss", $username, $email);
-                        $stmt->execute();
-                        if ($stmt->get_result()->num_rows > 0) {
-                            throw new Exception('Username or email already exists.');
-                        }
-                        
-                        $stmt = $conn->prepare("INSERT INTO users (display_user_id, name, username, email, password, role, gender, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-                        $stmt->bind_param("ssssssss", $display_user_id, $name, $username, $email, $password, $role, $gender, $phone);
-                        $stmt->execute();
-                        $user_id = $conn->insert_id;
-
-                        if ($role === 'doctor') {
-                            $stmt_doctor = $conn->prepare("INSERT INTO doctors (user_id, specialty, qualifications, department_id, availability) VALUES (?, ?, ?, ?, ?)");
-                            $stmt_doctor->bind_param("issii", $user_id, $_POST['specialty'], $_POST['qualifications'], $_POST['department_id'], $_POST['availability']);
-                            $stmt_doctor->execute();
-                        } elseif ($role === 'staff') {
-                            $stmt_staff = $conn->prepare("INSERT INTO staff (user_id, shift, assigned_department) VALUES (?, ?, ?)");
-                            $stmt_staff->bind_param("iss", $user_id, $_POST['shift'], $_POST['assigned_department']);
-                            $stmt_staff->execute();
-                        } elseif ($role === 'admin') {
-                            $stmt_admin = $conn->prepare("INSERT INTO admins (user_id) VALUES (?)");
-                            $stmt_admin->bind_param("i", $user_id);
-                            $stmt_admin->execute();
-                        }
-
-                        $conn->commit();
-                        $response = ['success' => true, 'message' => ucfirst($role) . ' added successfully.'];
-
-                    } catch (Exception $e) {
-                        $conn->rollback();
-                        throw new Exception('Database error on user creation: ' . $e->getMessage());
-                    }
-                    break;
-
-                case 'updateUser':
-                    $conn->begin_transaction();
-                    try {
-                        if (empty($_POST['id']) || empty($_POST['name']) || empty($_POST['username']) || empty($_POST['email'])) {
-                            throw new Exception('Invalid data provided.');
-                        }
-                        $id = (int)$_POST['id'];
-                        $name = $_POST['name'];
-                        $username = $_POST['username'];
-                        $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
-                        if (!$email) throw new Exception('Invalid email format.');
-                        $phone = $_POST['phone'];
-                        $active = isset($_POST['active']) ? (int)$_POST['active'] : 1;
-                        $date_of_birth = !empty($_POST['date_of_birth']) ? $_POST['date_of_birth'] : null;
-                        $gender = !empty($_POST['gender']) ? $_POST['gender'] : null;
-
-                        $sql_parts = ["name = ?", "username = ?", "email = ?", "phone = ?", "active = ?", "date_of_birth = ?", "gender = ?"];
-                        $params = [$name, $username, $email, $phone, $active, $date_of_birth, $gender];
-                        $types = "ssssiss";
-
-                        if (!empty($_POST['password'])) {
-                            $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
-                            $sql_parts[] = "password = ?";
-                            $params[] = $hashed_password;
-                            $types .= "s";
-                        }
-
-                        $sql = "UPDATE users SET " . implode(", ", $sql_parts) . " WHERE id = ?";
-                        $params[] = $id;
-                        $types .= "i";
-                        
-                        $stmt = $conn->prepare($sql);
-                        $stmt->bind_param($types, ...$params);
-                        $stmt->execute();
-
-                        // Fetch user's role to update role-specific tables
-                        $role_stmt = $conn->prepare("SELECT role FROM users WHERE id = ?");
-                        $role_stmt->bind_param("i", $id);
-                        $role_stmt->execute();
-                        $user_role = $role_stmt->get_result()->fetch_assoc()['role'];
-
-                        if ($user_role === 'doctor') {
-                             $stmt_doctor = $conn->prepare("
-                                INSERT INTO doctors (user_id, specialty, qualifications, department_id, availability) 
-                                VALUES (?, ?, ?, ?, ?)
-                                ON DUPLICATE KEY UPDATE 
-                                specialty = VALUES(specialty), 
-                                qualifications = VALUES(qualifications), 
-                                department_id = VALUES(department_id), 
-                                availability = VALUES(availability)
-                            ");
-                            $stmt_doctor->bind_param("issii", $id, $_POST['specialty'], $_POST['qualifications'], $_POST['department_id'], $_POST['availability']);
-                            $stmt_doctor->execute();
-                        } elseif ($user_role === 'staff') {
-                            $stmt_staff = $conn->prepare("
-                                INSERT INTO staff (user_id, shift, assigned_department) 
-                                VALUES (?, ?, ?)
-                                ON DUPLICATE KEY UPDATE 
-                                shift = VALUES(shift), 
-                                assigned_department = VALUES(assigned_department)
-                            ");
-                            $stmt_staff->bind_param("iss", $id, $_POST['shift'], $_POST['assigned_department']);
-                            $stmt_staff->execute();
-                        }
-
-                        $conn->commit();
-                        $response = ['success' => true, 'message' => 'User updated successfully.'];
-
-                    } catch (Exception $e) {
-                         $conn->rollback();
-                        throw new Exception('Failed to update user: ' . $e->getMessage());
-                    }
-                    break;
-                
-                case 'updateProfile': 
-                    if (empty($_POST['name']) || empty($_POST['email'])) {
-                        throw new Exception('Name and Email are required.');
-                    }
-                    $id = $_SESSION['user_id'];
-                    $name = $_POST['name'];
-                    $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
-                    if (!$email) throw new Exception('Invalid email format.');
-                    $phone = $_POST['phone'];
-
-                    $sql_parts = ["name = ?", "email = ?", "phone = ?"];
-                    $params = [$name, $email, $phone];
-                    $types = "sss";
-
-                    if (!empty($_POST['password'])) {
-                        $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
-                        $sql_parts[] = "password = ?";
-                        $params[] = $hashed_password;
-                        $types .= "s";
-                    }
-
-                    $sql = "UPDATE users SET " . implode(", ", $sql_parts) . " WHERE id = ?";
-                    $params[] = $id;
-                    $types .= "i";
-                    
-                    $stmt = $conn->prepare($sql);
-                    $stmt->bind_param($types, ...$params);
-
-                    if ($stmt->execute()) {
-                        $_SESSION['username'] = $name; 
-                        $response = ['success' => true, 'message' => 'Your profile has been updated successfully.'];
-                    } else {
-                        throw new Exception('Failed to update your profile.');
-                    }
-                    break;
-
-                case 'deleteUser':
-                    if (empty($_POST['id'])) {
-                        throw new Exception('Invalid user ID.');
-                    }
-                    $id = (int)$_POST['id'];
-                    $stmt = $conn->prepare("UPDATE users SET active = 0 WHERE id = ?");
-                    $stmt->bind_param("i", $id);
-                    if ($stmt->execute()) {
-                        $response = ['success' => true, 'message' => 'User deactivated successfully.'];
-                    } else {
-                        throw new Exception('Failed to deactivate user.');
-                    }
-                    break;
-                
-                // --- INVENTORY MANAGEMENT ACTIONS ---
-                case 'addMedicine':
-                    if (empty($_POST['name']) || empty($_POST['quantity']) || empty($_POST['unit_price'])) {
-                        throw new Exception('Medicine name, quantity, and unit price are required.');
-                    }
-                    $name = $_POST['name'];
-                    $description = $_POST['description'] ?? null;
-                    $quantity = (int)$_POST['quantity'];
-                    $unit_price = (float)$_POST['unit_price'];
-                    $low_stock_threshold = (int)($_POST['low_stock_threshold'] ?? 10);
-
-                    $stmt = $conn->prepare("INSERT INTO medicines (name, description, quantity, unit_price, low_stock_threshold) VALUES (?, ?, ?, ?, ?)");
-                    $stmt->bind_param("ssidi", $name, $description, $quantity, $unit_price, $low_stock_threshold);
-                    if ($stmt->execute()) {
-                        $response = ['success' => true, 'message' => 'Medicine added successfully.'];
-                    } else {
-                        throw new Exception('Failed to add medicine. It might already exist.');
-                    }
-                    break;
-
-                case 'updateMedicine':
-                    if (empty($_POST['id']) || empty($_POST['name']) || empty($_POST['quantity']) || empty($_POST['unit_price'])) {
-                        throw new Exception('Medicine ID, name, quantity, and unit price are required.');
-                    }
-                    $id = (int)$_POST['id'];
-                    $name = $_POST['name'];
-                    $description = $_POST['description'] ?? null;
-                    $quantity = (int)$_POST['quantity'];
-                    $unit_price = (float)$_POST['unit_price'];
-                    $low_stock_threshold = (int)($_POST['low_stock_threshold'] ?? 10);
-
-                    $stmt = $conn->prepare("UPDATE medicines SET name = ?, description = ?, quantity = ?, unit_price = ?, low_stock_threshold = ? WHERE id = ?");
-                    $stmt->bind_param("ssidii", $name, $description, $quantity, $unit_price, $low_stock_threshold, $id);
-                    if ($stmt->execute()) {
-                        $response = ['success' => true, 'message' => 'Medicine updated successfully.'];
-                    } else {
-                        throw new Exception('Failed to update medicine.');
-                    }
-                    break;
-
-                case 'deleteMedicine':
-                    if (empty($_POST['id'])) {
-                        throw new Exception('Medicine ID is required.');
-                    }
-                    $id = (int)$_POST['id'];
-                    $stmt = $conn->prepare("DELETE FROM medicines WHERE id = ?");
-                    $stmt->bind_param("i", $id);
-                    if ($stmt->execute()) {
-                        $response = ['success' => true, 'message' => 'Medicine deleted successfully.'];
-                    } else {
-                        throw new Exception('Failed to delete medicine.');
-                    }
-                    break;
-
-                case 'updateBlood':
-                    if (empty($_POST['blood_group']) || !isset($_POST['quantity_ml'])) {
-                        throw new Exception('Blood group and quantity are required.');
-                    }
-                    $blood_group = $_POST['blood_group'];
-                    $quantity_ml = (int)$_POST['quantity_ml'];
-                    $low_stock_threshold_ml = (int)($_POST['low_stock_threshold_ml'] ?? 5000);
-
-                    $stmt = $conn->prepare("INSERT INTO blood_inventory (blood_group, quantity_ml, low_stock_threshold_ml) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE quantity_ml = ?, low_stock_threshold_ml = ?");
-                    $stmt->bind_param("siiii", $blood_group, $quantity_ml, $low_stock_threshold_ml, $quantity_ml, $low_stock_threshold_ml);
-                    if ($stmt->execute()) {
-                        $response = ['success' => true, 'message' => 'Blood inventory updated successfully.'];
-                    } else {
-                        throw new Exception('Failed to update blood inventory.');
-                    }
-                    break;
-                
-                case 'addWard':
-                    if (empty($_POST['name']) || empty($_POST['capacity'])) {
-                        throw new Exception('Ward name and capacity are required.');
-                    }
-                    $name = $_POST['name'];
-                    $capacity = (int)$_POST['capacity'];
-                    $description = $_POST['description'] ?? null;
-                    $is_active = isset($_POST['is_active']) ? (int)$_POST['is_active'] : 1;
-
-                    $stmt = $conn->prepare("INSERT INTO wards (name, capacity, description, is_active) VALUES (?, ?, ?, ?)");
-                    $stmt->bind_param("sisi", $name, $capacity, $description, $is_active);
-                    if ($stmt->execute()) {
-                        $response = ['success' => true, 'message' => 'Ward added successfully.'];
-                    } else {
-                        throw new Exception('Failed to add ward. It might already exist.');
-                    }
-                    break;
-                
-                case 'updateWard':
-                    if (empty($_POST['id']) || empty($_POST['name']) || empty($_POST['capacity'])) {
-                        throw new Exception('Ward ID, name, and capacity are required.');
-                    }
-                    $id = (int)$_POST['id'];
-                    $name = $_POST['name'];
-                    $capacity = (int)$_POST['capacity'];
-                    $description = $_POST['description'] ?? null;
-                    $is_active = isset($_POST['is_active']) ? (int)$_POST['is_active'] : 1;
-
-                    $stmt = $conn->prepare("UPDATE wards SET name = ?, capacity = ?, description = ?, is_active = ? WHERE id = ?");
-                    $stmt->bind_param("sisii", $name, $capacity, $description, $is_active, $id);
-                    if ($stmt->execute()) {
-                        $response = ['success' => true, 'message' => 'Ward updated successfully.'];
-                    } else {
-                        throw new Exception('Failed to update ward.');
-                    }
-                    break;
-
-                case 'deleteWard':
-                    if (empty($_POST['id'])) {
-                        throw new Exception('Ward ID is required.');
-                    }
-                    $id = (int)$_POST['id'];
-                    // Consider soft delete or checking if beds are occupied
-                    $stmt = $conn->prepare("DELETE FROM wards WHERE id = ?"); // Or UPDATE wards SET is_active = 0
-                    $stmt->bind_param("i", $id);
-                    if ($stmt->execute()) {
-                        $response = ['success' => true, 'message' => 'Ward deleted successfully.'];
-                    } else {
-                        throw new Exception('Failed to delete ward. Ensure no beds are assigned to it.');
-                    }
-                    break;
-
-                case 'addBed':
-                    if (empty($_POST['ward_id']) || empty($_POST['bed_number']) || !isset($_POST['price_per_day'])) {
-                        throw new Exception('Ward, bed number, and price are required.');
-                    }
-                    $ward_id = (int)$_POST['ward_id'];
-                    $bed_number = $_POST['bed_number'];
-                    $price_per_day = (float)$_POST['price_per_day'];
-                    $status = $_POST['status'] ?? 'available';
-                    $patient_id = !empty($_POST['patient_id']) ? (int)$_POST['patient_id'] : null;
-                    $occupied_since = ($status === 'occupied' && $patient_id) ? date('Y-m-d H:i:s') : null;
-
-                    $stmt = $conn->prepare("INSERT INTO beds (ward_id, bed_number, status, patient_id, occupied_since, price_per_day) VALUES (?, ?, ?, ?, ?, ?)");
-                    $stmt->bind_param("issidi", $ward_id, $bed_number, $status, $patient_id, $occupied_since, $price_per_day);
-                    if ($stmt->execute()) {
-                        $response = ['success' => true, 'message' => 'Bed added successfully.'];
-                    } else {
-                        throw new Exception('Failed to add bed. Bed number might already exist in this ward.');
-                    }
-                    break;
-
-                case 'updateBed':
-                    if (empty($_POST['id']) || empty($_POST['status']) || empty($_POST['ward_id']) || empty($_POST['bed_number']) || !isset($_POST['price_per_day'])) {
-                        throw new Exception('Bed ID, ward, bed number, status, and price are required.');
-                    }
-                    $id = (int)$_POST['id'];
-                    $ward_id = (int)$_POST['ward_id'];
-                    $bed_number = $_POST['bed_number'];
-                    $status = $_POST['status'];
-                    $patient_id = !empty($_POST['patient_id']) ? (int)$_POST['patient_id'] : null;
-                    $price_per_day = (float)$_POST['price_per_day'];
-                    
-                    // Logic for occupied_since based on status change
-                    $occupied_since = null;
-                    if ($status === 'occupied' && $patient_id) {
-                        // Check if it was already occupied by the same patient, keep old timestamp
-                        $current_bed_stmt = $conn->prepare("SELECT patient_id, occupied_since FROM beds WHERE id = ?");
-                        $current_bed_stmt->bind_param("i", $id);
-                        $current_bed_stmt->execute();
-                        $current_bed_result = $current_bed_stmt->get_result()->fetch_assoc();
-                        
-                        if ($current_bed_result && $current_bed_result['patient_id'] == $patient_id && $current_bed_result['occupied_since']) {
-                            $occupied_since = $current_bed_result['occupied_since'];
-                        } else {
-                            $occupied_since = date('Y-m-d H:i:s');
-                        }
-                    }
-
-                    $stmt = $conn->prepare("UPDATE beds SET ward_id = ?, bed_number = ?, status = ?, patient_id = ?, occupied_since = ?, price_per_day = ? WHERE id = ?");
-                    $stmt->bind_param("issisdi", $ward_id, $bed_number, $status, $patient_id, $occupied_since, $price_per_day, $id);
-                    if ($stmt->execute()) {
-                        $response = ['success' => true, 'message' => 'Bed updated successfully.'];
-                    } else {
-                        throw new Exception('Failed to update bed. Bed number might already exist in this ward.');
-                    }
-                    break;
-
-                case 'deleteBed':
-                    if (empty($_POST['id'])) {
-                        throw new Exception('Bed ID is required.');
-                    }
-                    $id = (int)$_POST['id'];
-                    $stmt = $conn->prepare("DELETE FROM beds WHERE id = ?");
-                    $stmt->bind_param("i", $id);
-                    if ($stmt->execute()) {
-                        $response = ['success' => true, 'message' => 'Bed deleted successfully.'];
-                    } else {
-                        throw new Exception('Failed to delete bed.');
-                    }
-                    break;
-
-            }
-        }
-        elseif (isset($_GET['fetch'])) {
-             $fetch_target = $_GET['fetch'];
-             switch ($fetch_target) {
-                case 'users':
-                    if (!isset($_GET['role'])) throw new Exception('User role not specified.');
-                    $role = $_GET['role'];
-                    
-                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, u.email, u.phone, u.role, u.active, u.created_at, u.date_of_birth, u.gender";
-                    
-                    if ($role === 'doctor') {
-                        $sql .= ", d.specialty, d.qualifications, d.department_id, d.availability 
-                                 FROM users u 
-                                 LEFT JOIN doctors d ON u.id = d.user_id 
-                                 WHERE u.role = ?";
-                    } elseif ($role === 'staff') {
-                        $sql .= ", s.shift, s.assigned_department 
-                                 FROM users u 
-                                 LEFT JOIN staff s ON u.id = s.user_id 
-                                 WHERE u.role = ?";
-                    } else {
-                        $sql .= " FROM users u WHERE u.role = ?";
-                    }
-                    $sql .= " ORDER BY u.created_at DESC";
-
-                    $stmt = $conn->prepare($sql);
-                    $stmt->bind_param("s", $role);
-                    $stmt->execute();
-                    $result = $stmt->get_result();
-                    $data = $result->fetch_all(MYSQLI_ASSOC);
-                    $response = ['success' => true, 'data' => $data];
-                    break;
-                
-                case 'departments':
-                    $result = $conn->query("SELECT id, name FROM departments WHERE is_active = 1 ORDER BY name");
-                    $data = $result->fetch_all(MYSQLI_ASSOC);
-                    $response = ['success' => true, 'data' => $data];
-                    break;
-
-                case 'dashboard_stats':
-                    $stats = [];
-                    $stats['total_users'] = $conn->query("SELECT COUNT(*) as c FROM users")->fetch_assoc()['c'];
-                    $stats['active_doctors'] = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='doctor' AND active=1")->fetch_assoc()['c'];
-                    
-                    $role_counts_sql = "SELECT role, COUNT(*) as count FROM users GROUP BY role";
-                    $result = $conn->query($role_counts_sql);
-                    $counts = ['user' => 0, 'doctor' => 0, 'staff' => 0, 'admin' => 0];
-                     while($row = $result->fetch_assoc()){
-                        if(array_key_exists($row['role'], $counts)){
-                            $counts[$row['role']] = (int)$row['count'];
-                        }
-                    }
-                    $stats['role_counts'] = $counts;
-
-                    // Fetch low stock alerts
-                    $low_medicines_stmt = $conn->query("SELECT COUNT(*) as c FROM medicines WHERE quantity <= low_stock_threshold");
-                    $stats['low_medicines_count'] = $low_medicines_stmt->fetch_assoc()['c'];
-
-                    $low_blood_stmt = $conn->query("SELECT COUNT(*) as c FROM blood_inventory WHERE quantity_ml <= low_stock_threshold_ml");
-                    $stats['low_blood_count'] = $low_blood_stmt->fetch_assoc()['c'];
-
-                    $response = ['success' => true, 'data' => $stats];
-                    break;
-                
-                case 'my_profile': 
-                    $admin_id = $_SESSION['user_id'];
-                    $stmt = $conn->prepare("SELECT name, email, phone, username FROM users WHERE id = ?");
-                    $stmt->bind_param("i", $admin_id);
-                    $stmt->execute();
-                    $result = $stmt->get_result();
-                    $data = $result->fetch_assoc();
-                    $response = ['success' => true, 'data' => $data];
-                    break;
-                
-                // --- INVENTORY FETCH ENDPOINTS ---
-                case 'medicines':
-                    $result = $conn->query("SELECT * FROM medicines ORDER BY name ASC");
-                    $data = $result->fetch_all(MYSQLI_ASSOC);
-                    $response = ['success' => true, 'data' => $data];
-                    break;
-
-                case 'blood_inventory':
-                    $result = $conn->query("SELECT * FROM blood_inventory ORDER BY blood_group ASC");
-                    $data = $result->fetch_all(MYSQLI_ASSOC);
-                    $response = ['success' => true, 'data' => $data];
-                    break;
-
-                case 'wards':
-                    $result = $conn->query("SELECT id, name, capacity, description, is_active FROM wards ORDER BY name ASC");
-                    $data = $result->fetch_all(MYSQLI_ASSOC);
-                    $response = ['success' => true, 'data' => $data];
-                    break;
-
-                case 'beds':
-                    $sql = "SELECT b.id, b.ward_id, w.name as ward_name, b.bed_number, b.status, b.patient_id, u.name as patient_name, b.occupied_since, b.price_per_day 
-                            FROM beds b 
-                            JOIN wards w ON b.ward_id = w.id 
-                            LEFT JOIN users u ON b.patient_id = u.id
-                            ORDER BY w.name, b.bed_number ASC";
-                    $result = $conn->query($sql);
-                    $data = $result->fetch_all(MYSQLI_ASSOC);
-                    $response = ['success' => true, 'data' => $data];
-                    break;
-                
-                case 'patients_for_beds':
-                    $result = $conn->query("SELECT id, name, display_user_id FROM users WHERE role = 'user' AND active = 1 ORDER BY name ASC");
-                    $data = $result->fetch_all(MYSQLI_ASSOC);
-                    $response = ['success' => true, 'data' => $data];
-                    break;
-             }
-        }
-
-    } catch (Throwable $e) { 
-        http_response_code(400); 
-        $response['message'] = $e->getMessage();
-    }
-    
-    restore_error_handler();
-    echo json_encode($response);
-    exit();
-}
 
 // ===================================================================================
 // --- STANDARD PAGE LOAD LOGIC ---
@@ -613,8 +40,9 @@ $stmt->close();
 $csrf_token = bin2hex(random_bytes(32));
 $_SESSION['csrf_token'] = $csrf_token;
 
-$total_users = $conn->query("SELECT COUNT(*) as c FROM users")->fetch_assoc()['c'];
-$active_doctors = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='doctor' AND active=1")->fetch_assoc()['c'];
+// Initial stats are fetched via JavaScript, but you can keep some initial values
+$total_users = '...';
+$active_doctors = '...';
 $pending_appointments = 0; 
 $system_uptime = '99.9%';
 
@@ -630,6 +58,7 @@ $system_uptime = '99.9%';
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+    <!-- Assuming favicons are in images/favicon/ -->
     <link rel="apple-touch-icon" sizes="180x180" href="images/favicon/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="images/favicon/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="images/favicon/favicon-16x16.png">
@@ -989,6 +418,7 @@ $system_uptime = '99.9%';
     <div class="dashboard-layout">
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
+                <!-- Assuming logo is in images/ -->
                 <img src="images/logo.png" alt="MedSync Logo" class="logo-img">
                 <span class="logo-text">MedSync</span>
             </div>
@@ -1532,6 +962,37 @@ $system_uptime = '99.9%';
         let currentRole = 'user'; 
         let userRolesChart;
 
+        // --- API ENDPOINT MAPPING ---
+        const postEndpoints = {
+            'addUser': 'admin_dashboard/users.php',
+            'updateUser': 'admin_dashboard/users.php',
+            'deleteUser': 'admin_dashboard/users.php',
+            'updateProfile': 'admin_dashboard/profile.php',
+            'addMedicine': 'admin_dashboard/inventory.php',
+            'updateMedicine': 'admin_dashboard/inventory.php',
+            'deleteMedicine': 'admin_dashboard/inventory.php',
+            'updateBlood': 'admin_dashboard/inventory.php',
+            'addWard': 'admin_dashboard/inventory.php',
+            'updateWard': 'admin_dashboard/inventory.php',
+            'deleteWard': 'admin_dashboard/inventory.php',
+            'addBed': 'admin_dashboard/inventory.php',
+            'updateBed': 'admin_dashboard/inventory.php',
+            'deleteBed': 'admin_dashboard/inventory.php'
+        };
+
+        const getEndpoints = {
+            'users': 'admin_dashboard/users.php',
+            'departments': 'admin_dashboard/users.php',
+            'my_profile': 'admin_dashboard/profile.php',
+            'dashboard_stats': 'admin_dashboard/dashboard.php',
+            'medicines': 'admin_dashboard/inventory.php',
+            'blood_inventory': 'admin_dashboard/inventory.php',
+            'wards': 'admin_dashboard/inventory.php',
+            'beds': 'admin_dashboard/inventory.php',
+            'patients_for_beds': 'admin_dashboard/inventory.php'
+        };
+
+
         // --- HELPER FUNCTIONS ---
         const showNotification = (message, type = 'success') => {
             const container = document.getElementById('notification-container');
@@ -1557,7 +1018,6 @@ $system_uptime = '99.9%';
                 const cleanup = (result) => {
                     dialog.classList.remove('show');
                     resolve(result);
-                    // Remove event listeners to prevent multiple bindings
                     okBtn.removeEventListener('click', handleOk);
                     cancelBtn.removeEventListener('click', handleCancel);
                 };
@@ -1615,13 +1075,12 @@ $system_uptime = '99.9%';
 
                 document.querySelectorAll('.sidebar-nav a.active').forEach(a => a.classList.remove('active'));
                 this.classList.add('active');
-                // Ensure parent dropdown is active
                 let parentDropdown = this.closest('.nav-dropdown');
                 if (parentDropdown) {
                     let parentDropdownToggle = parentDropdown.previousElementSibling;
                     if (parentDropdownToggle) {
                         parentDropdownToggle.classList.add('active');
-                        parentDropdown.style.maxHeight = parentDropdown.scrollHeight + "px"; // Keep dropdown open
+                        parentDropdown.style.maxHeight = parentDropdown.scrollHeight + "px";
                     }
                 }
 
@@ -1640,23 +1099,16 @@ $system_uptime = '99.9%';
                     title = this.innerText;
                     welcomeMessage.style.display = 'none';
                     const inventoryType = targetId.split('-')[1];
-                    if (inventoryType === 'blood') {
-                        fetchBloodInventory();
-                    } else if (inventoryType === 'medicine') {
-                        fetchMedicineInventory();
-                    } else if (inventoryType === 'beds') {
-                        fetchBeds();
-                    } else if (inventoryType === 'wards') {
-                        fetchWards();
-                    }
+                    if (inventoryType === 'blood') fetchBloodInventory();
+                    else if (inventoryType === 'medicine') fetchMedicineInventory();
+                    else if (inventoryType === 'beds') fetchBeds();
+                    else if (inventoryType === 'wards') fetchWards();
                 }
                 else if (document.getElementById(targetId + '-panel')) {
                     panelToShowId = targetId + '-panel';
                     title = this.innerText;
                     welcomeMessage.style.display = (targetId === 'dashboard') ? 'block' : 'none';
-                    if (targetId === 'settings') {
-                        fetchMyProfile();
-                    }
+                    if (targetId === 'settings') fetchMyProfile();
                 }
                 
                 document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
@@ -1681,7 +1133,7 @@ $system_uptime = '99.9%';
 
         const updateDashboardStats = async () => {
             try {
-                const response = await fetch('?fetch=dashboard_stats');
+                const response = await fetch(`${getEndpoints.dashboard_stats}?fetch=dashboard_stats`);
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
@@ -1690,7 +1142,6 @@ $system_uptime = '99.9%';
                 document.getElementById('total-users-stat').textContent = stats.total_users;
                 document.getElementById('active-doctors-stat').textContent = stats.active_doctors;
                 
-                // Update low stock stats
                 const lowMedicineStat = document.getElementById('low-medicine-stat');
                 const lowBloodStat = document.getElementById('low-blood-stat');
 
@@ -1709,7 +1160,6 @@ $system_uptime = '99.9%';
                 } else {
                     lowBloodStat.style.display = 'none';
                 }
-
 
                 const chartData = [stats.role_counts.user, stats.role_counts.doctor, stats.role_counts.staff, stats.role_counts.admin];
                 
@@ -1765,17 +1215,17 @@ $system_uptime = '99.9%';
         
         const fetchDepartments = async () => {
             try {
-                const response = await fetch('?fetch=departments');
+                const response = await fetch(`${getEndpoints.departments}?fetch=departments`);
                 const result = await response.json();
                 if (result.success) {
                     const departmentSelect = document.getElementById('department_id');
                     const staffDepartmentSelect = document.getElementById('assigned_department');
-                    departmentSelect.innerHTML = '<option value="">Select Department</option>'; // Reset
-                    staffDepartmentSelect.innerHTML = '<option value="">Select Department</option>'; // Reset
+                    departmentSelect.innerHTML = '<option value="">Select Department</option>';
+                    staffDepartmentSelect.innerHTML = '<option value="">Select Department</option>';
                     result.data.forEach(dept => {
                         const option = `<option value="${dept.id}">${dept.name}</option>`;
                         departmentSelect.innerHTML += option;
-                        staffDepartmentSelect.innerHTML += `<option value="${dept.name}">${dept.name}</option>`; // As per schema staff.assigned_department is varchar
+                        staffDepartmentSelect.innerHTML += `<option value="${dept.name}">${dept.name}</option>`;
                     });
                 }
             } catch (error) {
@@ -1809,7 +1259,6 @@ $system_uptime = '99.9%';
                 activeGroup.style.display = 'block';
                 document.getElementById('active').value = user.active;
 
-                // Populate role-specific fields
                 if (user.role === 'doctor') {
                     document.getElementById('specialty').value = user.specialty || '';
                     document.getElementById('qualifications').value = user.qualifications || '';
@@ -1842,7 +1291,7 @@ $system_uptime = '99.9%';
             tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Loading...</td></tr>`;
 
             try {
-                const response = await fetch(`?fetch=users&role=${role}`);
+                const response = await fetch(`${getEndpoints.users}?fetch=users&role=${role}`);
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
@@ -1890,45 +1339,39 @@ $system_uptime = '99.9%';
                     formData.append('action', 'deleteUser');
                     formData.append('id', user.id);
                     formData.append('csrf_token', csrfToken);
-                    handleFormSubmit(formData, currentRole);
+                    handleFormSubmit(formData, `users-${currentRole}`);
                 }
             }
         });
 
         const handleFormSubmit = async (formData, refreshTarget = null) => {
+            const action = formData.get('action');
+            const endpoint = postEndpoints[action];
+            if (!endpoint) {
+                showNotification('Invalid action.', 'error');
+                return;
+            }
+
             try {
-                const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
+                const response = await fetch(endpoint, { method: 'POST', body: formData });
                 const result = await response.json();
                 
                 if (result.success) {
                     showNotification(result.message, 'success');
-                    // Close relevant modal based on action
-                    if (formData.get('action') === 'addUser' || formData.get('action') === 'updateUser') {
-                        closeModal(userModal);
-                    } else if (formData.get('action') === 'addMedicine' || formData.get('action') === 'updateMedicine') {
-                        closeModal(medicineModal);
-                    } else if (formData.get('action') === 'updateBlood') {
-                        closeModal(bloodModal);
-                    } else if (formData.get('action') === 'addWard' || formData.get('action') === 'updateWard') {
-                        closeModal(wardModal);
-                    } else if (formData.get('action') === 'addBed' || formData.get('action') === 'updateBed') {
-                        closeModal(bedModal);
-                    }
-
+                    if (formData.get('action') === 'addUser' || formData.get('action') === 'updateUser') closeModal(userModal);
+                    else if (formData.get('action') === 'addMedicine' || formData.get('action') === 'updateMedicine') closeModal(medicineModal);
+                    else if (formData.get('action') === 'updateBlood') closeModal(bloodModal);
+                    else if (formData.get('action') === 'addWard' || formData.get('action') === 'updateWard') closeModal(wardModal);
+                    else if (formData.get('action') === 'addBed' || formData.get('action') === 'updateBed') closeModal(bedModal);
+                    
                     if (refreshTarget) {
-                        if (refreshTarget.startsWith('users-')) {
-                            fetchUsers(refreshTarget.split('-')[1]);
-                        } else if (refreshTarget === 'blood') {
-                            fetchBloodInventory();
-                        } else if (refreshTarget === 'medicine') {
-                            fetchMedicineInventory();
-                        } else if (refreshTarget === 'wards') {
-                            fetchWards();
-                        } else if (refreshTarget === 'beds') {
-                            fetchBeds();
-                        }
+                        if (refreshTarget.startsWith('users-')) fetchUsers(refreshTarget.split('-')[1]);
+                        else if (refreshTarget === 'blood') fetchBloodInventory();
+                        else if (refreshTarget === 'medicine') fetchMedicineInventory();
+                        else if (refreshTarget === 'wards') fetchWards();
+                        else if (refreshTarget === 'beds') fetchBeds();
                     }
-                    updateDashboardStats(); // Always update dashboard stats after any change
+                    updateDashboardStats();
                 } else {
                     throw new Error(result.message || 'An unknown error occurred.');
                 }
@@ -1949,7 +1392,7 @@ $system_uptime = '99.9%';
 
         const fetchMyProfile = async () => {
              try {
-                const response = await fetch(`?fetch=my_profile`);
+                const response = await fetch(`${getEndpoints.my_profile}?fetch=my_profile`);
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
@@ -1968,7 +1411,7 @@ $system_uptime = '99.9%';
             e.preventDefault();
             const formData = new FormData(profileForm);
             try {
-                const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
+                const response = await fetch(postEndpoints.updateProfile, { method: 'POST', body: formData });
                 const result = await response.json();
                 
                 if (result.success) {
@@ -1984,7 +1427,7 @@ $system_uptime = '99.9%';
             }
         });
         
-        // --- INVENTORY MANAGEMENT (NEW) ---
+        // --- INVENTORY MANAGEMENT ---
 
         // Medicine Inventory
         const medicineModal = document.getElementById('medicine-modal');
@@ -1997,8 +1440,8 @@ $system_uptime = '99.9%';
             if (mode === 'add') {
                 document.getElementById('medicine-modal-title').textContent = 'Add New Medicine';
                 document.getElementById('medicine-form-action').value = 'addMedicine';
-                document.getElementById('medicine-low-stock-threshold').value = 10; // Default
-            } else { // edit mode
+                document.getElementById('medicine-low-stock-threshold').value = 10;
+            } else {
                 document.getElementById('medicine-modal-title').textContent = `Edit ${medicine.name}`;
                 document.getElementById('medicine-form-action').value = 'updateMedicine';
                 document.getElementById('medicine-id').value = medicine.id;
@@ -2017,15 +1460,13 @@ $system_uptime = '99.9%';
 
         medicineForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const formData = new FormData(medicineForm);
-            handleFormSubmit(formData, 'medicine');
+            handleFormSubmit(new FormData(medicineForm), 'medicine');
         });
 
         const fetchMedicineInventory = async () => {
             medicineTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center;">Loading...</td></tr>`;
             try {
-                const response = await fetch('?fetch=medicines');
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const response = await fetch(`${getEndpoints.medicines}?fetch=medicines`);
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
 
@@ -2048,9 +1489,7 @@ $system_uptime = '99.9%';
                     medicineTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center;">No medicines found.</td></tr>`;
                 }
             } catch (error) {
-                console.error('Fetch medicine error:', error);
                 medicineTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center;">Failed to load medicines: ${error.message}</td></tr>`;
-                showNotification(error.message, 'error');
             }
         };
 
@@ -2059,14 +1498,11 @@ $system_uptime = '99.9%';
             const deleteBtn = e.target.closest('.btn-delete-medicine');
             
             if (editBtn) {
-                const medicine = JSON.parse(editBtn.closest('tr').dataset.medicine);
-                openMedicineModal('edit', medicine);
+                openMedicineModal('edit', JSON.parse(editBtn.closest('tr').dataset.medicine));
             }
-            
             if (deleteBtn) {
                 const medicine = JSON.parse(deleteBtn.closest('tr').dataset.medicine);
-                const confirmed = await showConfirmation('Delete Medicine', `Are you sure you want to delete ${medicine.name}? This action cannot be undone.`);
-                if (confirmed) {
+                if (await showConfirmation('Delete Medicine', `Are you sure you want to delete ${medicine.name}?`)) {
                     const formData = new FormData();
                     formData.append('action', 'deleteMedicine');
                     formData.append('id', medicine.id);
@@ -2086,20 +1522,19 @@ $system_uptime = '99.9%';
             bloodForm.reset();
             document.getElementById('blood-modal-title').textContent = `Update Blood Inventory for ${blood.blood_group || 'New Group'}`;
             document.getElementById('blood-group').value = blood.blood_group || 'A+';
-            document.getElementById('blood-group').disabled = blood.blood_group ? true : false; // Disable group selection if editing existing
+            document.getElementById('blood-group').disabled = !!blood.blood_group;
             document.getElementById('blood-quantity-ml').value = blood.quantity_ml || 0;
             document.getElementById('blood-low-stock-threshold-ml').value = blood.low_stock_threshold_ml || 5000;
             bloodModal.classList.add('show');
         };
 
-        addBloodBtn.addEventListener('click', () => openBloodModal()); // For adding/updating any group
+        addBloodBtn.addEventListener('click', () => openBloodModal());
         bloodModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(bloodModal));
         bloodModal.addEventListener('click', (e) => { if (e.target === bloodModal) closeModal(bloodModal); });
 
         bloodForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const formData = new FormData(bloodForm);
-            // If blood group was disabled, manually add it to formData
             if (document.getElementById('blood-group').disabled) {
                 formData.append('blood_group', document.getElementById('blood-group').value);
             }
@@ -2109,8 +1544,7 @@ $system_uptime = '99.9%';
         const fetchBloodInventory = async () => {
             bloodTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading...</td></tr>`;
             try {
-                const response = await fetch('?fetch=blood_inventory');
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const response = await fetch(`${getEndpoints.blood_inventory}?fetch=blood_inventory`);
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
 
@@ -2130,17 +1564,14 @@ $system_uptime = '99.9%';
                     bloodTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No blood inventory records found.</td></tr>`;
                 }
             } catch (error) {
-                console.error('Fetch blood error:', error);
                 bloodTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Failed to load blood inventory: ${error.message}</td></tr>`;
-                showNotification(error.message, 'error');
             }
         };
 
         bloodTableBody.addEventListener('click', async (e) => {
             const editBtn = e.target.closest('.btn-edit-blood');
             if (editBtn) {
-                const blood = JSON.parse(editBtn.closest('tr').dataset.blood);
-                openBloodModal(blood);
+                openBloodModal(JSON.parse(editBtn.closest('tr').dataset.blood));
             }
         });
 
@@ -2156,7 +1587,7 @@ $system_uptime = '99.9%';
                 document.getElementById('ward-modal-title').textContent = 'Add New Ward';
                 document.getElementById('ward-form-action').value = 'addWard';
                 document.getElementById('ward-active-group').style.display = 'none';
-            } else { // edit mode
+            } else {
                 document.getElementById('ward-modal-title').textContent = `Edit ${ward.name}`;
                 document.getElementById('ward-form-action').value = 'updateWard';
                 document.getElementById('ward-id').value = ward.id;
@@ -2175,15 +1606,13 @@ $system_uptime = '99.9%';
 
         wardForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const formData = new FormData(wardForm);
-            handleFormSubmit(formData, 'wards');
+            handleFormSubmit(new FormData(wardForm), 'wards');
         });
 
         const fetchWards = async () => {
             wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading...</td></tr>`;
             try {
-                const response = await fetch('?fetch=wards');
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const response = await fetch(`${getEndpoints.wards}?fetch=wards`);
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
 
@@ -2204,9 +1633,7 @@ $system_uptime = '99.9%';
                     wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No wards found.</td></tr>`;
                 }
             } catch (error) {
-                console.error('Fetch ward error:', error);
                 wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Failed to load wards: ${error.message}</td></tr>`;
-                showNotification(error.message, 'error');
             }
         };
 
@@ -2215,14 +1642,11 @@ $system_uptime = '99.9%';
             const deleteBtn = e.target.closest('.btn-delete-ward');
             
             if (editBtn) {
-                const ward = JSON.parse(editBtn.closest('tr').dataset.ward);
-                openWardModal('edit', ward);
+                openWardModal('edit', JSON.parse(editBtn.closest('tr').dataset.ward));
             }
-            
             if (deleteBtn) {
                 const ward = JSON.parse(deleteBtn.closest('tr').dataset.ward);
-                const confirmed = await showConfirmation('Delete Ward', `Are you sure you want to delete ward "${ward.name}"? This will also delete all associated beds.`);
-                if (confirmed) {
+                if (await showConfirmation('Delete Ward', `Are you sure you want to delete ward "${ward.name}"?`)) {
                     const formData = new FormData();
                     formData.append('action', 'deleteWard');
                     formData.append('id', ward.id);
@@ -2241,10 +1665,9 @@ $system_uptime = '99.9%';
         const bedStatusSelect = document.getElementById('bed-status');
         const bedPatientSelect = document.getElementById('bed-patient-id');
 
-        // Populate wards dropdown for beds modal
         const populateBedWardsDropdown = async () => {
             try {
-                const response = await fetch('?fetch=wards');
+                const response = await fetch(`${getEndpoints.wards}?fetch=wards`);
                 const result = await response.json();
                 if (result.success) {
                     const wardSelect = document.getElementById('bed-ward-id');
@@ -2253,25 +1676,20 @@ $system_uptime = '99.9%';
                         wardSelect.innerHTML += `<option value="${ward.id}">${ward.name}</option>`;
                     });
                 }
-            } catch (error) {
-                console.error('Failed to fetch wards for beds:', error);
-            }
+            } catch (error) { console.error('Failed to fetch wards for beds:', error); }
         };
 
-        // Populate patients dropdown for bed assignment
         const populateBedPatientsDropdown = async () => {
             try {
-                const response = await fetch('?fetch=patients_for_beds');
+                const response = await fetch(`${getEndpoints.patients_for_beds}?fetch=patients_for_beds`);
                 const result = await response.json();
                 if (result.success) {
-                    bedPatientSelect.innerHTML = '<option value="">Select Patient (Optional)</option>';
+                    bedPatientSelect.innerHTML = '<option value="">Select Patient</option>';
                     result.data.forEach(patient => {
                         bedPatientSelect.innerHTML += `<option value="${patient.id}">${patient.name} (${patient.display_user_id})</option>`;
                     });
                 }
-            } catch (error) {
-                console.error('Failed to fetch patients for beds:', error);
-            }
+            } catch (error) { console.error('Failed to fetch patients for beds:', error); }
         };
 
         bedStatusSelect.addEventListener('change', () => {
@@ -2281,24 +1699,20 @@ $system_uptime = '99.9%';
 
         const openBedModal = async (mode, bed = {}) => {
             bedForm.reset();
-            await populateBedWardsDropdown(); // Populate wards
-            await populateBedPatientsDropdown(); // Populate patients
+            await populateBedWardsDropdown();
+            await populateBedPatientsDropdown();
 
             if (mode === 'add') {
                 document.getElementById('bed-modal-title').textContent = 'Add New Bed';
                 document.getElementById('bed-form-action').value = 'addBed';
-                document.getElementById('bed-ward-id').disabled = false;
-                document.getElementById('bed-number').disabled = false;
                 bedPatientGroup.style.display = 'none';
                 bedPatientSelect.required = false;
-            } else { // edit mode
-                document.getElementById('bed-modal-title').textContent = `Edit Bed ${bed.bed_number} (${bed.ward_name})`;
+            } else {
+                document.getElementById('bed-modal-title').textContent = `Edit Bed ${bed.bed_number}`;
                 document.getElementById('bed-form-action').value = 'updateBed';
                 document.getElementById('bed-id').value = bed.id;
                 document.getElementById('bed-ward-id').value = bed.ward_id;
-                document.getElementById('bed-ward-id').disabled = true; // Ward cannot be changed after creation
                 document.getElementById('bed-number').value = bed.bed_number;
-                document.getElementById('bed-number').disabled = true; // Bed number cannot be changed after creation
                 document.getElementById('bed-price-per-day').value = bed.price_per_day;
                 document.getElementById('bed-status').value = bed.status;
                 
@@ -2320,34 +1734,21 @@ $system_uptime = '99.9%';
 
         bedForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const formData = new FormData(bedForm);
-            // Re-enable disabled fields before submitting if they hold necessary data
-            document.getElementById('bed-ward-id').disabled = false;
-            document.getElementById('bed-number').disabled = false;
-            handleFormSubmit(formData, 'beds');
-            // Re-disable after submission attempt
-            document.getElementById('bed-ward-id').disabled = (formData.get('action') === 'updateBed');
-            document.getElementById('bed-number').disabled = (formData.get('action') === 'updateBed');
+            handleFormSubmit(new FormData(bedForm), 'beds');
         });
 
         const fetchBeds = async () => {
             bedsContainer.innerHTML = `<p style="text-align:center;">Loading beds...</p>`;
             try {
-                const response = await fetch('?fetch=beds');
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const response = await fetch(`${getEndpoints.beds}?fetch=beds`);
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
 
                 const beds = result.data;
                 const wardsMap = {};
-
-                // Group beds by ward
                 beds.forEach(bed => {
                     if (!wardsMap[bed.ward_id]) {
-                        wardsMap[bed.ward_id] = {
-                            name: bed.ward_name,
-                            beds: []
-                        };
+                        wardsMap[bed.ward_id] = { name: bed.ward_name, beds: [] };
                     }
                     wardsMap[bed.ward_id].beds.push(bed);
                 });
@@ -2381,9 +1782,7 @@ $system_uptime = '99.9%';
                 }
                 bedsContainer.innerHTML = html;
             } catch (error) {
-                console.error('Fetch beds error:', error);
                 bedsContainer.innerHTML = `<p style="text-align:center;">Failed to load beds: ${error.message}</p>`;
-                showNotification(error.message, 'error');
             }
         };
 
@@ -2392,14 +1791,11 @@ $system_uptime = '99.9%';
             const deleteBtn = e.target.closest('.btn-delete-bed');
             
             if (editBtn) {
-                const bed = JSON.parse(editBtn.closest('.bed-card').dataset.bed);
-                openBedModal('edit', bed);
+                openBedModal('edit', JSON.parse(editBtn.closest('.bed-card').dataset.bed));
             }
-            
             if (deleteBtn) {
                 const bed = JSON.parse(deleteBtn.closest('.bed-card').dataset.bed);
-                const confirmed = await showConfirmation('Delete Bed', `Are you sure you want to delete bed "${bed.bed_number}" from ${bed.ward_name}?`);
-                if (confirmed) {
+                if (await showConfirmation('Delete Bed', `Are you sure you want to delete bed "${bed.bed_number}"?`)) {
                     const formData = new FormData();
                     formData.append('action', 'deleteBed');
                     formData.append('id', bed.id);
@@ -2409,10 +1805,9 @@ $system_uptime = '99.9%';
             }
         });
 
-
         // --- INITIAL LOAD ---
         updateDashboardStats();
-        fetchDepartments(); // For user management form
+        fetchDepartments();
     });
     </script>
 </body>
