@@ -1,3 +1,5 @@
+
+
 -- This is the complete and updated database schema for MedSync.
 -- It includes all tables and columns required for the latest features.
 
@@ -14,20 +16,6 @@ CREATE TABLE `departments` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `departments`
---
-INSERT INTO `departments` (`name`) VALUES
-('Cardiology'),
-('Orthopedics'),
-('Neurology'),
-('Pediatrics'),
-('General Surgery'),
-('Oncology'),
-('Administration'),
-('Pharmacy'),
-('Nursing');
 
 --
 -- Table structure for table `users`
@@ -60,15 +48,6 @@ CREATE TABLE `role_counters` (
   `last_id` int(10) UNSIGNED NOT NULL DEFAULT 0,
   PRIMARY KEY (`role_prefix`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `role_counters`
---
-INSERT INTO `role_counters` (`role_prefix`, `last_id`) VALUES
-('A', 0),
-('D', 0),
-('S', 0),
-('U', 0);
 
 --
 -- Table structure for table `doctors`
@@ -123,4 +102,55 @@ CREATE TABLE `callback_requests` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `is_contacted` tinyint(1) NOT NULL DEFAULT 0,
    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Inventory Management Tables
+
+-- Table structure for table `medicines`
+CREATE TABLE `medicines` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(255) NOT NULL UNIQUE,
+  `description` TEXT DEFAULT NULL,
+  `quantity` INT(11) NOT NULL DEFAULT 0,
+  `unit_price` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  `low_stock_threshold` INT(11) NOT NULL DEFAULT 10,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `blood_inventory`
+CREATE TABLE `blood_inventory` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `blood_group` ENUM('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-') NOT NULL UNIQUE,
+  `quantity_ml` INT(11) NOT NULL DEFAULT 0 COMMENT 'Quantity in milliliters',
+  `low_stock_threshold_ml` INT(11) NOT NULL DEFAULT 5000 COMMENT 'Threshold in milliliters',
+  `last_updated` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `wards`
+CREATE TABLE `wards` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(100) NOT NULL UNIQUE COMMENT 'e.g., General Ward, ICU, Pediatric Ward',
+  `capacity` INT(11) NOT NULL DEFAULT 0,
+  `description` TEXT DEFAULT NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `beds`
+CREATE TABLE `beds` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `ward_id` INT(11) NOT NULL,
+  `bed_number` VARCHAR(50) NOT NULL,
+  `status` ENUM('available', 'occupied', 'reserved', 'cleaning') NOT NULL DEFAULT 'available',
+  `patient_id` INT(11) DEFAULT NULL COMMENT 'FK to users table if occupied by a patient',
+  `occupied_since` DATETIME DEFAULT NULL,
+  `price_per_day` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  `last_updated` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `ward_bed_unique` (`ward_id`, `bed_number`),
+  CONSTRAINT `fk_beds_ward` FOREIGN KEY (`ward_id`) REFERENCES `wards` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_beds_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
