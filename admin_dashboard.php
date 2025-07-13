@@ -1,6 +1,5 @@
 <?php
 // --- CONFIG & SESSION START ---
-// It's best practice to start the session before any output.
 require_once 'config.php'; 
 
 // --- SESSION SECURITY & ROLE CHECK ---
@@ -19,17 +18,69 @@ if (isset($_SESSION['loggedin_time']) && (time() - $_SESSION['loggedin_time'] > 
 }
 $_SESSION['loggedin_time'] = time();
 
+/**
+ * Generates a unique, sequential display ID for a new user based on their role.
+ * Uses a dedicated counter table with row locking to prevent race conditions.
+ * e.g., A0001, D0001, S0001, U0001
+ *
+ * @param string $role The role of the user ('admin', 'doctor', 'staff', 'user').
+ * @param mysqli $conn The database connection object.
+ * @return string The formatted display ID.
+ * @throws Exception If the role is invalid or a database error occurs.
+ */
+function generateDisplayId($role, $conn) {
+    $prefix_map = [
+        'admin' => 'A',
+        'doctor' => 'D',
+        'staff' => 'S',
+        'user' => 'U'
+    ];
+
+    if (!isset($prefix_map[$role])) {
+        throw new Exception("Invalid role specified for ID generation.");
+    }
+    $prefix = $prefix_map[$role];
+
+    // Start transaction for safe counter update
+    $conn->begin_transaction();
+    try {
+        // Lock the row for the specific role to prevent race conditions
+        $stmt = $conn->prepare("SELECT last_id FROM role_counters WHERE role_prefix = ? FOR UPDATE");
+        $stmt->bind_param("s", $prefix);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        if ($result->num_rows === 0) {
+            throw new Exception("Role prefix '$prefix' not found in counters table.");
+        }
+        $row = $result->fetch_assoc();
+        $new_id_num = $row['last_id'] + 1;
+
+        // Update the counter
+        $update_stmt = $conn->prepare("UPDATE role_counters SET last_id = ? WHERE role_prefix = ?");
+        $update_stmt->bind_param("is", $new_id_num, $prefix);
+        $update_stmt->execute();
+        
+        // Commit the transaction
+        $conn->commit();
+
+        // Format the new ID with leading zeros
+        return $prefix . str_pad($new_id_num, 4, '0', STR_PAD_LEFT);
+
+    } catch (Exception $e) {
+        // Rollback on error
+        $conn->rollback();
+        // Re-throw the exception to be caught by the main handler
+        throw $e;
+    }
+}
+
+
 // ===================================================================================
 // --- API ENDPOINT LOGIC (Handles all AJAX requests) ---
 // ===================================================================================
 if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHOD'] === 'POST')) {
-    // --- ROBUST ERROR HANDLING FOR AJAX ---
-    // Convert all PHP errors to exceptions to ensure a clean JSON response is always returned.
     set_error_handler(function($severity, $message, $file, $line) {
-        if (!(error_reporting() & $severity)) {
-            // This error code is not included in error_reporting
-            return;
-        }
+        if (!(error_reporting() & $severity)) { return; }
         throw new ErrorException($message, 0, $severity, $file, $line);
     });
 
@@ -37,71 +88,159 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
     $response = ['success' => false, 'message' => 'An unknown error occurred.'];
 
     try {
-        $conn = getDbConnection(); // Moved inside try block to catch connection errors
+        $conn = getDbConnection(); 
 
-        // --- CSRF TOKEN VALIDATION for POST requests ---
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
                 throw new Exception('Invalid CSRF token. Please refresh and try again.');
             }
         }
 
-        // --- HANDLE POST ACTIONS (Create, Update, Delete) ---
         if (isset($_POST['action'])) {
             $action = $_POST['action'];
             switch ($action) {
                 case 'addUser':
-                    if (empty($_POST['name']) || empty($_POST['username']) || empty($_POST['email']) || empty($_POST['role']) || empty($_POST['password'])) {
-                        throw new Exception('Please fill all required fields.');
-                    }
-                    $name = $_POST['name'];
-                    $username = $_POST['username'];
-                    $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
-                    if (!$email) throw new Exception('Invalid email format.');
-                    
-                    $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
-                    $role = $_POST['role'];
-                    $display_user_id = strtoupper($role[0]) . uniqid();
-                    $gender = !empty($_POST['gender']) ? $_POST['gender'] : null;
+                    // --- Start Transaction ---
+                    $conn->begin_transaction();
+                    try {
+                        if (empty($_POST['name']) || empty($_POST['username']) || empty($_POST['email']) || empty($_POST['role']) || empty($_POST['password']) || empty($_POST['phone'])) {
+                            throw new Exception('Please fill all required fields.');
+                        }
+                        $name = $_POST['name'];
+                        $username = $_POST['username'];
+                        $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
+                        if (!$email) throw new Exception('Invalid email format.');
+                        
+                        $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+                        $role = $_POST['role'];
+                        $phone = $_POST['phone'];
+                        $gender = !empty($_POST['gender']) ? $_POST['gender'] : null;
 
-                    $stmt = $conn->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
-                    $stmt->bind_param("ss", $username, $email);
-                    $stmt->execute();
-                    if ($stmt->get_result()->num_rows > 0) {
-                        throw new Exception('Username or email already exists.');
-                    }
-                    
-                    $stmt = $conn->prepare("INSERT INTO users (name, username, email, password, role, display_user_id, gender) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                    $stmt->bind_param("sssssss", $name, $username, $email, $password, $role, $display_user_id, $gender);
-                    if ($stmt->execute()) {
+                        $display_user_id = generateDisplayId($role, $conn);
+
+                        $stmt = $conn->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
+                        $stmt->bind_param("ss", $username, $email);
+                        $stmt->execute();
+                        if ($stmt->get_result()->num_rows > 0) {
+                            throw new Exception('Username or email already exists.');
+                        }
+                        
+                        $stmt = $conn->prepare("INSERT INTO users (display_user_id, name, username, email, password, role, gender, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                        $stmt->bind_param("ssssssss", $display_user_id, $name, $username, $email, $password, $role, $gender, $phone);
+                        $stmt->execute();
+                        $user_id = $conn->insert_id;
+
+                        if ($role === 'doctor') {
+                            $stmt_doctor = $conn->prepare("INSERT INTO doctors (user_id, specialty, qualifications, department_id, availability) VALUES (?, ?, ?, ?, ?)");
+                            $stmt_doctor->bind_param("issii", $user_id, $_POST['specialty'], $_POST['qualifications'], $_POST['department_id'], $_POST['availability']);
+                            $stmt_doctor->execute();
+                        } elseif ($role === 'staff') {
+                            $stmt_staff = $conn->prepare("INSERT INTO staff (user_id, shift, assigned_department) VALUES (?, ?, ?)");
+                            $stmt_staff->bind_param("iss", $user_id, $_POST['shift'], $_POST['assigned_department']);
+                            $stmt_staff->execute();
+                        } elseif ($role === 'admin') {
+                            $stmt_admin = $conn->prepare("INSERT INTO admins (user_id) VALUES (?)");
+                            $stmt_admin->bind_param("i", $user_id);
+                            $stmt_admin->execute();
+                        }
+
+                        $conn->commit();
                         $response = ['success' => true, 'message' => ucfirst($role) . ' added successfully.'];
-                    } else {
-                        throw new Exception('Database error on user creation.');
+
+                    } catch (Exception $e) {
+                        $conn->rollback();
+                        throw new Exception('Database error on user creation: ' . $e->getMessage());
                     }
                     break;
 
                 case 'updateUser':
-                    if (empty($_POST['id']) || empty($_POST['name']) || empty($_POST['username']) || empty($_POST['email'])) {
-                        throw new Exception('Invalid data provided.');
+                    $conn->begin_transaction();
+                    try {
+                        if (empty($_POST['id']) || empty($_POST['name']) || empty($_POST['username']) || empty($_POST['email'])) {
+                            throw new Exception('Invalid data provided.');
+                        }
+                        $id = (int)$_POST['id'];
+                        $name = $_POST['name'];
+                        $username = $_POST['username'];
+                        $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
+                        if (!$email) throw new Exception('Invalid email format.');
+                        $phone = $_POST['phone'];
+                        $active = isset($_POST['active']) ? (int)$_POST['active'] : 1;
+                        $date_of_birth = !empty($_POST['date_of_birth']) ? $_POST['date_of_birth'] : null;
+                        $gender = !empty($_POST['gender']) ? $_POST['gender'] : null;
+
+                        $sql_parts = ["name = ?", "username = ?", "email = ?", "phone = ?", "active = ?", "date_of_birth = ?", "gender = ?"];
+                        $params = [$name, $username, $email, $phone, $active, $date_of_birth, $gender];
+                        $types = "ssssiss";
+
+                        if (!empty($_POST['password'])) {
+                            $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+                            $sql_parts[] = "password = ?";
+                            $params[] = $hashed_password;
+                            $types .= "s";
+                        }
+
+                        $sql = "UPDATE users SET " . implode(", ", $sql_parts) . " WHERE id = ?";
+                        $params[] = $id;
+                        $types .= "i";
+                        
+                        $stmt = $conn->prepare($sql);
+                        $stmt->bind_param($types, ...$params);
+                        $stmt->execute();
+
+                        // Fetch user's role to update role-specific tables
+                        $role_stmt = $conn->prepare("SELECT role FROM users WHERE id = ?");
+                        $role_stmt->bind_param("i", $id);
+                        $role_stmt->execute();
+                        $user_role = $role_stmt->get_result()->fetch_assoc()['role'];
+
+                        if ($user_role === 'doctor') {
+                             $stmt_doctor = $conn->prepare("
+                                INSERT INTO doctors (user_id, specialty, qualifications, department_id, availability) 
+                                VALUES (?, ?, ?, ?, ?)
+                                ON DUPLICATE KEY UPDATE 
+                                specialty = VALUES(specialty), 
+                                qualifications = VALUES(qualifications), 
+                                department_id = VALUES(department_id), 
+                                availability = VALUES(availability)
+                            ");
+                            $stmt_doctor->bind_param("issii", $id, $_POST['specialty'], $_POST['qualifications'], $_POST['department_id'], $_POST['availability']);
+                            $stmt_doctor->execute();
+                        } elseif ($user_role === 'staff') {
+                            $stmt_staff = $conn->prepare("
+                                INSERT INTO staff (user_id, shift, assigned_department) 
+                                VALUES (?, ?, ?)
+                                ON DUPLICATE KEY UPDATE 
+                                shift = VALUES(shift), 
+                                assigned_department = VALUES(assigned_department)
+                            ");
+                            $stmt_staff->bind_param("iss", $id, $_POST['shift'], $_POST['assigned_department']);
+                            $stmt_staff->execute();
+                        }
+
+                        $conn->commit();
+                        $response = ['success' => true, 'message' => 'User updated successfully.'];
+
+                    } catch (Exception $e) {
+                         $conn->rollback();
+                        throw new Exception('Failed to update user: ' . $e->getMessage());
                     }
-                    $id = (int)$_POST['id'];
+                    break;
+                
+                case 'updateProfile': 
+                    if (empty($_POST['name']) || empty($_POST['email'])) {
+                        throw new Exception('Name and Email are required.');
+                    }
+                    $id = $_SESSION['user_id'];
                     $name = $_POST['name'];
-                    $username = $_POST['username'];
                     $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
                     if (!$email) throw new Exception('Invalid email format.');
-                    $active = isset($_POST['active']) ? (int)$_POST['active'] : 1; // Default to active if not provided
-                    $date_of_birth = !empty($_POST['date_of_birth']) ? $_POST['date_of_birth'] : null;
-                    $gender = !empty($_POST['gender']) ? $_POST['gender'] : null;
+                    $phone = $_POST['phone'];
 
-                    // --- Dynamic Query for Password Update ---
-                    $sql_parts = [
-                        "name = ?", "username = ?", "email = ?", "active = ?", 
-                        "date_of_birth = ?", "gender = ?"
-                    ];
-                    $params = [$name, $username, $email, $active, $date_of_birth, $gender];
-                    $types = "sssiss"; // Corrected types string
+                    $sql_parts = ["name = ?", "email = ?", "phone = ?"];
+                    $params = [$name, $email, $phone];
+                    $types = "sss";
 
-                    // If a new password is provided, add it to the query
                     if (!empty($_POST['password'])) {
                         $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
                         $sql_parts[] = "password = ?";
@@ -109,7 +248,6 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $types .= "s";
                     }
 
-                    // Finalize the query
                     $sql = "UPDATE users SET " . implode(", ", $sql_parts) . " WHERE id = ?";
                     $params[] = $id;
                     $types .= "i";
@@ -118,9 +256,10 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt->bind_param($types, ...$params);
 
                     if ($stmt->execute()) {
-                        $response = ['success' => true, 'message' => 'User updated successfully.'];
+                        $_SESSION['username'] = $name; 
+                        $response = ['success' => true, 'message' => 'Your profile has been updated successfully.'];
                     } else {
-                        throw new Exception('Failed to update user.');
+                        throw new Exception('Failed to update your profile.');
                     }
                     break;
 
@@ -129,7 +268,6 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         throw new Exception('Invalid user ID.');
                     }
                     $id = (int)$_POST['id'];
-                    // Soft delete by setting active to 0
                     $stmt = $conn->prepare("UPDATE users SET active = 0 WHERE id = ?");
                     $stmt->bind_param("i", $id);
                     if ($stmt->execute()) {
@@ -140,17 +278,30 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
             }
         }
-        // --- HANDLE GET ACTIONS (Fetch data) ---
         elseif (isset($_GET['fetch'])) {
              $fetch_target = $_GET['fetch'];
              switch ($fetch_target) {
                 case 'users':
                     if (!isset($_GET['role'])) throw new Exception('User role not specified.');
                     $role = $_GET['role'];
-                    // Fetch gender and date_of_birth along with other user data
-                    $sql = "SELECT id, name, username, email, role, active, created_at, date_of_birth, gender 
-                            FROM users 
-                            WHERE role = ? ORDER BY created_at DESC";
+                    
+                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, u.email, u.phone, u.role, u.active, u.created_at, u.date_of_birth, u.gender";
+                    
+                    if ($role === 'doctor') {
+                        $sql .= ", d.specialty, d.qualifications, d.department_id, d.availability 
+                                 FROM users u 
+                                 LEFT JOIN doctors d ON u.id = d.user_id 
+                                 WHERE u.role = ?";
+                    } elseif ($role === 'staff') {
+                        $sql .= ", s.shift, s.assigned_department 
+                                 FROM users u 
+                                 LEFT JOIN staff s ON u.id = s.user_id 
+                                 WHERE u.role = ?";
+                    } else {
+                        $sql .= " FROM users u WHERE u.role = ?";
+                    }
+                    $sql .= " ORDER BY u.created_at DESC";
+
                     $stmt = $conn->prepare($sql);
                     $stmt->bind_param("s", $role);
                     $stmt->execute();
@@ -159,6 +310,12 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $response = ['success' => true, 'data' => $data];
                     break;
                 
+                case 'departments':
+                    $result = $conn->query("SELECT id, name FROM departments WHERE is_active = 1 ORDER BY name");
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
                 case 'dashboard_stats':
                     $stats = [];
                     $stats['total_users'] = $conn->query("SELECT COUNT(*) as c FROM users")->fetch_assoc()['c'];
@@ -175,33 +332,53 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stats['role_counts'] = $counts;
                     $response = ['success' => true, 'data' => $stats];
                     break;
+                
+                case 'my_profile': 
+                    $admin_id = $_SESSION['user_id'];
+                    $stmt = $conn->prepare("SELECT name, email, phone, username FROM users WHERE id = ?");
+                    $stmt->bind_param("i", $admin_id);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $data = $result->fetch_assoc();
+                    $response = ['success' => true, 'data' => $data];
+                    break;
              }
         }
 
-    } catch (Throwable $e) { // Catch Throwable to get both Exceptions and Errors
-        http_response_code(400); // Bad Request
+    } catch (Throwable $e) { 
+        http_response_code(400); 
         $response['message'] = $e->getMessage();
     }
     
-    restore_error_handler(); // Restore the default error handler
+    restore_error_handler();
     echo json_encode($response);
-    exit(); // Terminate script after AJAX handling
+    exit();
 }
 
 // ===================================================================================
 // --- STANDARD PAGE LOAD LOGIC ---
 // ===================================================================================
 $conn = getDbConnection();
-$username = $_SESSION['username'];
-$display_user_id = $_SESSION['display_user_id'] ?? 'N/A';
+$admin_id = $_SESSION['user_id'];
+
+// Fetch admin's full name for the welcome message
+$stmt = $conn->prepare("SELECT name, display_user_id FROM users WHERE id = ?");
+$stmt->bind_param("i", $admin_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$admin_user = $result->fetch_assoc();
+$admin_name = $admin_user ? htmlspecialchars($admin_user['name']) : 'Admin';
+$display_user_id = $admin_user ? htmlspecialchars($admin_user['display_user_id']) : 'N/A';
+$stmt->close();
+
+
 $csrf_token = bin2hex(random_bytes(32));
 $_SESSION['csrf_token'] = $csrf_token;
 
-// Fetch initial data for dashboard cards - these will be updated by JS
 $total_users = $conn->query("SELECT COUNT(*) as c FROM users")->fetch_assoc()['c'];
 $active_doctors = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='doctor' AND active=1")->fetch_assoc()['c'];
-$pending_appointments = 0; // Example, replace with your actual query
-$system_uptime = '99.9%'; // Example
+$pending_appointments = 0; 
+$system_uptime = '99.9%';
 
 ?>
 <!DOCTYPE html>
@@ -307,7 +484,9 @@ $system_uptime = '99.9%'; // Example
         /* --- MAIN CONTENT --- */
         .main-content { flex-grow: 1; padding: 2rem; overflow-y: auto; margin-left: 280px; transition: margin-left var(--transition-speed); }
         .main-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
-        .main-header h1 { font-size: 1.8rem; font-weight: 600; }
+        .main-header .title-group { flex-grow: 1; }
+        .main-header h1 { font-size: 1.8rem; font-weight: 600; margin: 0; }
+        .main-header h2 { font-size: 1.2rem; font-weight: 400; color: var(--text-muted); margin: 0.25rem 0 0 0; }
         .header-actions { display: flex; align-items: center; gap: 1rem; }
         .user-profile-widget { display: flex; align-items: center; gap: 1rem; background-color: var(--bg-light); padding: 0.5rem 1rem; border-radius: var(--border-radius); box-shadow: var(--shadow-md); }
         .user-profile-widget i { font-size: 1.5rem; color: var(--primary-color); }
@@ -330,40 +509,15 @@ $system_uptime = '99.9%'; // Example
         .grid-card h3 { margin-bottom: 1.5rem; font-weight: 600; }
 
         /* --- QUICK ACTIONS --- */
-        .quick-actions .actions-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-            gap: 1rem;
-        }
-        .quick-actions .action-btn {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 1.2rem 1rem;
-            border-radius: var(--border-radius);
-            background-color: var(--bg-grey);
-            color: var(--text-dark);
-            text-decoration: none;
-            font-weight: 500;
-            text-align: center;
-            transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s, color 0.2s;
-        }
-        .quick-actions .action-btn:hover {
-            transform: translateY(-5px);
-            box-shadow: var(--shadow-lg);
-            background-color: var(--primary-color);
-            color: white;
-        }
-        .quick-actions .action-btn i {
-            font-size: 1.8rem;
-            margin-bottom: 0.75rem;
-        }
+        .quick-actions .actions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1rem; }
+        .quick-actions .action-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.2rem 1rem; border-radius: var(--border-radius); background-color: var(--bg-grey); color: var(--text-dark); text-decoration: none; font-weight: 500; text-align: center; transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s, color 0.2s; }
+        .quick-actions .action-btn:hover { transform: translateY(-5px); box-shadow: var(--shadow-lg); background-color: var(--primary-color); color: white; }
+        .quick-actions .action-btn i { font-size: 1.8rem; margin-bottom: 0.75rem; }
 
         /* --- USER MANAGEMENT TABLE --- */
         .table-container { overflow-x: auto; }
         .user-table { width: 100%; border-collapse: collapse; }
-        .user-table th, .user-table td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--border-light); }
+        .user-table th, .user-table td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--border-light); white-space: nowrap; }
         .user-table th { font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
         .user-table tbody tr { transition: background-color var(--transition-speed); }
         .user-table tbody tr:hover { background-color: var(--bg-grey); }
@@ -384,26 +538,21 @@ $system_uptime = '99.9%'; // Example
         .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
         .form-group input, .form-group select { width: 100%; padding: 0.75rem; border: 1px solid var(--border-light); border-radius: 8px; background-color: var(--bg-grey); color: var(--text-dark); transition: all var(--transition-speed); }
         .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
+        .role-specific-fields {
+            border-top: 1px solid var(--border-light);
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+        }
         
         /* --- MODAL, NOTIFICATION, CONFIRMATION STYLES --- */
         .modal, .notification-container, .confirm-dialog { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1050; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); background-color: rgba(0,0,0,0.5); }
         .modal.show, .notification-container.show, .confirm-dialog.show { display: flex; }
-        .modal-content, .confirm-content { 
-            background-color: var(--bg-light); 
-            padding: 2rem; 
-            border-radius: var(--border-radius); 
-            box-shadow: var(--shadow-lg); 
-            width: 90%; 
-            max-width: 500px; 
-            animation: slideIn 0.3s ease-out;
-            max-height: 90vh; /* Added: Set a max height for the modal content */
-            overflow-y: auto; /* Added: Enable vertical scrolling */
-        }
+        .modal-content, .confirm-content { background-color: var(--bg-light); padding: 2rem; border-radius: var(--border-radius); box-shadow: var(--shadow-lg); width: 90%; max-width: 500px; animation: slideIn 0.3s ease-out; max-height: 90vh; overflow-y: auto; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding-bottom: 1rem; margin-bottom: 1.5rem; }
         .modal-header h3 { margin: 0; }
         .modal-close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); }
         @keyframes slideIn { from { transform: translateY(-30px) scale(0.95); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
-        .notification { padding: 1rem 1.5rem; border-radius: 8px; color: white; box-shadow: var(--shadow-lg); animation: slideIn 0.3s, fadeOut 0.5s 4.5s forwards; }
+        .notification { padding: 1rem 1.5rem; border-radius: 8px; color: white; box-shadow: var(--shadow-lg); animation: slideIn 0.3s, fadeOut 0.5s 4.5s forwards; position: fixed; top: 20px; right: 20px; z-index: 1100; }
         .notification.success { background-color: var(--success-color); }
         .notification.error { background-color: var(--danger-color); }
         @keyframes fadeOut { to { opacity: 0; transform: translateY(-20px); } }
@@ -436,13 +585,15 @@ $system_uptime = '99.9%'; // Example
             .main-content { margin-left: 0; }
             .hamburger-btn { display: block; }
             .main-header { justify-content: flex-start; gap: 1rem; }
-            .header-actions { margin-left: auto; }
+            .main-header .title-group { order: 2; }
+            .header-actions { margin-left: auto; order: 3; }
             .overlay.active { display: block; }
             .dashboard-grid { grid-template-columns: 1fr; }
         }
         @media (max-width: 576px) {
             .main-content { padding: 1rem; }
             .main-header h1 { font-size: 1.4rem; }
+            .main-header h2 { font-size: 1rem; }
             .stat-cards-container { grid-template-columns: 1fr; }
             .header-actions { gap: 0.5rem; }
             .user-profile-widget { padding: 0.5rem; }
@@ -474,7 +625,7 @@ $system_uptime = '99.9%'; // Example
                     <li><a href="#" class="nav-link" data-target="shifts"><i class="fas fa-calendar-alt"></i> Staff Shifts</a></li>
                     <li><a href="#" class="nav-link" data-target="reports"><i class="fas fa-chart-line"></i> Reports</a></li>
                     <li><a href="#" class="nav-link" data-target="activity"><i class="fas fa-history"></i> Activity Logs</a></li>
-                    <li><a href="#" class="nav-link" data-target="settings"><i class="fas fa-cogs"></i> Settings</a></li>
+                    <li><a href="#" class="nav-link" data-target="settings"><i class="fas fa-user-edit"></i> My Account</a></li>
                     <li><a href="#" class="nav-link" data-target="backup"><i class="fas fa-database"></i> Backup</a></li>
                     <li><a href="#" class="nav-link" data-target="notifications"><i class="fas fa-bullhorn"></i> Notifications</a></li>
                 </ul>
@@ -487,7 +638,10 @@ $system_uptime = '99.9%'; // Example
                 <button class="hamburger-btn" id="hamburger-btn" aria-label="Open Menu">
                     <i class="fas fa-bars"></i>
                 </button>
-                <h1 id="panel-title">Dashboard</h1>
+                <div class="title-group">
+                    <h1 id="panel-title">Dashboard</h1>
+                    <h2 id="welcome-message">Hello, <?php echo $admin_name; ?>!</h2>
+                </div>
                 <div class="header-actions">
                     <div class="theme-switch-wrapper">
                         <i class="fas fa-sun"></i>
@@ -500,8 +654,8 @@ $system_uptime = '99.9%'; // Example
                     <div class="user-profile-widget">
                         <i class="fas fa-user-crown"></i>
                         <div class="user-info">
-                            <strong><?php echo htmlspecialchars($username); ?></strong><br>
-                            <span style="color: var(--text-muted); font-size: 0.8rem;">ID: <?php echo htmlspecialchars($display_user_id); ?></span>
+                            <strong><?php echo $admin_name; ?></strong><br>
+                            <span style="color: var(--text-muted); font-size: 0.8rem;">ID: <?php echo $display_user_id; ?></span>
                         </div>
                     </div>
                 </div>
@@ -542,9 +696,11 @@ $system_uptime = '99.9%'; // Example
                     <table class="user-table">
                         <thead>
                             <tr>
+                                <th>User ID</th>
                                 <th>Name</th>
                                 <th>Username</th>
                                 <th>Email</th>
+                                <th>Phone</th>
                                 <th>Status</th>
                                 <th>Joined</th>
                                 <th>Actions</th>
@@ -555,11 +711,43 @@ $system_uptime = '99.9%'; // Example
                     </table>
                 </div>
             </div>
+
+            <div id="settings-panel" class="content-panel">
+                <h3>My Account Details</h3>
+                <p>Edit your personal information and password here.</p>
+                <form id="profile-form" style="margin-top: 2rem; max-width: 600px;">
+                    <input type="hidden" name="action" value="updateProfile">
+                    <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                    
+                    <div class="form-group">
+                        <label for="profile-name">Full Name</label>
+                        <input type="text" id="profile-name" name="name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-email">Email</label>
+                        <input type="email" id="profile-email" name="email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-phone">Phone Number</label>
+                        <input type="tel" id="profile-phone" name="phone" pattern="\+[0-9]{10,15}" title="Enter in format +CountryCodeNumber">
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-username">Username</label>
+                        <input type="text" id="profile-username" name="username" disabled>
+                        <small style="color: var(--text-muted); font-size: 0.8rem;">Username cannot be changed.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-password">New Password</label>
+                        <input type="password" id="profile-password" name="password">
+                        <small style="color: var(--text-muted); font-size: 0.8rem;">Leave blank to keep your current password.</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </form>
+            </div>
             
             <div id="shifts-panel" class="content-panel"><p>Staff Shifts Management coming soon.</p></div>
             <div id="reports-panel" class="content-panel"><p>Reports and Analytics coming soon.</p></div>
             <div id="activity-panel" class="content-panel"><p>Activity Logs coming soon.</p></div>
-            <div id="settings-panel" class="content-panel"><p>System Settings coming soon.</p></div>
             <div id="backup-panel" class="content-panel"><p>Database Backup utility coming soon.</p></div>
             <div id="notifications-panel" class="content-panel"><p>Notification management coming soon.</p></div>
         </main>
@@ -578,6 +766,7 @@ $system_uptime = '99.9%'; // Example
                 <input type="hidden" name="action" id="form-action">
                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                 
+                <!-- General Fields -->
                 <div class="form-group">
                     <label for="name">Full Name</label>
                     <input type="text" id="name" name="name" required>
@@ -589,6 +778,10 @@ $system_uptime = '99.9%'; // Example
                 <div class="form-group">
                     <label for="email">Email</label>
                     <input type="email" id="email" name="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="phone">Phone Number</label>
+                    <input type="tel" id="phone" name="phone" pattern="\+[0-9]{10,15}" title="Enter in format +CountryCodeNumber" required>
                 </div>
                  <div class="form-group">
                     <label for="date_of_birth">Date of Birth</label>
@@ -617,6 +810,52 @@ $system_uptime = '99.9%'; // Example
                         <option value="admin">Admin</option>
                     </select>
                 </div>
+
+                <!-- Doctor Specific Fields -->
+                <div id="doctor-fields" class="role-specific-fields" style="display: none;">
+                    <h4>Doctor Details</h4>
+                    <div class="form-group">
+                        <label for="specialty">Specialty</label>
+                        <input type="text" id="specialty" name="specialty">
+                    </div>
+                    <div class="form-group">
+                        <label for="qualifications">Qualifications (e.g., MBBS, MD)</label>
+                        <input type="text" id="qualifications" name="qualifications">
+                    </div>
+                    <div class="form-group">
+                        <label for="department_id">Department</label>
+                        <select id="department_id" name="department_id">
+                            <option value="">Select Department</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="availability">Availability</label>
+                        <select id="availability" name="availability">
+                            <option value="1">Available</option>
+                            <option value="0">On Leave</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Staff Specific Fields -->
+                <div id="staff-fields" class="role-specific-fields" style="display: none;">
+                    <h4>Staff Details</h4>
+                    <div class="form-group">
+                        <label for="shift">Shift</label>
+                        <select id="shift" name="shift">
+                            <option value="day">Day</option>
+                            <option value="night">Night</option>
+                            <option value="off">Off</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="assigned_department">Assigned Department</label>
+                        <select id="assigned_department" name="assigned_department">
+                             <option value="">Select Department</option>
+                        </select>
+                    </div>
+                </div>
+
                  <div class="form-group" id="active-group" style="display: none;">
                     <label for="active">Status</label>
                     <select id="active" name="active">
@@ -629,7 +868,7 @@ $system_uptime = '99.9%'; // Example
         </div>
     </div>
     
-    <div id="notification-container" class="notification-container"></div>
+    <div id="notification-container"></div>
     
     <div id="confirm-dialog" class="confirm-dialog">
         <div class="confirm-content">
@@ -646,14 +885,16 @@ $system_uptime = '99.9%'; // Example
     <script>
     document.addEventListener("DOMContentLoaded", function() {
         // --- CORE UI ELEMENTS & STATE ---
+        const csrfToken = '<?php echo $csrf_token; ?>';
         const hamburgerBtn = document.getElementById('hamburger-btn');
         const sidebar = document.getElementById('sidebar');
         const overlay = document.getElementById('overlay');
         const navLinks = document.querySelectorAll('.nav-link');
         const dropdownToggles = document.querySelectorAll('.nav-dropdown-toggle');
         const panelTitle = document.getElementById('panel-title');
-        let currentRole = 'user'; // Default role for user management
-        let userRolesChart; // To hold the chart instance
+        const welcomeMessage = document.getElementById('welcome-message');
+        let currentRole = 'user'; 
+        let userRolesChart;
 
         // --- HELPER FUNCTIONS ---
         const showNotification = (message, type = 'success') => {
@@ -662,12 +903,8 @@ $system_uptime = '99.9%'; // Example
             notification.className = `notification ${type}`;
             notification.textContent = message;
             container.appendChild(notification);
-            container.classList.add('show');
             setTimeout(() => {
                 notification.remove();
-                if (container.children.length === 0) {
-                    container.classList.remove('show');
-                }
             }, 5000);
         };
         
@@ -681,21 +918,16 @@ $system_uptime = '99.9%'; // Example
                 const cancelBtn = document.getElementById('confirm-btn-cancel');
                 const okBtn = document.getElementById('confirm-btn-ok');
 
-                const cleanup = () => {
+                const cleanup = (result) => {
                     dialog.classList.remove('show');
-                    cancelBtn.replaceWith(cancelBtn.cloneNode(true));
-                    okBtn.replaceWith(okBtn.cloneNode(true));
+                    resolve(result);
                 };
 
-                okBtn.addEventListener('click', () => {
-                    cleanup();
-                    resolve(true);
-                }, { once: true });
+                const handleOk = () => cleanup(true);
+                const handleCancel = () => cleanup(false);
 
-                cancelBtn.addEventListener('click', () => {
-                    cleanup();
-                    resolve(false);
-                }, { once: true });
+                okBtn.addEventListener('click', handleOk, { once: true });
+                cancelBtn.addEventListener('click', handleCancel, { once: true });
             });
         };
 
@@ -749,15 +981,21 @@ $system_uptime = '99.9%'; // Example
 
                 let panelToShowId = 'dashboard-panel';
                 let title = 'Dashboard';
+                welcomeMessage.style.display = 'block';
                 
                 if (targetId.startsWith('users-')) {
                     panelToShowId = 'users-panel';
                     const role = targetId.split('-')[1];
                     title = `${role.charAt(0).toUpperCase() + role.slice(1)} Management`;
+                    welcomeMessage.style.display = 'none';
                     fetchUsers(role);
                 } else if (document.getElementById(targetId + '-panel')) {
                     panelToShowId = targetId + '-panel';
                     title = this.innerText;
+                    welcomeMessage.style.display = (targetId === 'dashboard') ? 'block' : 'none';
+                    if (targetId === 'settings') {
+                        fetchMyProfile();
+                    }
                 }
                 
                 document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
@@ -783,9 +1021,7 @@ $system_uptime = '99.9%'; // Example
         const updateDashboardStats = async () => {
             try {
                 const response = await fetch('?fetch=dashboard_stats');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
 
@@ -812,13 +1048,8 @@ $system_uptime = '99.9%'; // Example
                             }]
                         },
                         options: {
-                            responsive: true,
-                            maintainAspectRatio: true, 
-                            plugins: { 
-                                legend: { 
-                                    position: 'bottom' 
-                                } 
-                            },
+                            responsive: true, maintainAspectRatio: true, 
+                            plugins: { legend: { position: 'bottom' } },
                             cutout: '70%'
                         }
                     });
@@ -838,11 +1069,42 @@ $system_uptime = '99.9%'; // Example
         const modalTitle = document.getElementById('modal-title');
         const passwordGroup = document.getElementById('password-group');
         const activeGroup = document.getElementById('active-group');
+        const roleSelect = document.getElementById('role');
+        const doctorFields = document.getElementById('doctor-fields');
+        const staffFields = document.getElementById('staff-fields');
+
+        const toggleRoleFields = () => {
+            const selectedRole = roleSelect.value;
+            doctorFields.style.display = selectedRole === 'doctor' ? 'block' : 'none';
+            staffFields.style.display = selectedRole === 'staff' ? 'block' : 'none';
+        };
+
+        roleSelect.addEventListener('change', toggleRoleFields);
+        
+        const fetchDepartments = async () => {
+            try {
+                const response = await fetch('?fetch=departments');
+                const result = await response.json();
+                if (result.success) {
+                    const departmentSelect = document.getElementById('department_id');
+                    const staffDepartmentSelect = document.getElementById('assigned_department');
+                    departmentSelect.innerHTML = '<option value="">Select Department</option>'; // Reset
+                    staffDepartmentSelect.innerHTML = '<option value="">Select Department</option>'; // Reset
+                    result.data.forEach(dept => {
+                        const option = `<option value="${dept.id}">${dept.name}</option>`;
+                        departmentSelect.innerHTML += option;
+                        staffDepartmentSelect.innerHTML += `<option value="${dept.name}">${dept.name}</option>`; // As per schema staff.assigned_department is varchar
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to fetch departments:', error);
+            }
+        };
 
         const openModal = (mode, user = {}) => {
             userForm.reset();
-            document.getElementById('role').value = currentRole;
-            document.getElementById('role').disabled = (mode === 'edit');
+            roleSelect.value = currentRole;
+            roleSelect.disabled = (mode === 'edit');
             
             if (mode === 'add') {
                 modalTitle.textContent = `Add New ${currentRole.charAt(0).toUpperCase() + currentRole.slice(1)}`;
@@ -857,13 +1119,26 @@ $system_uptime = '99.9%'; // Example
                 document.getElementById('name').value = user.name || '';
                 document.getElementById('username').value = user.username;
                 document.getElementById('email').value = user.email;
+                document.getElementById('phone').value = user.phone || '';
                 document.getElementById('date_of_birth').value = user.date_of_birth || '';
                 document.getElementById('gender').value = user.gender || '';
                 document.getElementById('password').required = false;
                 passwordGroup.style.display = 'block';
                 activeGroup.style.display = 'block';
                 document.getElementById('active').value = user.active;
+
+                // Populate role-specific fields
+                if (user.role === 'doctor') {
+                    document.getElementById('specialty').value = user.specialty || '';
+                    document.getElementById('qualifications').value = user.qualifications || '';
+                    document.getElementById('department_id').value = user.department_id || '';
+                    document.getElementById('availability').value = user.availability !== null ? user.availability : 1;
+                } else if (user.role === 'staff') {
+                    document.getElementById('shift').value = user.shift || 'day';
+                    document.getElementById('assigned_department').value = user.assigned_department || '';
+                }
             }
+            toggleRoleFields();
             userModal.classList.add('show');
         };
 
@@ -882,22 +1157,22 @@ $system_uptime = '99.9%'; // Example
             currentRole = role;
             document.getElementById('user-table-title').textContent = `${role.charAt(0).toUpperCase() + role.slice(1)}s`;
             const tableBody = document.getElementById('user-table-body');
-            tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Loading...</td></tr>';
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Loading...</td></tr>`;
 
             try {
                 const response = await fetch(`?fetch=users&role=${role}`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
 
                 if (result.data.length > 0) {
                     tableBody.innerHTML = result.data.map(user => `
                         <tr data-user='${JSON.stringify(user)}'>
+                            <td>${user.display_user_id || 'N/A'}</td>
                             <td>${user.name || 'N/A'}</td>
                             <td>${user.username}</td>
                             <td>${user.email}</td>
+                            <td>${user.phone || 'N/A'}</td>
                             <td><span class="status-badge ${user.active == 1 ? 'active' : 'inactive'}">${user.active == 1 ? 'Active' : 'Inactive'}</span></td>
                             <td>${new Date(user.created_at).toLocaleDateString()}</td>
                             <td class="action-buttons">
@@ -907,16 +1182,15 @@ $system_uptime = '99.9%'; // Example
                         </tr>
                     `).join('');
                 } else {
-                    tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No users found for this role.</td></tr>';
+                    tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">No users found for this role.</td></tr>`;
                 }
             } catch (error) {
                 console.error('Fetch error:', error);
-                tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Failed to load users: ${error.message}</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Failed to load users: ${error.message}</td></tr>`;
                 showNotification(error.message, 'error');
             }
         };
         
-        // --- EVENT DELEGATION for user actions ---
         document.getElementById('user-table-body').addEventListener('click', async (e) => {
             const editBtn = e.target.closest('.btn-edit');
             const deleteBtn = e.target.closest('.btn-delete');
@@ -933,30 +1207,28 @@ $system_uptime = '99.9%'; // Example
                     const formData = new FormData();
                     formData.append('action', 'deleteUser');
                     formData.append('id', user.id);
-                    formData.append('csrf_token', '<?php echo $csrf_token; ?>');
-                    handleFormSubmit(formData);
+                    formData.append('csrf_token', csrfToken);
+                    handleFormSubmit(formData, currentRole);
                 }
             }
         });
 
-        const handleFormSubmit = async (formData) => {
+        const handleFormSubmit = async (formData, roleToRefresh = null) => {
             try {
                 const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
-                // The response might not be ok even if it's a valid JSON error response
                 const result = await response.json();
                 
                 if (result.success) {
                     showNotification(result.message, 'success');
                     closeModal();
-                    fetchUsers(currentRole); // Refresh table
-                    updateDashboardStats(); // Refresh chart and stats
+                    if (roleToRefresh) {
+                        fetchUsers(roleToRefresh);
+                    }
+                    updateDashboardStats();
                 } else {
-                    // Throw an error with the message from the server's JSON response
                     throw new Error(result.message || 'An unknown error occurred.');
                 }
             } catch (error) {
-                // This catch block will now handle network errors, non-JSON responses,
-                // and errors thrown from the logic above (e.g., result.success === false).
                 console.error('Submit error:', error);
                 showNotification(error.message, 'error');
             }
@@ -965,11 +1237,52 @@ $system_uptime = '99.9%'; // Example
         userForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const formData = new FormData(userForm);
-            handleFormSubmit(formData);
+            handleFormSubmit(formData, currentRole);
+        });
+        
+        // --- ADMIN PROFILE EDIT ---
+        const profileForm = document.getElementById('profile-form');
+
+        const fetchMyProfile = async () => {
+             try {
+                const response = await fetch(`?fetch=my_profile`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message);
+
+                const profile = result.data;
+                document.getElementById('profile-name').value = profile.name || '';
+                document.getElementById('profile-email').value = profile.email || '';
+                document.getElementById('profile-phone').value = profile.phone || '';
+                document.getElementById('profile-username').value = profile.username || '';
+            } catch (error) {
+                showNotification('Could not load your profile data.', 'error');
+            }
+        };
+
+        profileForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(profileForm);
+            try {
+                const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showNotification(result.message, 'success');
+                    document.getElementById('welcome-message').textContent = `Hello, ${formData.get('name')}!`;
+                    document.querySelector('.user-profile-widget .user-info strong').textContent = formData.get('name');
+                } else {
+                    throw new Error(result.message || 'An unknown error occurred.');
+                }
+            } catch (error) {
+                console.error('Profile update error:', error);
+                showNotification(error.message, 'error');
+            }
         });
         
         // --- INITIAL LOAD ---
         updateDashboardStats();
+        fetchDepartments();
     });
     </script>
 </body>

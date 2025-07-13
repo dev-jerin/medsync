@@ -248,6 +248,11 @@ require_once 'config.php';
                 </div>
 
                 <div class="form-group">
+                    <label for="phone">Phone Number (e.g., +911234567890)</label>
+                    <input type="tel" id="phone" name="phone" pattern="\+[0-9]{10,15}" title="Please enter phone number in format: +CountryCodeNumber" required>
+                </div>
+
+                <div class="form-group">
                     <label for="date_of_birth">Date of Birth</label>
                     <input type="date" id="date_of_birth" name="date_of_birth" required>
                 </div>
@@ -291,10 +296,16 @@ require_once 'config.php';
         function validateForm() {
             const password = document.getElementById('password').value;
             const confirmPassword = document.getElementById('confirm_password').value;
+            const phone = document.getElementById('phone').value;
 
             if (password !== confirmPassword) {
                 alert('Passwords do not match. Please try again.');
                 return false; // Prevent form submission
+            }
+            
+            if (!phone.startsWith('+')) {
+                alert('Phone number must start with a country code (+).');
+                return false;
             }
             return true; // Allow form submission
         }
