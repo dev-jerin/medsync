@@ -927,6 +927,7 @@ if (empty($_SESSION['csrf_token'])) {
                         <li><a href="#services">Services</a></li>
                         <li><a href="register.php">Register</a></li>
                         <li><a href="privacy_policy.php">Privacy Policy</a></li>
+                        <li><a href="termsandconditions.php">Terms and Conditions</a></li>
                     </ul>
                 </div>
                 <div class="footer-col">
