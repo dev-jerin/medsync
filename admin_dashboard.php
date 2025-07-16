@@ -421,34 +421,64 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
 
                 case 'updateBed':
-                     if (empty($_POST['id']) || empty($_POST['status']) || empty($_POST['ward_id'])) {
-                        throw new Exception('Bed ID, ward, and status are required.');
+                    if (empty($_POST['id']) || empty($_POST['ward_id']) || empty($_POST['bed_number']) || empty($_POST['status'])) {
+                        throw new Exception('Bed ID, ward, bed number, and status are required.');
                     }
                     $id = (int)$_POST['id'];
-                    $status = $_POST['status'];
-                    $patient_id = !empty($_POST['patient_id']) ? (int)$_POST['patient_id'] : null;
-                    
-                    $occupied_since = null;
-                    $reserved_since = null;
-                    
-                    if ($status === 'occupied' && $patient_id) {
-                        $occupied_since = date('Y-m-d H:i:s');
-                    } elseif ($status === 'reserved' && $patient_id) {
-                        $reserved_since = date('Y-m-d H:i:s');
-                    }
+                    $ward_id = (int)$_POST['ward_id'];
+                    $bed_number = $_POST['bed_number'];
+                    $new_status = $_POST['status'];
+                    $new_patient_id = !empty($_POST['patient_id']) ? (int)$_POST['patient_id'] : null;
 
-                    // If status is changing to available or cleaning, clear patient and dates
-                    if ($status === 'available' || $status === 'cleaning') {
-                        $patient_id = null;
-                    }
-                    
-                    $stmt = $conn->prepare("UPDATE beds SET status = ?, patient_id = ?, occupied_since = ?, reserved_since = ? WHERE id = ?");
-                    $stmt->bind_param("sissi", $status, $patient_id, $occupied_since, $reserved_since, $id);
+                    // --- Start Transaction for safe update ---
+                    $conn->begin_transaction();
+                    try {
+                        // Fetch the current state of the bed to make intelligent decisions about date updates
+                        $stmt_current = $conn->prepare("SELECT status, occupied_since, reserved_since FROM beds WHERE id = ? FOR UPDATE");
+                        $stmt_current->bind_param("i", $id);
+                        $stmt_current->execute();
+                        $current_bed = $stmt_current->get_result()->fetch_assoc();
+                        if (!$current_bed) {
+                            throw new Exception("Bed not found.");
+                        }
 
-                    if ($stmt->execute()) {
-                        $response = ['success' => true, 'message' => 'Bed updated successfully.'];
-                    } else {
-                        throw new Exception('Failed to update bed.');
+                        $occupied_since = $current_bed['occupied_since'];
+                        $reserved_since = $current_bed['reserved_since'];
+                        $patient_id = $new_patient_id;
+
+                        // Only update "since" dates if the status is actually changing
+                        if ($new_status !== $current_bed['status']) {
+                            if ($new_status === 'occupied') {
+                                $occupied_since = date('Y-m-d H:i:s');
+                                $reserved_since = null; // A bed cannot be simultaneously occupied and reserved
+                            } elseif ($new_status === 'reserved') {
+                                $reserved_since = date('Y-m-d H:i:s');
+                                $occupied_since = null;
+                            } else { // Status is changing to 'available' or 'cleaning'
+                                $occupied_since = null;
+                                $reserved_since = null;
+                            }
+                        }
+
+                        // Regardless of status change, if the new status isn't one that holds a patient, nullify the patient ID.
+                        if ($new_status !== 'occupied' && $new_status !== 'reserved') {
+                            $patient_id = null;
+                        }
+
+                        $stmt = $conn->prepare("UPDATE beds SET ward_id = ?, bed_number = ?, status = ?, patient_id = ?, occupied_since = ?, reserved_since = ? WHERE id = ?");
+                        // Corrected bind_param string: s for status, i for patient_id, s for dates
+                        $stmt->bind_param("ississi", $ward_id, $bed_number, $new_status, $patient_id, $occupied_since, $reserved_since, $id);
+
+                        if ($stmt->execute()) {
+                            $conn->commit();
+                            $response = ['success' => true, 'message' => 'Bed updated successfully.'];
+                        } else {
+                            throw new Exception('Failed to execute the bed update query.');
+                        }
+                    } catch (Exception $e) {
+                        $conn->rollback();
+                        // Re-throw the exception to be caught by the main handler
+                        throw $e;
                     }
                     break;
 
@@ -467,18 +497,18 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
                 
                 case 'addRoom':
-                    if (empty($_POST['room_number'])) {
-                        throw new Exception('Room number is required.');
+                    if (empty($_POST['room_number']) || !isset($_POST['price_per_day'])) {
+                        throw new Exception('Room number and price are required.');
                     }
                     $room_number = $_POST['room_number'];
                     $status = $_POST['status'] ?? 'available';
                     $patient_id = !empty($_POST['patient_id']) ? (int)$_POST['patient_id'] : null;
-                    $price_per_day = (float)($_POST['price_per_day'] ?? 0.00);
+                    $price_per_day = (float)$_POST['price_per_day'];
                     $occupied_since = ($status === 'occupied' && $patient_id) ? date('Y-m-d H:i:s') : null;
                     $reserved_since = ($status === 'reserved' && $patient_id) ? date('Y-m-d H:i:s') : null;
 
                     $stmt = $conn->prepare("INSERT INTO rooms (room_number, status, patient_id, occupied_since, reserved_since, price_per_day) VALUES (?, ?, ?, ?, ?, ?)");
-                    $stmt->bind_param("ssisss", $room_number, $status, $patient_id, $occupied_since, $reserved_since, $price_per_day);
+                    $stmt->bind_param("ssissd", $room_number, $status, $patient_id, $occupied_since, $reserved_since, $price_per_day);
                     if ($stmt->execute()) {
                         $response = ['success' => true, 'message' => 'Room added successfully.'];
                     } else {
@@ -487,13 +517,14 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
 
                 case 'updateRoom':
-                    if (empty($_POST['id']) || empty($_POST['status'])) {
-                        throw new Exception('Room ID and status are required.');
+                    if (empty($_POST['id']) || empty($_POST['room_number']) || !isset($_POST['price_per_day']) || empty($_POST['status'])) {
+                        throw new Exception('Room ID, number, price, and status are required.');
                     }
                     $id = (int)$_POST['id'];
+                    $room_number = $_POST['room_number'];
                     $status = $_POST['status'];
                     $patient_id = !empty($_POST['patient_id']) ? (int)$_POST['patient_id'] : null;
-                    $price_per_day = (float)($_POST['price_per_day'] ?? 0.00);
+                    $price_per_day = (float)$_POST['price_per_day'];
                     
                     $occupied_since = null;
                     $reserved_since = null;
@@ -508,8 +539,8 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $patient_id = null;
                     }
                     
-                    $stmt = $conn->prepare("UPDATE rooms SET status = ?, patient_id = ?, occupied_since = ?, reserved_since = ?, price_per_day = ? WHERE id = ?");
-                    $stmt->bind_param("sissdi", $status, $patient_id, $occupied_since, $reserved_since, $price_per_day, $id);
+                    $stmt = $conn->prepare("UPDATE rooms SET room_number = ?, status = ?, patient_id = ?, occupied_since = ?, reserved_since = ?, price_per_day = ? WHERE id = ?");
+                    $stmt->bind_param("ssissdi", $room_number, $status, $patient_id, $occupied_since, $reserved_since, $price_per_day, $id);
 
                     if ($stmt->execute()) {
                         $response = ['success' => true, 'message' => 'Room updated successfully.'];
@@ -1116,7 +1147,6 @@ $pending_appointments = 0;
                 </div>
             </div>
 
-            <!-- INVENTORY PANELS -->
             <div id="inventory-blood-panel" class="content-panel">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
                     <h2>Blood Inventory</h2>
@@ -1193,8 +1223,7 @@ $pending_appointments = 0;
                     <button id="add-bed-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Bed</button>
                 </div>
                 <div id="beds-container">
-                    <!-- Wards and their beds will be rendered here by JavaScript -->
-                </div>
+                    </div>
             </div>
 
             <div id="inventory-rooms-panel" class="content-panel">
@@ -1203,11 +1232,8 @@ $pending_appointments = 0;
                     <button id="add-room-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Room</button>
                 </div>
                 <div id="rooms-container" class="resource-grid-container">
-                    <!-- Rooms will be rendered here by JavaScript -->
-                </div>
+                    </div>
             </div>
-            <!-- END INVENTORY PANELS -->
-
             <div id="settings-panel" class="content-panel">
                 <h3>My Account Details</h3>
                 <p>Edit your personal information and password here.</p>
@@ -1251,7 +1277,6 @@ $pending_appointments = 0;
     
     <div class="overlay" id="overlay"></div>
 
-    <!-- User Modal (Existing) -->
     <div id="user-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -1263,7 +1288,6 @@ $pending_appointments = 0;
                 <input type="hidden" name="action" id="form-action">
                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                 
-                <!-- General Fields -->
                 <div class="form-group">
                     <label for="name">Full Name</label>
                     <input type="text" id="name" name="name" required>
@@ -1308,7 +1332,6 @@ $pending_appointments = 0;
                     </select>
                 </div>
 
-                <!-- Doctor Specific Fields -->
                 <div id="doctor-fields" class="role-specific-fields" style="display: none;">
                     <h4>Doctor Details</h4>
                     <div class="form-group">
@@ -1334,7 +1357,6 @@ $pending_appointments = 0;
                     </div>
                 </div>
 
-                <!-- Staff Specific Fields -->
                 <div id="staff-fields" class="role-specific-fields" style="display: none;">
                     <h4>Staff Details</h4>
                     <div class="form-group">
@@ -1365,7 +1387,6 @@ $pending_appointments = 0;
         </div>
     </div>
     
-    <!-- Medicine Modal -->
     <div id="medicine-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -1402,7 +1423,6 @@ $pending_appointments = 0;
         </div>
     </div>
 
-    <!-- Blood Modal -->
     <div id="blood-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -1439,7 +1459,6 @@ $pending_appointments = 0;
         </div>
     </div>
 
-    <!-- Ward Add/Edit Form Modal -->
     <div id="ward-form-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -1474,7 +1493,6 @@ $pending_appointments = 0;
         </div>
     </div>
 
-    <!-- Bed Modal -->
     <div id="bed-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -1489,8 +1507,7 @@ $pending_appointments = 0;
                 <div class="form-group">
                     <label for="bed-ward-id">Ward</label>
                     <select id="bed-ward-id" name="ward_id" required>
-                        <!-- Options populated by JS -->
-                    </select>
+                        </select>
                 </div>
                 <div class="form-group">
                     <label for="bed-number">Bed Number</label>
@@ -1509,15 +1526,13 @@ $pending_appointments = 0;
                     <label for="bed-patient-id">Patient</label>
                     <select id="bed-patient-id" name="patient_id">
                         <option value="">Select Patient</option>
-                        <!-- Patients populated by JS -->
-                    </select>
+                        </select>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Save Bed</button>
             </form>
         </div>
     </div>
 
-    <!-- Room Modal -->
     <div id="room-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -1550,8 +1565,7 @@ $pending_appointments = 0;
                     <label for="room-patient-id">Patient</label>
                     <select id="room-patient-id" name="patient_id">
                         <option value="">Select Patient</option>
-                        <!-- Patients populated by JS -->
-                    </select>
+                        </select>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Save Room</button>
             </form>
@@ -2302,6 +2316,9 @@ $pending_appointments = 0;
             bedPatientGroup.style.display = 'none';
             bedPatientSelect.required = false;
 
+            document.getElementById('bed-number').readOnly = false;
+            document.getElementById('bed-ward-id').disabled = false;
+
             if (mode === 'edit') {
                 document.getElementById('bed-id').value = bed.id;
                 setTimeout(() => { 
@@ -2433,6 +2450,8 @@ $pending_appointments = 0;
             document.getElementById('room-form-action').value = mode === 'add' ? 'addRoom' : 'updateRoom';
             roomPatientGroup.style.display = 'none';
             roomPatientSelect.required = false;
+            
+            document.getElementById('room-number').readOnly = false;
 
             if (mode === 'edit') {
                 document.getElementById('room-id').value = room.id;
