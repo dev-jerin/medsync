@@ -889,12 +889,28 @@ $pending_appointments = 0;
         .theme-switch-wrapper .fa-sun, .theme-switch-wrapper .fa-moon { margin: 0 8px; color: var(--text-muted); }
         
         /* --- INVENTORY: BEDS & ROOMS --- */
-        .resource-grid-container {
+        .resource-grid-container, .ward-beds-container {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
             gap: 1.5rem;
         }
-        .resource-card {
+        .ward-section {
+            margin-bottom: 2rem;
+        }
+        .ward-header {
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border-light);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .ward-header h3 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+        .bed-card, .room-card {
             background-color: var(--bg-light);
             padding: 1.25rem;
             border-radius: var(--border-radius);
@@ -904,48 +920,48 @@ $pending_appointments = 0;
             transition: transform 0.2s, box-shadow 0.2s;
             cursor: pointer;
         }
-        .resource-card:hover {
+        .bed-card:hover, .room-card:hover {
             transform: translateY(-5px);
             box-shadow: var(--shadow-lg);
         }
-        .resource-card.available { border-color: var(--success-color); }
-        .resource-card.occupied { border-color: var(--danger-color); }
-        .resource-card.reserved { border-color: var(--primary-color); }
-        .resource-card.cleaning { border-color: var(--warning-color); }
+        .bed-card.available, .room-card.available { border-color: var(--success-color); }
+        .bed-card.occupied, .room-card.occupied { border-color: var(--danger-color); }
+        .bed-card.reserved, .room-card.reserved { border-color: var(--primary-color); }
+        .bed-card.cleaning, .room-card.cleaning { border-color: var(--warning-color); }
 
-        .resource-card .resource-icon {
+        .bed-card .bed-icon, .room-card .room-icon {
             font-size: 2rem;
             margin-bottom: 0.75rem;
         }
-        .resource-card.available .resource-icon { color: var(--success-color); }
-        .resource-card.occupied .resource-icon { color: var(--danger-color); }
-        .resource-card.reserved .resource-icon { color: var(--primary-color); }
-        .resource-card.cleaning .resource-icon { color: var(--warning-color); }
+        .bed-card.available .bed-icon, .room-card.available .room-icon { color: var(--success-color); }
+        .bed-card.occupied .bed-icon, .room-card.occupied .room-icon { color: var(--danger-color); }
+        .bed-card.reserved .bed-icon, .room-card.reserved .room-icon { color: var(--primary-color); }
+        .bed-card.cleaning .bed-icon, .room-card.cleaning .room-icon { color: var(--warning-color); }
 
-        .resource-card .resource-number {
+        .bed-card .bed-number, .room-card .room-number {
             font-size: 1.2rem;
             font-weight: 600;
             margin-bottom: 0.25rem;
         }
-        .resource-card .resource-status {
+        .bed-card .bed-status, .room-card .room-status {
             font-size: 0.85rem;
             font-weight: 500;
             text-transform: capitalize;
             margin-bottom: 0.5rem;
             color: var(--text-muted);
         }
-        .resource-card .patient-info {
+        .bed-card .patient-info, .room-card .patient-info {
             font-size: 0.8rem;
             color: var(--text-muted);
             margin-top: 0.25rem;
         }
-        .resource-card .action-buttons {
+        .bed-card .action-buttons, .room-card .action-buttons {
             margin-top: 1rem;
             display: flex;
             justify-content: center;
             gap: 0.5rem;
         }
-        .resource-card .action-buttons button {
+        .bed-card .action-buttons button, .room-card .action-buttons button {
             padding: 0.25rem 0.5rem;
             font-size: 0.8rem;
         }
@@ -2460,10 +2476,10 @@ $pending_appointments = 0;
                             patientInfo = `<div class="patient-info">Reserved for: ${room.patient_name}<br><small>Since: ${new Date(room.reserved_since).toLocaleDateString()}</small></div>`;
                         }
                         return `
-                        <div class="resource-card ${room.status}" data-room='${JSON.stringify(room)}'>
-                            <div class="resource-icon"><i class="fas fa-door-closed"></i></div>
-                            <div class="resource-number">Room ${room.room_number}</div>
-                            <div class="resource-status">${room.status}</div>
+                        <div class="room-card ${room.status}" data-room='${JSON.stringify(room)}'>
+                            <div class="room-icon"><i class="fas fa-door-closed"></i></div>
+                            <div class="room-number">Room ${room.room_number}</div>
+                            <div class="room-status">${room.status}</div>
                             ${patientInfo}
                             <div class="action-buttons">
                                 <button class="btn-edit-room btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
@@ -2480,7 +2496,7 @@ $pending_appointments = 0;
         };
 
         roomsContainer.addEventListener('click', async (e) => {
-            const roomCard = e.target.closest('.resource-card');
+            const roomCard = e.target.closest('.room-card');
             if (!roomCard) return;
 
             const room = JSON.parse(roomCard.dataset.room);
@@ -2498,6 +2514,7 @@ $pending_appointments = 0;
                 }
             }
         });
+
 
         // --- INITIAL LOAD ---
         updateDashboardStats();
