@@ -1,7 +1,5 @@
-
-
 -- This is the complete and updated database schema for MedSync.
--- It includes all tables and columns required for the latest features.
+-- It includes all tables and columns required for the latest features, including the new 'rooms' table.
 
 CREATE DATABASE IF NOT EXISTS `medsync` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE `medsync`;
@@ -145,12 +143,29 @@ CREATE TABLE `beds` (
   `ward_id` INT(11) NOT NULL,
   `bed_number` VARCHAR(50) NOT NULL,
   `status` ENUM('available', 'occupied', 'reserved', 'cleaning') NOT NULL DEFAULT 'available',
-  `patient_id` INT(11) DEFAULT NULL COMMENT 'FK to users table if occupied by a patient',
+  `patient_id` INT(11) DEFAULT NULL COMMENT 'FK to users table, used for both occupied and reserved status',
   `occupied_since` DATETIME DEFAULT NULL,
+  `reserved_since` DATETIME DEFAULT NULL,
   `price_per_day` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
   `last_updated` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `ward_bed_unique` (`ward_id`, `bed_number`),
   CONSTRAINT `fk_beds_ward` FOREIGN KEY (`ward_id`) REFERENCES `wards` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_beds_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `rooms`
+CREATE TABLE `rooms` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `room_number` varchar(50) NOT NULL,
+  `status` enum('available','occupied','reserved','cleaning') NOT NULL DEFAULT 'available',
+  `patient_id` int(11) DEFAULT NULL,
+  `occupied_since` datetime DEFAULT NULL,
+  `reserved_since` datetime DEFAULT NULL,
+  `price_per_day` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `last_updated` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `room_number` (`room_number`),
+  KEY `patient_id` (`patient_id`),
+  CONSTRAINT `fk_rooms_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

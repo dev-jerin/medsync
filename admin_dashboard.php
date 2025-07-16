@@ -401,18 +401,18 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
 
                 case 'addBed':
-                    if (empty($_POST['ward_id']) || empty($_POST['bed_number']) || !isset($_POST['price_per_day'])) {
-                        throw new Exception('Ward, bed number, and price are required.');
+                    if (empty($_POST['ward_id']) || empty($_POST['bed_number'])) {
+                        throw new Exception('Ward and bed number are required.');
                     }
                     $ward_id = (int)$_POST['ward_id'];
                     $bed_number = $_POST['bed_number'];
-                    $price_per_day = (float)$_POST['price_per_day'];
                     $status = $_POST['status'] ?? 'available';
                     $patient_id = !empty($_POST['patient_id']) ? (int)$_POST['patient_id'] : null;
                     $occupied_since = ($status === 'occupied' && $patient_id) ? date('Y-m-d H:i:s') : null;
+                    $reserved_since = ($status === 'reserved' && $patient_id) ? date('Y-m-d H:i:s') : null;
 
-                    $stmt = $conn->prepare("INSERT INTO beds (ward_id, bed_number, status, patient_id, occupied_since, price_per_day) VALUES (?, ?, ?, ?, ?, ?)");
-                    $stmt->bind_param("issidi", $ward_id, $bed_number, $status, $patient_id, $occupied_since, $price_per_day);
+                    $stmt = $conn->prepare("INSERT INTO beds (ward_id, bed_number, status, patient_id, occupied_since, reserved_since) VALUES (?, ?, ?, ?, ?, ?)");
+                    $stmt->bind_param("ississ", $ward_id, $bed_number, $status, $patient_id, $occupied_since, $reserved_since);
                     if ($stmt->execute()) {
                         $response = ['success' => true, 'message' => 'Bed added successfully.'];
                     } else {
@@ -421,38 +421,34 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
 
                 case 'updateBed':
-                    if (empty($_POST['id']) || empty($_POST['status']) || empty($_POST['ward_id']) || empty($_POST['bed_number']) || !isset($_POST['price_per_day'])) {
-                        throw new Exception('Bed ID, ward, bed number, status, and price are required.');
+                     if (empty($_POST['id']) || empty($_POST['status']) || empty($_POST['ward_id'])) {
+                        throw new Exception('Bed ID, ward, and status are required.');
                     }
                     $id = (int)$_POST['id'];
-                    $ward_id = (int)$_POST['ward_id'];
-                    $bed_number = $_POST['bed_number'];
                     $status = $_POST['status'];
                     $patient_id = !empty($_POST['patient_id']) ? (int)$_POST['patient_id'] : null;
-                    $price_per_day = (float)$_POST['price_per_day'];
                     
-                    // Logic for occupied_since based on status change
                     $occupied_since = null;
+                    $reserved_since = null;
+                    
                     if ($status === 'occupied' && $patient_id) {
-                        // Check if it was already occupied by the same patient, keep old timestamp
-                        $current_bed_stmt = $conn->prepare("SELECT patient_id, occupied_since FROM beds WHERE id = ?");
-                        $current_bed_stmt->bind_param("i", $id);
-                        $current_bed_stmt->execute();
-                        $current_bed_result = $current_bed_stmt->get_result()->fetch_assoc();
-                        
-                        if ($current_bed_result && $current_bed_result['patient_id'] == $patient_id && $current_bed_result['occupied_since']) {
-                            $occupied_since = $current_bed_result['occupied_since'];
-                        } else {
-                            $occupied_since = date('Y-m-d H:i:s');
-                        }
+                        $occupied_since = date('Y-m-d H:i:s');
+                    } elseif ($status === 'reserved' && $patient_id) {
+                        $reserved_since = date('Y-m-d H:i:s');
                     }
 
-                    $stmt = $conn->prepare("UPDATE beds SET ward_id = ?, bed_number = ?, status = ?, patient_id = ?, occupied_since = ?, price_per_day = ? WHERE id = ?");
-                    $stmt->bind_param("issisdi", $ward_id, $bed_number, $status, $patient_id, $occupied_since, $price_per_day, $id);
+                    // If status is changing to available or cleaning, clear patient and dates
+                    if ($status === 'available' || $status === 'cleaning') {
+                        $patient_id = null;
+                    }
+                    
+                    $stmt = $conn->prepare("UPDATE beds SET status = ?, patient_id = ?, occupied_since = ?, reserved_since = ? WHERE id = ?");
+                    $stmt->bind_param("sissi", $status, $patient_id, $occupied_since, $reserved_since, $id);
+
                     if ($stmt->execute()) {
                         $response = ['success' => true, 'message' => 'Bed updated successfully.'];
                     } else {
-                        throw new Exception('Failed to update bed. Bed number might already exist in this ward.');
+                        throw new Exception('Failed to update bed.');
                     }
                     break;
 
@@ -467,6 +463,72 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $response = ['success' => true, 'message' => 'Bed deleted successfully.'];
                     } else {
                         throw new Exception('Failed to delete bed.');
+                    }
+                    break;
+                
+                case 'addRoom':
+                    if (empty($_POST['room_number'])) {
+                        throw new Exception('Room number is required.');
+                    }
+                    $room_number = $_POST['room_number'];
+                    $status = $_POST['status'] ?? 'available';
+                    $patient_id = !empty($_POST['patient_id']) ? (int)$_POST['patient_id'] : null;
+                    $price_per_day = (float)($_POST['price_per_day'] ?? 0.00);
+                    $occupied_since = ($status === 'occupied' && $patient_id) ? date('Y-m-d H:i:s') : null;
+                    $reserved_since = ($status === 'reserved' && $patient_id) ? date('Y-m-d H:i:s') : null;
+
+                    $stmt = $conn->prepare("INSERT INTO rooms (room_number, status, patient_id, occupied_since, reserved_since, price_per_day) VALUES (?, ?, ?, ?, ?, ?)");
+                    $stmt->bind_param("ssisss", $room_number, $status, $patient_id, $occupied_since, $reserved_since, $price_per_day);
+                    if ($stmt->execute()) {
+                        $response = ['success' => true, 'message' => 'Room added successfully.'];
+                    } else {
+                        throw new Exception('Failed to add room. Room number might already exist.');
+                    }
+                    break;
+
+                case 'updateRoom':
+                    if (empty($_POST['id']) || empty($_POST['status'])) {
+                        throw new Exception('Room ID and status are required.');
+                    }
+                    $id = (int)$_POST['id'];
+                    $status = $_POST['status'];
+                    $patient_id = !empty($_POST['patient_id']) ? (int)$_POST['patient_id'] : null;
+                    $price_per_day = (float)($_POST['price_per_day'] ?? 0.00);
+                    
+                    $occupied_since = null;
+                    $reserved_since = null;
+                    
+                    if ($status === 'occupied' && $patient_id) {
+                        $occupied_since = date('Y-m-d H:i:s');
+                    } elseif ($status === 'reserved' && $patient_id) {
+                        $reserved_since = date('Y-m-d H:i:s');
+                    }
+
+                    if ($status === 'available' || $status === 'cleaning') {
+                        $patient_id = null;
+                    }
+                    
+                    $stmt = $conn->prepare("UPDATE rooms SET status = ?, patient_id = ?, occupied_since = ?, reserved_since = ?, price_per_day = ? WHERE id = ?");
+                    $stmt->bind_param("sissdi", $status, $patient_id, $occupied_since, $reserved_since, $price_per_day, $id);
+
+                    if ($stmt->execute()) {
+                        $response = ['success' => true, 'message' => 'Room updated successfully.'];
+                    } else {
+                        throw new Exception('Failed to update room.');
+                    }
+                    break;
+
+                case 'deleteRoom':
+                    if (empty($_POST['id'])) {
+                        throw new Exception('Room ID is required.');
+                    }
+                    $id = (int)$_POST['id'];
+                    $stmt = $conn->prepare("DELETE FROM rooms WHERE id = ?");
+                    $stmt->bind_param("i", $id);
+                    if ($stmt->execute()) {
+                        $response = ['success' => true, 'message' => 'Room deleted successfully.'];
+                    } else {
+                        throw new Exception('Failed to delete room.');
                     }
                     break;
 
@@ -565,7 +627,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
 
                 case 'beds':
-                    $sql = "SELECT b.id, b.ward_id, w.name as ward_name, b.bed_number, b.status, b.patient_id, u.name as patient_name, b.occupied_since, b.price_per_day 
+                    $sql = "SELECT b.id, b.ward_id, w.name as ward_name, b.bed_number, b.status, b.patient_id, u.name as patient_name, b.occupied_since, b.reserved_since, b.price_per_day 
                             FROM beds b 
                             JOIN wards w ON b.ward_id = w.id 
                             LEFT JOIN users u ON b.patient_id = u.id
@@ -575,7 +637,17 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $response = ['success' => true, 'data' => $data];
                     break;
                 
-                case 'patients_for_beds':
+                case 'rooms':
+                    $sql = "SELECT r.id, r.room_number, r.status, r.patient_id, u.name as patient_name, r.occupied_since, r.reserved_since, r.price_per_day 
+                            FROM rooms r
+                            LEFT JOIN users u ON r.patient_id = u.id
+                            ORDER BY r.room_number ASC";
+                    $result = $conn->query($sql);
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+                
+                case 'patients_for_beds': // Re-used for rooms as well
                     $result = $conn->query("SELECT id, name, display_user_id FROM users WHERE role = 'user' AND active = 1 ORDER BY name ASC");
                     $data = $result->fetch_all(MYSQLI_ASSOC);
                     $response = ['success' => true, 'data' => $data];
@@ -616,7 +688,6 @@ $_SESSION['csrf_token'] = $csrf_token;
 $total_users = $conn->query("SELECT COUNT(*) as c FROM users")->fetch_assoc()['c'];
 $active_doctors = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='doctor' AND active=1")->fetch_assoc()['c'];
 $pending_appointments = 0; 
-$system_uptime = '99.9%';
 
 ?>
 <!DOCTYPE html>
@@ -753,7 +824,7 @@ $system_uptime = '99.9%';
         .quick-actions .action-btn:hover { transform: translateY(-5px); box-shadow: var(--shadow-lg); background-color: var(--primary-color); color: white; }
         .quick-actions .action-btn i { font-size: 1.8rem; margin-bottom: 0.75rem; }
 
-        /* --- USER MANAGEMENT TABLE --- */
+        /* --- USER MANAGEMENT TABLE & GENERIC TABLE STYLES --- */
         .table-container { overflow-x: auto; }
         .data-table { width: 100%; border-collapse: collapse; }
         .data-table th, .data-table td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--border-light); white-space: nowrap; }
@@ -761,13 +832,15 @@ $system_uptime = '99.9%';
         .data-table tbody tr { transition: background-color var(--transition-speed); }
         .data-table tbody tr:hover { background-color: var(--bg-grey); }
         .status-badge { padding: 0.25rem 0.6rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600; }
-        .status-badge.active { background-color: #D1FAE5; color: #065F46; }
-        .status-badge.inactive { background-color: #FEE2E2; color: #991B1B; }
-        body.dark-mode .status-badge.active { background-color: #064E3B; color: #A7F3D0; }
-        body.dark-mode .status-badge.inactive { background-color: #7F1D1D; color: #FECACA; }
+        .status-badge.active, .status-badge.in-stock { background-color: #D1FAE5; color: #065F46; }
+        .status-badge.inactive, .status-badge.low-stock { background-color: #FEE2E2; color: #991B1B; }
+        body.dark-mode .status-badge.active, body.dark-mode .status-badge.in-stock { background-color: #064E3B; color: #A7F3D0; }
+        body.dark-mode .status-badge.inactive, body.dark-mode .status-badge.low-stock { background-color: #7F1D1D; color: #FECACA; }
         .action-buttons button { background: none; border: none; cursor: pointer; font-size: 1.1rem; margin: 0 5px; transition: color var(--transition-speed); }
         .action-buttons .btn-edit { color: var(--primary-color); }
         .action-buttons .btn-delete { color: var(--danger-color); }
+        .quantity-good { color: var(--success-color); font-weight: 600; }
+        .quantity-low { color: var(--danger-color); font-weight: 600; }
 
         /* --- BUTTONS & FORMS --- */
         .btn { padding: 0.7rem 1.4rem; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all var(--transition-speed); border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem; }
@@ -794,7 +867,7 @@ $system_uptime = '99.9%';
         .notification { padding: 1rem 1.5rem; border-radius: 8px; color: white; box-shadow: var(--shadow-lg); animation: slideIn 0.3s, fadeOut 0.5s 4.5s forwards; position: fixed; top: 20px; right: 20px; z-index: 1100; }
         .notification.success { background-color: var(--success-color); }
         .notification.error { background-color: var(--danger-color); }
-        .notification.warning { background-color: var(--warning-color); } /* Added for low stock alerts */
+        .notification.warning { background-color: var(--warning-color); }
         @keyframes fadeOut { to { opacity: 0; transform: translateY(-20px); } }
         .confirm-content { text-align: center; }
         .confirm-content h4 { margin-bottom: 1rem; } .confirm-content p { margin-bottom: 1.5rem; color: var(--text-muted); }
@@ -814,151 +887,69 @@ $system_uptime = '99.9%';
         input:checked + .slider { background-color: var(--primary-color-dark); }
         input:checked + .slider:before { transform: translateX(24px); }
         .theme-switch-wrapper .fa-sun, .theme-switch-wrapper .fa-moon { margin: 0 8px; color: var(--text-muted); }
-
-        /* --- INVENTORY SPECIFIC STYLES --- */
-        .inventory-grid {
+        
+        /* --- INVENTORY: BEDS & ROOMS --- */
+        .resource-grid-container {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
             gap: 1.5rem;
-            margin-top: 1.5rem;
         }
-
-        .inventory-card {
+        .resource-card {
             background-color: var(--bg-light);
-            padding: 1.5rem;
+            padding: 1.25rem;
             border-radius: var(--border-radius);
             box-shadow: var(--shadow-md);
             text-align: center;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            align-items: center;
-            border: 1px solid var(--border-light);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .inventory-card:hover {
-            transform: translateY(-5px);
-            box-shadow: var(--shadow-lg);
-        }
-
-        .inventory-card .icon {
-            font-size: 2.5rem;
-            color: var(--primary-color);
-            margin-bottom: 1rem;
-        }
-
-        .inventory-card h4 {
-            font-size: 1.2rem;
-            margin-bottom: 0.5rem;
-            color: var(--text-dark);
-        }
-
-        .inventory-card p {
-            font-size: 1rem;
-            color: var(--text-muted);
-            margin-bottom: 1rem;
-        }
-
-        .inventory-card .quantity {
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: var(--primary-color);
-            margin-bottom: 1rem;
-        }
-
-        .inventory-card .quantity.low {
-            color: var(--danger-color);
-        }
-        .inventory-card .quantity.warning {
-            color: var(--warning-color);
-        }
-        .inventory-card .quantity.good {
-            color: var(--success-color);
-        }
-
-        /* Bed/Ward specific styles */
-        .bed-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 1rem;
-            margin-top: 1.5rem;
-        }
-
-        .bed-card {
-            background-color: var(--bg-light);
-            padding: 1rem;
-            border-radius: var(--border-radius);
-            box-shadow: var(--shadow-sm);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            border: 2px solid;
+            border-left: 5px solid;
             transition: transform 0.2s, box-shadow 0.2s;
             cursor: pointer;
         }
-        .bed-card:hover {
-            transform: translateY(-3px);
-            box-shadow: var(--shadow-md);
+        .resource-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
         }
+        .resource-card.available { border-color: var(--success-color); }
+        .resource-card.occupied { border-color: var(--danger-color); }
+        .resource-card.reserved { border-color: var(--primary-color); }
+        .resource-card.cleaning { border-color: var(--warning-color); }
 
-        .bed-card.available { border-color: var(--success-color); background-color: #D1FAE5; }
-        .bed-card.occupied { border-color: var(--danger-color); background-color: #FEE2E2; }
-        .bed-card.reserved { border-color: var(--primary-color); background-color: #DBEAFE; }
-        .bed-card.cleaning { border-color: var(--warning-color); background-color: #FEF3C7; }
+        .resource-card .resource-icon {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+        }
+        .resource-card.available .resource-icon { color: var(--success-color); }
+        .resource-card.occupied .resource-icon { color: var(--danger-color); }
+        .resource-card.reserved .resource-icon { color: var(--primary-color); }
+        .resource-card.cleaning .resource-icon { color: var(--warning-color); }
 
-        body.dark-mode .bed-card.available { background-color: #064E3B; }
-        body.dark-mode .bed-card.occupied { background-color: #7F1D1D; }
-        body.dark-mode .bed-card.reserved { background-color: #1E40AF; }
-        body.dark-mode .bed-card.cleaning { background-color: #92400E; }
-
-
-        .bed-card .bed-number {
-            font-size: 1.4rem;
+        .resource-card .resource-number {
+            font-size: 1.2rem;
             font-weight: 600;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.25rem;
         }
-        .bed-card .bed-status {
-            font-size: 0.9rem;
+        .resource-card .resource-status {
+            font-size: 0.85rem;
             font-weight: 500;
             text-transform: capitalize;
             margin-bottom: 0.5rem;
-        }
-        .bed-card .patient-info {
-            font-size: 0.85rem;
             color: var(--text-muted);
         }
-
-        .ward-section {
-            margin-bottom: 2rem;
-            padding: 1.5rem;
-            border: 1px solid var(--border-light);
-            border-radius: var(--border-radius);
-            background-color: var(--bg-light);
-            box-shadow: var(--shadow-md);
+        .resource-card .patient-info {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
         }
-        .ward-section h4 {
-            font-size: 1.5rem;
-            margin-bottom: 1rem;
+        .resource-card .action-buttons {
+            margin-top: 1rem;
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .ward-section .ward-beds-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 1rem;
-        }
-        .ward-actions {
-            display: flex;
+            justify-content: center;
             gap: 0.5rem;
         }
-        .ward-actions button {
-            font-size: 0.9rem;
-            padding: 0.5rem 1rem;
+        .resource-card .action-buttons button {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
         }
-        
+
         /* --- MOBILE & RESPONSIVE --- */
         .hamburger-btn { display: none; background: none; border: none; font-size: 1.5rem; color: var(--text-dark); cursor: pointer; z-index: 1001; }
         .overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.5); z-index: 998; }
@@ -1013,8 +1004,9 @@ $system_uptime = '99.9%';
                         <ul class="nav-dropdown">
                             <li><a href="#" class="nav-link" data-target="inventory-blood"><i class="fas fa-tint"></i> Blood Inventory</a></li>
                             <li><a href="#" class="nav-link" data-target="inventory-medicine"><i class="fas fa-pills"></i> Medicine Inventory</a></li>
-                            <li><a href="#" class="nav-link" data-target="inventory-beds"><i class="fas fa-bed"></i> Beds</a></li>
                             <li><a href="#" class="nav-link" data-target="inventory-wards"><i class="fas fa-hospital"></i> Wards</a></li>
+                            <li><a href="#" class="nav-link" data-target="inventory-beds"><i class="fas fa-bed"></i> Beds</a></li>
+                            <li><a href="#" class="nav-link" data-target="inventory-rooms"><i class="fas fa-door-closed"></i> Rooms</a></li>
                         </ul>
                     </li>
                     <li><a href="#" class="nav-link" data-target="shifts"><i class="fas fa-calendar-alt"></i> Staff Shifts</a></li>
@@ -1061,7 +1053,6 @@ $system_uptime = '99.9%';
                     <div class="stat-card blue"><div class="icon"><i class="fas fa-users"></i></div><div class="info"><div class="value" id="total-users-stat"><?php echo $total_users; ?></div><div class="label">Total Users</div></div></div>
                     <div class="stat-card green"><div class="icon"><i class="fas fa-user-md"></i></div><div class="info"><div class="value" id="active-doctors-stat"><?php echo $active_doctors; ?></div><div class="label">Active Doctors</div></div></div>
                     <div class="stat-card orange"><div class="icon"><i class="fas fa-calendar-check"></i></div><div class="info"><div class="value"><?php echo $pending_appointments; ?></div><div class="label">Pending Appointments</div></div></div>
-                    <div class="stat-card"><div class="icon"><i class="fas fa-server"></i></div><div class="info"><div class="value"><?php echo $system_uptime; ?></div><div class="label">System Uptime</div></div></div>
                     <div class="stat-card red" id="low-medicine-stat" style="display: none;"><div class="icon"><i class="fas fa-pills"></i></div><div class="info"><div class="value" id="low-medicine-count">0</div><div class="label">Low Medicines</div></div></div>
                     <div class="stat-card red" id="low-blood-stat" style="display: none;"><div class="icon"><i class="fas fa-tint"></i></div><div class="info"><div class="value" id="low-blood-count">0</div><div class="label">Low Blood Units</div></div></div>
                 </div>
@@ -1121,6 +1112,7 @@ $system_uptime = '99.9%';
                             <tr>
                                 <th>Blood Group</th>
                                 <th>Quantity (ml)</th>
+                                <th>Status</th>
                                 <th>Low Stock Threshold (ml)</th>
                                 <th>Last Updated</th>
                                 <th>Actions</th>
@@ -1144,6 +1136,7 @@ $system_uptime = '99.9%';
                                 <th>Name</th>
                                 <th>Description</th>
                                 <th>Quantity</th>
+                                <th>Status</th>
                                 <th>Unit Price (₹)</th>
                                 <th>Low Stock Threshold</th>
                                 <th>Last Updated</th>
@@ -1179,12 +1172,22 @@ $system_uptime = '99.9%';
             </div>
 
             <div id="inventory-beds-panel" class="content-panel">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
                     <h2>Bed Management</h2>
                     <button id="add-bed-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Bed</button>
                 </div>
                 <div id="beds-container">
-                    <!-- Wards and their beds will be rendered here -->
+                    <!-- Wards and their beds will be rendered here by JavaScript -->
+                </div>
+            </div>
+
+            <div id="inventory-rooms-panel" class="content-panel">
+                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+                    <h2>Room Management</h2>
+                    <button id="add-room-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Room</button>
+                </div>
+                <div id="rooms-container" class="resource-grid-container">
+                    <!-- Rooms will be rendered here by JavaScript -->
                 </div>
             </div>
             <!-- END INVENTORY PANELS -->
@@ -1420,33 +1423,32 @@ $system_uptime = '99.9%';
         </div>
     </div>
 
-    <!-- Ward Modal -->
-    <div id="ward-modal" class="modal">
+    <!-- Ward Add/Edit Form Modal -->
+    <div id="ward-form-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 id="ward-modal-title">Add New Ward</h3>
+                <h3 id="ward-form-modal-title">Add New Ward</h3>
                 <button class="modal-close-btn">&times;</button>
             </div>
             <form id="ward-form">
-                <input type="hidden" name="id" id="ward-id">
+                <input type="hidden" name="id" id="ward-id-input">
                 <input type="hidden" name="action" id="ward-form-action">
                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
-                
                 <div class="form-group">
-                    <label for="ward-name">Ward Name</label>
-                    <input type="text" id="ward-name" name="name" required>
+                    <label for="ward-name-input">Ward Name</label>
+                    <input type="text" id="ward-name-input" name="name" required>
                 </div>
                 <div class="form-group">
-                    <label for="ward-capacity">Capacity</label>
-                    <input type="number" id="ward-capacity" name="capacity" min="0" required>
+                    <label for="ward-capacity-input">Capacity</label>
+                    <input type="number" id="ward-capacity-input" name="capacity" min="0" required>
                 </div>
                 <div class="form-group">
-                    <label for="ward-description">Description</label>
-                    <textarea id="ward-description" name="description" rows="3"></textarea>
+                    <label for="ward-description-input">Description</label>
+                    <textarea id="ward-description-input" name="description" rows="3"></textarea>
                 </div>
                 <div class="form-group" id="ward-active-group" style="display: none;">
-                    <label for="ward-is-active">Status</label>
-                    <select id="ward-is-active" name="is_active">
+                    <label for="ward-is-active-input">Status</label>
+                    <select id="ward-is-active-input" name="is_active">
                         <option value="1">Active</option>
                         <option value="0">Inactive</option>
                     </select>
@@ -1479,10 +1481,6 @@ $system_uptime = '99.9%';
                     <input type="text" id="bed-number" name="bed_number" required>
                 </div>
                 <div class="form-group">
-                    <label for="bed-price-per-day">Price Per Day (₹)</label>
-                    <input type="number" id="bed-price-per-day" name="price_per_day" step="0.01" min="0" required>
-                </div>
-                <div class="form-group">
                     <label for="bed-status">Status</label>
                     <select id="bed-status" name="status" required>
                         <option value="available">Available</option>
@@ -1492,13 +1490,54 @@ $system_uptime = '99.9%';
                     </select>
                 </div>
                 <div class="form-group" id="bed-patient-group" style="display: none;">
-                    <label for="bed-patient-id">Occupied By (Patient)</label>
+                    <label for="bed-patient-id">Patient</label>
                     <select id="bed-patient-id" name="patient_id">
-                        <option value="">Select Patient (Optional)</option>
+                        <option value="">Select Patient</option>
                         <!-- Patients populated by JS -->
                     </select>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Save Bed</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Room Modal -->
+    <div id="room-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="room-modal-title">Add New Room</h3>
+                <button class="modal-close-btn">&times;</button>
+            </div>
+            <form id="room-form">
+                <input type="hidden" name="id" id="room-id">
+                <input type="hidden" name="action" id="room-form-action">
+                <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                
+                <div class="form-group">
+                    <label for="room-number">Room Number</label>
+                    <input type="text" id="room-number" name="room_number" required>
+                </div>
+                 <div class="form-group">
+                    <label for="room-price-per-day">Price Per Day (₹)</label>
+                    <input type="number" id="room-price-per-day" name="price_per_day" step="0.01" min="0" required>
+                </div>
+                <div class="form-group">
+                    <label for="room-status">Status</label>
+                    <select id="room-status" name="status" required>
+                        <option value="available">Available</option>
+                        <option value="occupied">Occupied</option>
+                        <option value="reserved">Reserved</option>
+                        <option value="cleaning">Cleaning</option>
+                    </select>
+                </div>
+                <div class="form-group" id="room-patient-group" style="display: none;">
+                    <label for="room-patient-id">Patient</label>
+                    <select id="room-patient-id" name="patient_id">
+                        <option value="">Select Patient</option>
+                        <!-- Patients populated by JS -->
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Save Room</button>
             </form>
         </div>
     </div>
@@ -1530,7 +1569,7 @@ $system_uptime = '99.9%';
         const panelTitle = document.getElementById('panel-title');
         const welcomeMessage = document.getElementById('welcome-message');
         let currentRole = 'user'; 
-        let userRolesChart;
+        let userRolesChart = null;
 
         // --- HELPER FUNCTIONS ---
         const showNotification = (message, type = 'success') => {
@@ -1557,7 +1596,6 @@ $system_uptime = '99.9%';
                 const cleanup = (result) => {
                     dialog.classList.remove('show');
                     resolve(result);
-                    // Remove event listeners to prevent multiple bindings
                     okBtn.removeEventListener('click', handleOk);
                     cancelBtn.removeEventListener('click', handleCancel);
                 };
@@ -1615,13 +1653,13 @@ $system_uptime = '99.9%';
 
                 document.querySelectorAll('.sidebar-nav a.active').forEach(a => a.classList.remove('active'));
                 this.classList.add('active');
-                // Ensure parent dropdown is active
+                
                 let parentDropdown = this.closest('.nav-dropdown');
                 if (parentDropdown) {
                     let parentDropdownToggle = parentDropdown.previousElementSibling;
                     if (parentDropdownToggle) {
                         parentDropdownToggle.classList.add('active');
-                        parentDropdown.style.maxHeight = parentDropdown.scrollHeight + "px"; // Keep dropdown open
+                        parentDropdown.style.maxHeight = parentDropdown.scrollHeight + "px";
                     }
                 }
 
@@ -1640,23 +1678,17 @@ $system_uptime = '99.9%';
                     title = this.innerText;
                     welcomeMessage.style.display = 'none';
                     const inventoryType = targetId.split('-')[1];
-                    if (inventoryType === 'blood') {
-                        fetchBloodInventory();
-                    } else if (inventoryType === 'medicine') {
-                        fetchMedicineInventory();
-                    } else if (inventoryType === 'beds') {
-                        fetchBeds();
-                    } else if (inventoryType === 'wards') {
-                        fetchWards();
-                    }
+                    if (inventoryType === 'blood') fetchBloodInventory();
+                    else if (inventoryType === 'medicine') fetchMedicineInventory();
+                    else if (inventoryType === 'wards') fetchWards();
+                    else if (inventoryType === 'beds') fetchWardsAndBeds();
+                    else if (inventoryType === 'rooms') fetchRooms();
                 }
                 else if (document.getElementById(targetId + '-panel')) {
                     panelToShowId = targetId + '-panel';
                     title = this.innerText;
                     welcomeMessage.style.display = (targetId === 'dashboard') ? 'block' : 'none';
-                    if (targetId === 'settings') {
-                        fetchMyProfile();
-                    }
+                    if (targetId === 'settings') fetchMyProfile();
                 }
                 
                 document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
@@ -1690,14 +1722,12 @@ $system_uptime = '99.9%';
                 document.getElementById('total-users-stat').textContent = stats.total_users;
                 document.getElementById('active-doctors-stat').textContent = stats.active_doctors;
                 
-                // Update low stock stats
                 const lowMedicineStat = document.getElementById('low-medicine-stat');
                 const lowBloodStat = document.getElementById('low-blood-stat');
 
                 if (stats.low_medicines_count > 0) {
                     document.getElementById('low-medicine-count').textContent = stats.low_medicines_count;
                     lowMedicineStat.style.display = 'flex';
-                    showNotification(`${stats.low_medicines_count} medicine(s) are running low!`, 'warning');
                 } else {
                     lowMedicineStat.style.display = 'none';
                 }
@@ -1705,19 +1735,22 @@ $system_uptime = '99.9%';
                 if (stats.low_blood_count > 0) {
                     document.getElementById('low-blood-count').textContent = stats.low_blood_count;
                     lowBloodStat.style.display = 'flex';
-                    showNotification(`${stats.low_blood_count} blood unit(s) are running low!`, 'warning');
                 } else {
                     lowBloodStat.style.display = 'none';
                 }
 
-
-                const chartData = [stats.role_counts.user, stats.role_counts.doctor, stats.role_counts.staff, stats.role_counts.admin];
+                const chartData = [
+                    stats.role_counts.user || 0, 
+                    stats.role_counts.doctor || 0, 
+                    stats.role_counts.staff || 0, 
+                    stats.role_counts.admin || 0
+                ];
                 
+                const ctx = document.getElementById('userRolesChart').getContext('2d');
                 if (userRolesChart) {
                     userRolesChart.data.datasets[0].data = chartData;
                     userRolesChart.update();
                 } else {
-                    const ctx = document.getElementById('userRolesChart').getContext('2d');
                     userRolesChart = new Chart(ctx, {
                         type: 'doughnut',
                         data: {
@@ -1735,8 +1768,8 @@ $system_uptime = '99.9%';
                             cutout: '70%'
                         }
                     });
-                    updateChartAppearance();
                 }
+                updateChartAppearance();
             } catch (error) {
                 console.error('Failed to update dashboard stats:', error);
                 showNotification('Could not refresh dashboard data.', 'error');
@@ -1775,7 +1808,7 @@ $system_uptime = '99.9%';
                     result.data.forEach(dept => {
                         const option = `<option value="${dept.id}">${dept.name}</option>`;
                         departmentSelect.innerHTML += option;
-                        staffDepartmentSelect.innerHTML += `<option value="${dept.name}">${dept.name}</option>`; // As per schema staff.assigned_department is varchar
+                        staffDepartmentSelect.innerHTML += `<option value="${dept.name}">${dept.name}</option>`;
                     });
                 }
             } catch (error) {
@@ -1809,7 +1842,6 @@ $system_uptime = '99.9%';
                 activeGroup.style.display = 'block';
                 document.getElementById('active').value = user.active;
 
-                // Populate role-specific fields
                 if (user.role === 'doctor') {
                     document.getElementById('specialty').value = user.specialty || '';
                     document.getElementById('qualifications').value = user.qualifications || '';
@@ -1890,7 +1922,7 @@ $system_uptime = '99.9%';
                     formData.append('action', 'deleteUser');
                     formData.append('id', user.id);
                     formData.append('csrf_token', csrfToken);
-                    handleFormSubmit(formData, currentRole);
+                    handleFormSubmit(formData, `users-${currentRole}`);
                 }
             }
         });
@@ -1902,33 +1934,22 @@ $system_uptime = '99.9%';
                 
                 if (result.success) {
                     showNotification(result.message, 'success');
-                    // Close relevant modal based on action
-                    if (formData.get('action') === 'addUser' || formData.get('action') === 'updateUser') {
-                        closeModal(userModal);
-                    } else if (formData.get('action') === 'addMedicine' || formData.get('action') === 'updateMedicine') {
-                        closeModal(medicineModal);
-                    } else if (formData.get('action') === 'updateBlood') {
-                        closeModal(bloodModal);
-                    } else if (formData.get('action') === 'addWard' || formData.get('action') === 'updateWard') {
-                        closeModal(wardModal);
-                    } else if (formData.get('action') === 'addBed' || formData.get('action') === 'updateBed') {
-                        closeModal(bedModal);
-                    }
+                    if (formData.get('action') === 'addUser' || formData.get('action') === 'updateUser') closeModal(userModal);
+                    else if (formData.get('action').toLowerCase().includes('medicine')) closeModal(medicineModal);
+                    else if (formData.get('action').toLowerCase().includes('blood')) closeModal(bloodModal);
+                    else if (formData.get('action').toLowerCase().includes('ward')) closeModal(wardFormModal);
+                    else if (formData.get('action').toLowerCase().includes('bed')) closeModal(bedModal);
+                    else if (formData.get('action').toLowerCase().includes('room')) closeModal(document.getElementById('room-modal'));
 
                     if (refreshTarget) {
-                        if (refreshTarget.startsWith('users-')) {
-                            fetchUsers(refreshTarget.split('-')[1]);
-                        } else if (refreshTarget === 'blood') {
-                            fetchBloodInventory();
-                        } else if (refreshTarget === 'medicine') {
-                            fetchMedicineInventory();
-                        } else if (refreshTarget === 'wards') {
-                            fetchWards();
-                        } else if (refreshTarget === 'beds') {
-                            fetchBeds();
-                        }
+                        if (refreshTarget.startsWith('users-')) fetchUsers(refreshTarget.split('-')[1]);
+                        else if (refreshTarget === 'blood') fetchBloodInventory();
+                        else if (refreshTarget === 'medicine') fetchMedicineInventory();
+                        else if (refreshTarget === 'wards') { fetchWards(); }
+                        else if (refreshTarget === 'beds') fetchWardsAndBeds();
+                        else if (refreshTarget === 'rooms') fetchRooms();
                     }
-                    updateDashboardStats(); // Always update dashboard stats after any change
+                    updateDashboardStats();
                 } else {
                     throw new Error(result.message || 'An unknown error occurred.');
                 }
@@ -1984,7 +2005,7 @@ $system_uptime = '99.9%';
             }
         });
         
-        // --- INVENTORY MANAGEMENT (NEW) ---
+        // --- INVENTORY MANAGEMENT ---
 
         // Medicine Inventory
         const medicineModal = document.getElementById('medicine-modal');
@@ -1997,8 +2018,8 @@ $system_uptime = '99.9%';
             if (mode === 'add') {
                 document.getElementById('medicine-modal-title').textContent = 'Add New Medicine';
                 document.getElementById('medicine-form-action').value = 'addMedicine';
-                document.getElementById('medicine-low-stock-threshold').value = 10; // Default
-            } else { // edit mode
+                document.getElementById('medicine-low-stock-threshold').value = 10;
+            } else {
                 document.getElementById('medicine-modal-title').textContent = `Edit ${medicine.name}`;
                 document.getElementById('medicine-form-action').value = 'updateMedicine';
                 document.getElementById('medicine-id').value = medicine.id;
@@ -2017,12 +2038,11 @@ $system_uptime = '99.9%';
 
         medicineForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const formData = new FormData(medicineForm);
-            handleFormSubmit(formData, 'medicine');
+            handleFormSubmit(new FormData(medicineForm), 'medicine');
         });
 
         const fetchMedicineInventory = async () => {
-            medicineTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center;">Loading...</td></tr>`;
+            medicineTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Loading...</td></tr>`;
             try {
                 const response = await fetch('?fetch=medicines');
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -2030,42 +2050,42 @@ $system_uptime = '99.9%';
                 if (!result.success) throw new Error(result.message);
 
                 if (result.data.length > 0) {
-                    medicineTableBody.innerHTML = result.data.map(med => `
+                    medicineTableBody.innerHTML = result.data.map(med => {
+                        const isLowStock = parseInt(med.quantity) <= parseInt(med.low_stock_threshold);
+                        const statusClass = isLowStock ? 'low-stock' : 'in-stock';
+                        const quantityClass = isLowStock ? 'quantity-low' : 'quantity-good';
+                        return `
                         <tr data-medicine='${JSON.stringify(med)}'>
                             <td>${med.name}</td>
                             <td>${med.description || 'N/A'}</td>
-                            <td><span class="${med.quantity <= med.low_stock_threshold ? 'quantity low' : 'quantity good'}">${med.quantity}</span></td>
+                            <td><span class="${quantityClass}">${med.quantity}</span></td>
+                            <td><span class="status-badge ${statusClass}">${isLowStock ? 'Low Stock' : 'In Stock'}</span></td>
                             <td>₹ ${parseFloat(med.unit_price).toFixed(2)}</td>
                             <td>${med.low_stock_threshold}</td>
                             <td>${new Date(med.updated_at).toLocaleString()}</td>
                             <td class="action-buttons">
-                                <button class="btn-edit-medicine" title="Edit"><i class="fas fa-edit"></i></button>
-                                <button class="btn-delete-medicine" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                                <button class="btn-edit-medicine btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
+                                <button class="btn-delete-medicine btn-delete" title="Delete"><i class="fas fa-trash-alt"></i></button>
                             </td>
                         </tr>
-                    `).join('');
+                    `}).join('');
                 } else {
-                    medicineTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center;">No medicines found.</td></tr>`;
+                    medicineTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">No medicines found.</td></tr>`;
                 }
             } catch (error) {
-                console.error('Fetch medicine error:', error);
-                medicineTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center;">Failed to load medicines: ${error.message}</td></tr>`;
-                showNotification(error.message, 'error');
+                medicineTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Failed to load medicines: ${error.message}</td></tr>`;
             }
         };
 
         medicineTableBody.addEventListener('click', async (e) => {
-            const editBtn = e.target.closest('.btn-edit-medicine');
-            const deleteBtn = e.target.closest('.btn-delete-medicine');
-            
-            if (editBtn) {
-                const medicine = JSON.parse(editBtn.closest('tr').dataset.medicine);
+            const row = e.target.closest('tr');
+            if (!row) return;
+            const medicine = JSON.parse(row.dataset.medicine);
+            if (e.target.closest('.btn-edit-medicine')) {
                 openMedicineModal('edit', medicine);
             }
-            
-            if (deleteBtn) {
-                const medicine = JSON.parse(deleteBtn.closest('tr').dataset.medicine);
-                const confirmed = await showConfirmation('Delete Medicine', `Are you sure you want to delete ${medicine.name}? This action cannot be undone.`);
+            if (e.target.closest('.btn-delete-medicine')) {
+                const confirmed = await showConfirmation('Delete Medicine', `Are you sure you want to delete ${medicine.name}?`);
                 if (confirmed) {
                     const formData = new FormData();
                     formData.append('action', 'deleteMedicine');
@@ -2084,109 +2104,104 @@ $system_uptime = '99.9%';
 
         const openBloodModal = (blood = {}) => {
             bloodForm.reset();
-            document.getElementById('blood-modal-title').textContent = `Update Blood Inventory for ${blood.blood_group || 'New Group'}`;
+            document.getElementById('blood-modal-title').textContent = `Update Blood Unit`;
             document.getElementById('blood-group').value = blood.blood_group || 'A+';
-            document.getElementById('blood-group').disabled = blood.blood_group ? true : false; // Disable group selection if editing existing
+            document.getElementById('blood-group').disabled = !!blood.blood_group;
             document.getElementById('blood-quantity-ml').value = blood.quantity_ml || 0;
             document.getElementById('blood-low-stock-threshold-ml').value = blood.low_stock_threshold_ml || 5000;
             bloodModal.classList.add('show');
         };
 
-        addBloodBtn.addEventListener('click', () => openBloodModal()); // For adding/updating any group
+        addBloodBtn.addEventListener('click', () => openBloodModal());
         bloodModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(bloodModal));
         bloodModal.addEventListener('click', (e) => { if (e.target === bloodModal) closeModal(bloodModal); });
 
         bloodForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const formData = new FormData(bloodForm);
-            // If blood group was disabled, manually add it to formData
             if (document.getElementById('blood-group').disabled) {
-                formData.append('blood_group', document.getElementById('blood-group').value);
+                formData.set('blood_group', document.getElementById('blood-group').value);
             }
             handleFormSubmit(formData, 'blood');
         });
 
         const fetchBloodInventory = async () => {
-            bloodTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading...</td></tr>`;
+            bloodTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Loading...</td></tr>`;
             try {
                 const response = await fetch('?fetch=blood_inventory');
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
-
                 if (result.data.length > 0) {
-                    bloodTableBody.innerHTML = result.data.map(blood => `
+                    bloodTableBody.innerHTML = result.data.map(blood => {
+                        const isLowStock = parseInt(blood.quantity_ml) < parseInt(blood.low_stock_threshold_ml);
+                        const statusClass = isLowStock ? 'low-stock' : 'in-stock';
+                        const quantityClass = isLowStock ? 'quantity-low' : 'quantity-good';
+                        return `
                         <tr data-blood='${JSON.stringify(blood)}'>
                             <td>${blood.blood_group}</td>
-                            <td><span class="${blood.quantity_ml <= blood.low_stock_threshold_ml ? 'quantity low' : 'quantity good'}">${blood.quantity_ml}</span> ml</td>
+                            <td><span class="${quantityClass}">${blood.quantity_ml}</span> ml</td>
+                            <td><span class="status-badge ${statusClass}">${isLowStock ? 'Low Stock' : 'In Stock'}</span></td>
                             <td>${blood.low_stock_threshold_ml} ml</td>
                             <td>${new Date(blood.last_updated).toLocaleString()}</td>
                             <td class="action-buttons">
-                                <button class="btn-edit-blood" title="Edit"><i class="fas fa-edit"></i></button>
+                                <button class="btn-edit-blood btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
                             </td>
                         </tr>
-                    `).join('');
+                    `}).join('');
                 } else {
-                    bloodTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No blood inventory records found.</td></tr>`;
+                    bloodTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No blood inventory records found.</td></tr>`;
                 }
             } catch (error) {
-                console.error('Fetch blood error:', error);
-                bloodTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Failed to load blood inventory: ${error.message}</td></tr>`;
-                showNotification(error.message, 'error');
+                bloodTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Failed to load blood inventory.</td></tr>`;
             }
         };
 
         bloodTableBody.addEventListener('click', async (e) => {
-            const editBtn = e.target.closest('.btn-edit-blood');
-            if (editBtn) {
-                const blood = JSON.parse(editBtn.closest('tr').dataset.blood);
+            if (e.target.closest('.btn-edit-blood')) {
+                const blood = JSON.parse(e.target.closest('tr').dataset.blood);
                 openBloodModal(blood);
             }
         });
 
-        // Ward Management
-        const wardModal = document.getElementById('ward-modal');
-        const wardForm = document.getElementById('ward-form');
+        // --- Ward Management ---
         const addWardBtn = document.getElementById('add-ward-btn');
+        const wardFormModal = document.getElementById('ward-form-modal');
+        const wardForm = document.getElementById('ward-form');
         const wardTableBody = document.getElementById('ward-table-body');
-
-        const openWardModal = (mode, ward = {}) => {
+        
+        const openWardForm = (mode, ward = {}) => {
             wardForm.reset();
-            if (mode === 'add') {
-                document.getElementById('ward-modal-title').textContent = 'Add New Ward';
-                document.getElementById('ward-form-action').value = 'addWard';
-                document.getElementById('ward-active-group').style.display = 'none';
-            } else { // edit mode
-                document.getElementById('ward-modal-title').textContent = `Edit ${ward.name}`;
-                document.getElementById('ward-form-action').value = 'updateWard';
-                document.getElementById('ward-id').value = ward.id;
-                document.getElementById('ward-name').value = ward.name;
-                document.getElementById('ward-capacity').value = ward.capacity;
-                document.getElementById('ward-description').value = ward.description || '';
-                document.getElementById('ward-active-group').style.display = 'block';
-                document.getElementById('ward-is-active').value = ward.is_active;
+            wardFormModal.querySelector('#ward-form-modal-title').textContent = mode === 'add' ? 'Add New Ward' : `Edit ${ward.name}`;
+            wardForm.querySelector('#ward-form-action').value = mode === 'add' ? 'addWard' : 'updateWard';
+            const activeGroup = wardForm.querySelector('#ward-active-group');
+            
+            if (mode === 'edit') {
+                wardForm.querySelector('#ward-id-input').value = ward.id;
+                wardForm.querySelector('#ward-name-input').value = ward.name;
+                wardForm.querySelector('#ward-capacity-input').value = ward.capacity;
+                wardForm.querySelector('#ward-description-input').value = ward.description || '';
+                wardForm.querySelector('#ward-is-active-input').value = ward.is_active;
+                activeGroup.style.display = 'block';
+            } else {
+                activeGroup.style.display = 'none';
             }
-            wardModal.classList.add('show');
+            wardFormModal.classList.add('show');
         };
 
-        addWardBtn.addEventListener('click', () => openWardModal('add'));
-        wardModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(wardModal));
-        wardModal.addEventListener('click', (e) => { if (e.target === wardModal) closeModal(wardModal); });
-
+        addWardBtn.addEventListener('click', () => openWardForm('add'));
+        wardFormModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(wardFormModal));
+        
         wardForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const formData = new FormData(wardForm);
-            handleFormSubmit(formData, 'wards');
+            handleFormSubmit(new FormData(wardForm), 'wards');
         });
 
         const fetchWards = async () => {
             wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading...</td></tr>`;
             try {
                 const response = await fetch('?fetch=wards');
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
-
                 if (result.data.length > 0) {
                     wardTableBody.innerHTML = result.data.map(ward => `
                         <tr data-ward='${JSON.stringify(ward)}'>
@@ -2195,8 +2210,8 @@ $system_uptime = '99.9%';
                             <td>${ward.description || 'N/A'}</td>
                             <td><span class="status-badge ${ward.is_active == 1 ? 'active' : 'inactive'}">${ward.is_active == 1 ? 'Active' : 'Inactive'}</span></td>
                             <td class="action-buttons">
-                                <button class="btn-edit-ward" title="Edit"><i class="fas fa-edit"></i></button>
-                                <button class="btn-delete-ward" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                                <button class="btn-edit-ward btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
+                                <button class="btn-delete-ward btn-delete" title="Delete"><i class="fas fa-trash-alt"></i></button>
                             </td>
                         </tr>
                     `).join('');
@@ -2204,24 +2219,19 @@ $system_uptime = '99.9%';
                     wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No wards found.</td></tr>`;
                 }
             } catch (error) {
-                console.error('Fetch ward error:', error);
-                wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Failed to load wards: ${error.message}</td></tr>`;
-                showNotification(error.message, 'error');
+                wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Failed to load wards.</td></tr>`;
             }
         };
 
         wardTableBody.addEventListener('click', async (e) => {
-            const editBtn = e.target.closest('.btn-edit-ward');
-            const deleteBtn = e.target.closest('.btn-delete-ward');
-            
-            if (editBtn) {
-                const ward = JSON.parse(editBtn.closest('tr').dataset.ward);
-                openWardModal('edit', ward);
+            const row = e.target.closest('tr');
+            if (!row) return;
+            const ward = JSON.parse(row.dataset.ward);
+            if (e.target.closest('.btn-edit-ward')) {
+                openWardForm('edit', ward);
             }
-            
-            if (deleteBtn) {
-                const ward = JSON.parse(deleteBtn.closest('tr').dataset.ward);
-                const confirmed = await showConfirmation('Delete Ward', `Are you sure you want to delete ward "${ward.name}"? This will also delete all associated beds.`);
+            if (e.target.closest('.btn-delete-ward')) {
+                const confirmed = await showConfirmation('Delete Ward', `Are you sure you want to delete ward "${ward.name}"?`);
                 if (confirmed) {
                     const formData = new FormData();
                     formData.append('action', 'deleteWard');
@@ -2232,7 +2242,7 @@ $system_uptime = '99.9%';
             }
         });
 
-        // Bed Management
+        // --- Bed Management ---
         const bedModal = document.getElementById('bed-modal');
         const bedForm = document.getElementById('bed-form');
         const addBedBtn = document.getElementById('add-bed-btn');
@@ -2241,75 +2251,54 @@ $system_uptime = '99.9%';
         const bedStatusSelect = document.getElementById('bed-status');
         const bedPatientSelect = document.getElementById('bed-patient-id');
 
-        // Populate wards dropdown for beds modal
-        const populateBedWardsDropdown = async () => {
+        const populateBedDropdowns = async () => {
             try {
-                const response = await fetch('?fetch=wards');
-                const result = await response.json();
-                if (result.success) {
-                    const wardSelect = document.getElementById('bed-ward-id');
-                    wardSelect.innerHTML = '<option value="">Select Ward</option>';
-                    result.data.forEach(ward => {
-                        wardSelect.innerHTML += `<option value="${ward.id}">${ward.name}</option>`;
-                    });
+                const [wardsRes, patientsRes] = await Promise.all([fetch('?fetch=wards'), fetch('?fetch=patients_for_beds')]);
+                const wardsResult = await wardsRes.json();
+                const patientsResult = await patientsRes.json();
+                const wardSelect = document.getElementById('bed-ward-id');
+                
+                wardSelect.innerHTML = '<option value="">Select Ward</option>';
+                if(wardsResult.success) {
+                    wardsResult.data.forEach(ward => wardSelect.innerHTML += `<option value="${ward.id}">${ward.name}</option>`);
                 }
-            } catch (error) {
-                console.error('Failed to fetch wards for beds:', error);
-            }
-        };
 
-        // Populate patients dropdown for bed assignment
-        const populateBedPatientsDropdown = async () => {
-            try {
-                const response = await fetch('?fetch=patients_for_beds');
-                const result = await response.json();
-                if (result.success) {
-                    bedPatientSelect.innerHTML = '<option value="">Select Patient (Optional)</option>';
-                    result.data.forEach(patient => {
-                        bedPatientSelect.innerHTML += `<option value="${patient.id}">${patient.name} (${patient.display_user_id})</option>`;
-                    });
+                bedPatientSelect.innerHTML = '<option value="">Select Patient</option>';
+                if(patientsResult.success) {
+                    patientsResult.data.forEach(patient => bedPatientSelect.innerHTML += `<option value="${patient.id}">${patient.name} (${patient.display_user_id})</option>`);
                 }
             } catch (error) {
-                console.error('Failed to fetch patients for beds:', error);
+                console.error('Failed to populate dropdowns:', error);
             }
         };
 
         bedStatusSelect.addEventListener('change', () => {
-            bedPatientGroup.style.display = bedStatusSelect.value === 'occupied' ? 'block' : 'none';
-            bedPatientSelect.required = bedStatusSelect.value === 'occupied';
+            const showPatient = bedStatusSelect.value === 'occupied' || bedStatusSelect.value === 'reserved';
+            bedPatientGroup.style.display = showPatient ? 'block' : 'none';
+            bedPatientSelect.required = showPatient;
         });
 
         const openBedModal = async (mode, bed = {}) => {
             bedForm.reset();
-            await populateBedWardsDropdown(); // Populate wards
-            await populateBedPatientsDropdown(); // Populate patients
+            await populateBedDropdowns();
+            document.getElementById('bed-modal-title').textContent = mode === 'add' ? 'Add New Bed' : `Edit Bed ${bed.bed_number}`;
+            document.getElementById('bed-form-action').value = mode === 'add' ? 'addBed' : 'updateBed';
+            bedPatientGroup.style.display = 'none';
+            bedPatientSelect.required = false;
 
-            if (mode === 'add') {
-                document.getElementById('bed-modal-title').textContent = 'Add New Bed';
-                document.getElementById('bed-form-action').value = 'addBed';
-                document.getElementById('bed-ward-id').disabled = false;
-                document.getElementById('bed-number').disabled = false;
-                bedPatientGroup.style.display = 'none';
-                bedPatientSelect.required = false;
-            } else { // edit mode
-                document.getElementById('bed-modal-title').textContent = `Edit Bed ${bed.bed_number} (${bed.ward_name})`;
-                document.getElementById('bed-form-action').value = 'updateBed';
+            if (mode === 'edit') {
                 document.getElementById('bed-id').value = bed.id;
-                document.getElementById('bed-ward-id').value = bed.ward_id;
-                document.getElementById('bed-ward-id').disabled = true; // Ward cannot be changed after creation
-                document.getElementById('bed-number').value = bed.bed_number;
-                document.getElementById('bed-number').disabled = true; // Bed number cannot be changed after creation
-                document.getElementById('bed-price-per-day').value = bed.price_per_day;
-                document.getElementById('bed-status').value = bed.status;
-                
-                if (bed.status === 'occupied') {
-                    bedPatientGroup.style.display = 'block';
-                    bedPatientSelect.required = true;
-                    document.getElementById('bed-patient-id').value = bed.patient_id || '';
-                } else {
-                    bedPatientGroup.style.display = 'none';
-                    bedPatientSelect.required = false;
-                }
+                setTimeout(() => { 
+                    document.getElementById('bed-ward-id').value = bed.ward_id;
+                    document.getElementById('bed-number').value = bed.bed_number;
+                    document.getElementById('bed-status').value = bed.status;
+                    const showPatient = bed.status === 'occupied' || bed.status === 'reserved';
+                    if (showPatient) {
+                        bedPatientGroup.style.display = 'block';
+                        bedPatientSelect.required = true;
+                        document.getElementById('bed-patient-id').value = bed.patient_id || '';
+                    }
+                }, 100);
             }
             bedModal.classList.add('show');
         };
@@ -2320,85 +2309,68 @@ $system_uptime = '99.9%';
 
         bedForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const formData = new FormData(bedForm);
-            // Re-enable disabled fields before submitting if they hold necessary data
-            document.getElementById('bed-ward-id').disabled = false;
-            document.getElementById('bed-number').disabled = false;
-            handleFormSubmit(formData, 'beds');
-            // Re-disable after submission attempt
-            document.getElementById('bed-ward-id').disabled = (formData.get('action') === 'updateBed');
-            document.getElementById('bed-number').disabled = (formData.get('action') === 'updateBed');
+            handleFormSubmit(new FormData(bedForm), 'beds');
         });
 
-        const fetchBeds = async () => {
+        const fetchWardsAndBeds = async () => {
             bedsContainer.innerHTML = `<p style="text-align:center;">Loading beds...</p>`;
             try {
                 const response = await fetch('?fetch=beds');
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
 
-                const beds = result.data;
-                const wardsMap = {};
+                const bedsByWard = result.data.reduce((acc, bed) => {
+                    (acc[bed.ward_name] = acc[bed.ward_name] || []).push(bed);
+                    return acc;
+                }, {});
 
-                // Group beds by ward
-                beds.forEach(bed => {
-                    if (!wardsMap[bed.ward_id]) {
-                        wardsMap[bed.ward_id] = {
-                            name: bed.ward_name,
-                            beds: []
-                        };
-                    }
-                    wardsMap[bed.ward_id].beds.push(bed);
-                });
-
-                let html = '';
-                if (Object.keys(wardsMap).length > 0) {
-                    for (const wardId in wardsMap) {
-                        const ward = wardsMap[wardId];
-                        html += `
-                            <div class="ward-section">
-                                <h4>${ward.name} <span style="font-size: 0.9rem; color: var(--text-muted);">(${ward.beds.length} beds)</span></h4>
-                                <div class="ward-beds-container">
-                                    ${ward.beds.map(bed => `
-                                        <div class="bed-card ${bed.status}" data-bed='${JSON.stringify(bed)}'>
-                                            <div class="bed-number">${bed.bed_number}</div>
-                                            <div class="bed-status">${bed.status}</div>
-                                            ${bed.patient_name ? `<div class="patient-info">Patient: ${bed.patient_name}</div>` : ''}
-                                            <div class="patient-info">₹ ${parseFloat(bed.price_per_day).toFixed(2)}/day</div>
-                                            <div class="action-buttons" style="margin-top: 0.5rem;">
-                                                <button class="btn-edit-bed btn btn-primary" title="Edit" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">Edit</button>
-                                                <button class="btn-delete-bed btn btn-danger" title="Delete" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">Delete</button>
-                                            </div>
-                                        </div>
-                                    `).join('')}
-                                </div>
+                if (Object.keys(bedsByWard).length > 0) {
+                    bedsContainer.innerHTML = Object.entries(bedsByWard).map(([wardName, beds]) => `
+                        <div class="ward-section">
+                            <div class="ward-header">
+                                <h3>${wardName}</h3>
                             </div>
-                        `;
-                    }
+                            <div class="ward-beds-container">
+                                ${beds.map(bed => {
+                                    let patientInfo = '';
+                                    if (bed.status === 'occupied' && bed.patient_name) {
+                                        patientInfo = `<div class="patient-info">Occupied by: ${bed.patient_name}<br><small>Since: ${new Date(bed.occupied_since).toLocaleDateString()}</small></div>`;
+                                    } else if (bed.status === 'reserved' && bed.patient_name) {
+                                        patientInfo = `<div class="patient-info">Reserved for: ${bed.patient_name}<br><small>Since: ${new Date(bed.reserved_since).toLocaleDateString()}</small></div>`;
+                                    }
+                                    return `
+                                    <div class="bed-card ${bed.status}" data-bed='${JSON.stringify(bed)}'>
+                                        <div class="bed-icon"><i class="fas fa-bed"></i></div>
+                                        <div class="bed-number">Bed ${bed.bed_number}</div>
+                                        <div class="bed-status">${bed.status}</div>
+                                        ${patientInfo}
+                                        <div class="action-buttons">
+                                            <button class="btn-edit-bed btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
+                                            <button class="btn-delete-bed btn-delete" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                                        </div>
+                                    </div>
+                                `}).join('')}
+                            </div>
+                        </div>
+                    `).join('');
                 } else {
-                    html = `<p style="text-align:center;">No beds found. Add some wards first.</p>`;
+                    bedsContainer.innerHTML = `<p style="text-align:center;">No beds found. Add wards and beds to get started.</p>`;
                 }
-                bedsContainer.innerHTML = html;
             } catch (error) {
-                console.error('Fetch beds error:', error);
                 bedsContainer.innerHTML = `<p style="text-align:center;">Failed to load beds: ${error.message}</p>`;
-                showNotification(error.message, 'error');
             }
         };
 
         bedsContainer.addEventListener('click', async (e) => {
-            const editBtn = e.target.closest('.btn-edit-bed');
-            const deleteBtn = e.target.closest('.btn-delete-bed');
-            
-            if (editBtn) {
-                const bed = JSON.parse(editBtn.closest('.bed-card').dataset.bed);
+            const bedCard = e.target.closest('.bed-card');
+            if (!bedCard) return;
+
+            const bed = JSON.parse(bedCard.dataset.bed);
+            if (e.target.closest('.btn-edit-bed')) {
                 openBedModal('edit', bed);
             }
-            
-            if (deleteBtn) {
-                const bed = JSON.parse(deleteBtn.closest('.bed-card').dataset.bed);
-                const confirmed = await showConfirmation('Delete Bed', `Are you sure you want to delete bed "${bed.bed_number}" from ${bed.ward_name}?`);
+            if (e.target.closest('.btn-delete-bed')) {
+                const confirmed = await showConfirmation('Delete Bed', `Are you sure you want to delete Bed ${bed.bed_number} in ${bed.ward_name}?`);
                 if (confirmed) {
                     const formData = new FormData();
                     formData.append('action', 'deleteBed');
@@ -2409,10 +2381,127 @@ $system_uptime = '99.9%';
             }
         });
 
+        // --- Room Management ---
+        const roomModal = document.getElementById('room-modal');
+        const roomForm = document.getElementById('room-form');
+        const addRoomBtn = document.getElementById('add-room-btn');
+        const roomsContainer = document.getElementById('rooms-container');
+        const roomPatientGroup = document.getElementById('room-patient-group');
+        const roomStatusSelect = document.getElementById('room-status');
+        const roomPatientSelect = document.getElementById('room-patient-id');
+
+        const populateRoomDropdowns = async () => {
+             try {
+                const response = await fetch('?fetch=patients_for_beds'); // Reusing the same patient fetcher
+                const result = await response.json();
+                
+                roomPatientSelect.innerHTML = '<option value="">Select Patient</option>';
+                if(result.success) {
+                    result.data.forEach(patient => roomPatientSelect.innerHTML += `<option value="${patient.id}">${patient.name} (${patient.display_user_id})</option>`);
+                }
+            } catch (error) {
+                console.error('Failed to populate patient dropdown for rooms:', error);
+            }
+        };
+
+        roomStatusSelect.addEventListener('change', () => {
+            const showPatient = roomStatusSelect.value === 'occupied' || roomStatusSelect.value === 'reserved';
+            roomPatientGroup.style.display = showPatient ? 'block' : 'none';
+            roomPatientSelect.required = showPatient;
+        });
+
+        const openRoomModal = async (mode, room = {}) => {
+            roomForm.reset();
+            await populateRoomDropdowns();
+            document.getElementById('room-modal-title').textContent = mode === 'add' ? 'Add New Room' : `Edit Room ${room.room_number}`;
+            document.getElementById('room-form-action').value = mode === 'add' ? 'addRoom' : 'updateRoom';
+            roomPatientGroup.style.display = 'none';
+            roomPatientSelect.required = false;
+
+            if (mode === 'edit') {
+                document.getElementById('room-id').value = room.id;
+                document.getElementById('room-number').value = room.room_number;
+                document.getElementById('room-price-per-day').value = room.price_per_day;
+                document.getElementById('room-status').value = room.status;
+                const showPatient = room.status === 'occupied' || room.status === 'reserved';
+                if (showPatient) {
+                    roomPatientGroup.style.display = 'block';
+                    roomPatientSelect.required = true;
+                    document.getElementById('room-patient-id').value = room.patient_id || '';
+                }
+            } else {
+                 document.getElementById('room-price-per-day').value = '0.00';
+            }
+            roomModal.classList.add('show');
+        };
+
+        addRoomBtn.addEventListener('click', () => openRoomModal('add'));
+        roomModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(roomModal));
+        roomModal.addEventListener('click', (e) => { if (e.target === roomModal) closeModal(roomModal); });
+
+        roomForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            handleFormSubmit(new FormData(roomForm), 'rooms');
+        });
+
+        const fetchRooms = async () => {
+            roomsContainer.innerHTML = `<p style="text-align:center;">Loading rooms...</p>`;
+            try {
+                const response = await fetch('?fetch=rooms');
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message);
+
+                if (result.data.length > 0) {
+                    roomsContainer.innerHTML = result.data.map(room => {
+                        let patientInfo = '';
+                        if (room.status === 'occupied' && room.patient_name) {
+                            patientInfo = `<div class="patient-info">Occupied by: ${room.patient_name}<br><small>Since: ${new Date(room.occupied_since).toLocaleDateString()}</small></div>`;
+                        } else if (room.status === 'reserved' && room.patient_name) {
+                            patientInfo = `<div class="patient-info">Reserved for: ${room.patient_name}<br><small>Since: ${new Date(room.reserved_since).toLocaleDateString()}</small></div>`;
+                        }
+                        return `
+                        <div class="resource-card ${room.status}" data-room='${JSON.stringify(room)}'>
+                            <div class="resource-icon"><i class="fas fa-door-closed"></i></div>
+                            <div class="resource-number">Room ${room.room_number}</div>
+                            <div class="resource-status">${room.status}</div>
+                            ${patientInfo}
+                            <div class="action-buttons">
+                                <button class="btn-edit-room btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
+                                <button class="btn-delete-room btn-delete" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                            </div>
+                        </div>
+                    `}).join('');
+                } else {
+                    roomsContainer.innerHTML = `<p style="text-align:center;">No rooms found. Add some to get started.</p>`;
+                }
+            } catch (error) {
+                roomsContainer.innerHTML = `<p style="text-align:center;">Failed to load rooms: ${error.message}</p>`;
+            }
+        };
+
+        roomsContainer.addEventListener('click', async (e) => {
+            const roomCard = e.target.closest('.resource-card');
+            if (!roomCard) return;
+
+            const room = JSON.parse(roomCard.dataset.room);
+            if (e.target.closest('.btn-edit-room')) {
+                openRoomModal('edit', room);
+            }
+            if (e.target.closest('.btn-delete-room')) {
+                const confirmed = await showConfirmation('Delete Room', `Are you sure you want to delete Room ${room.room_number}?`);
+                if (confirmed) {
+                    const formData = new FormData();
+                    formData.append('action', 'deleteRoom');
+                    formData.append('id', room.id);
+                    formData.append('csrf_token', csrfToken);
+                    handleFormSubmit(formData, 'rooms');
+                }
+            }
+        });
 
         // --- INITIAL LOAD ---
         updateDashboardStats();
-        fetchDepartments(); // For user management form
+        fetchDepartments();
     });
     </script>
 </body>
