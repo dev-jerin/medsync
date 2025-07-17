@@ -1,0 +1,16 @@
+# Composer dependencies
+/vendor/
+
+# Environment files
+.env
+
+# Log files
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Operating system files
+.DS_Store
+Thumbs.db

@@ -1,6 +1,10 @@
 <?php
 // --- CONFIG & SESSION START ---
 require_once 'config.php'; 
+require_once 'vendor/autoload.php'; // Autoload Composer dependencies
+
+use Dompdf\Dompdf;
+use Dompdf\Options;
 
 // --- SESSION SECURITY & ROLE CHECK ---
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
@@ -619,10 +623,10 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stats['role_counts'] = $counts;
 
                     // Fetch low stock alerts
-                    $low_medicines_stmt = $conn->query("SELECT COUNT(*) as c FROM medicines WHERE quantity <= low_stock_threshold");
+                    $low_medicines_stmt = $conn->query("SELECT COUNT(*) as c FROM medicines WHERE quantity < low_stock_threshold");
                     $stats['low_medicines_count'] = $low_medicines_stmt->fetch_assoc()['c'];
 
-                    $low_blood_stmt = $conn->query("SELECT COUNT(*) as c FROM blood_inventory WHERE quantity_ml <= low_stock_threshold_ml");
+                    $low_blood_stmt = $conn->query("SELECT COUNT(*) as c FROM blood_inventory WHERE quantity_ml < low_stock_threshold_ml");
                     $stats['low_blood_count'] = $low_blood_stmt->fetch_assoc()['c'];
 
                     $response = ['success' => true, 'data' => $stats];
@@ -683,6 +687,49 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $data = $result->fetch_all(MYSQLI_ASSOC);
                     $response = ['success' => true, 'data' => $data];
                     break;
+                
+                case 'report':
+                    if (empty($_GET['type']) || empty($_GET['period'])) {
+                        throw new Exception('Report type and period are required.');
+                    }
+                    $reportType = $_GET['type'];
+                    $period = $_GET['period'];
+                    
+                    $data = ['summary' => [], 'chartData' => []];
+                    $date_format = '%Y-%m-%d';
+                    $interval = '1 YEAR';
+
+                    switch($period) {
+                        case 'daily': $date_format = '%Y-%m-%d'; $interval = '1 MONTH'; break;
+                        case 'weekly': $date_format = '%Y-W%U'; $interval = '3 MONTH'; break;
+                        case 'monthly': $date_format = '%Y-%m'; $interval = '1 YEAR'; break;
+                        case 'yearly': $date_format = '%Y'; $interval = '5 YEAR'; break;
+                    }
+
+                    if ($reportType === 'financial') {
+                        $summary_sql = "SELECT SUM(IF(type='payment', amount, 0)) as total_revenue, SUM(IF(type='refund', amount, 0)) as total_refunds, COUNT(*) as total_transactions FROM transactions WHERE created_at >= DATE_SUB(NOW(), INTERVAL $interval)";
+                        $chart_sql = "SELECT DATE_FORMAT(created_at, '$date_format') as label, SUM(IF(type='payment', amount, -amount)) as value FROM transactions WHERE created_at >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
+                    } elseif ($reportType === 'patient') {
+                        $summary_sql = "SELECT COUNT(*) as total_appointments, SUM(IF(status='completed', 1, 0)) as completed, SUM(IF(status='cancelled', 1, 0)) as cancelled FROM appointments WHERE appointment_date >= DATE_SUB(NOW(), INTERVAL $interval)";
+                        $chart_sql = "SELECT DATE_FORMAT(appointment_date, '$date_format') as label, COUNT(*) as value FROM appointments WHERE appointment_date >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
+                    } else { // resource
+                         $summary_sql = "SELECT 
+                            (SELECT COUNT(*) FROM beds) as total_beds,
+                            (SELECT COUNT(*) FROM rooms) as total_rooms,
+                            (SELECT COUNT(*) FROM beds WHERE status = 'occupied') as occupied_beds,
+                            (SELECT COUNT(*) FROM rooms WHERE status = 'occupied') as occupied_rooms";
+                        // Chart for resource utilization could be bed occupancy over time, for simplicity we return summary only for now
+                        $chart_sql = "SELECT DATE_FORMAT(occupied_since, '$date_format') as label, COUNT(*) as value FROM beds WHERE status = 'occupied' AND occupied_since >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
+                    }
+
+                    $summary_result = $conn->query($summary_sql);
+                    $data['summary'] = $summary_result->fetch_assoc();
+
+                    $chart_result = $conn->query($chart_sql);
+                    $data['chartData'] = $chart_result->fetch_all(MYSQLI_ASSOC);
+
+                    $response = ['success' => true, 'data' => $data];
+                    break;
              }
         }
 
@@ -695,6 +742,32 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
     echo json_encode($response);
     exit();
 }
+
+// ===================================================================================
+// --- PDF GENERATION LOGIC ---
+// ===================================================================================
+if (isset($_GET['action']) && $_GET['action'] === 'download_pdf') {
+    $reportType = $_GET['report_type'] ?? 'Unknown';
+    $period = $_GET['period'] ?? 'All Time';
+
+    // In a real application, you would fetch the data again here based on the report type and period
+    // For this example, we'll just create a simple PDF
+    
+    $html = '<h1>Report: '.htmlspecialchars($reportType).'</h1>';
+    $html .= '<h2>Period: '.htmlspecialchars($period).'</h2>';
+    $html .= '<p>This is a sample report generated on '.date('Y-m-d H:i:s').'.</p>';
+    // You would loop through your data and build a table here
+    
+    $options = new Options();
+    $options->set('isHtml5ParserEnabled', true);
+    $dompdf = new Dompdf($options);
+    $dompdf->loadHtml($html);
+    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->render();
+    $dompdf->stream(strtolower(str_replace(' ', '_', $reportType)).'_report.pdf', ["Attachment" => 1]);
+    exit();
+}
+
 
 // ===================================================================================
 // --- STANDARD PAGE LOAD LOGIC ---
@@ -1021,6 +1094,53 @@ $pending_appointments = 0;
             .user-profile-widget { padding: 0.5rem; }
             .user-profile-widget .user-info { display: none; }
         }
+        
+        /* --- REPORTS PANEL --- */
+        #reports-panel .report-controls {
+            display: flex;
+            gap: 1.5rem;
+            align-items: flex-end;
+            margin-bottom: 2.5rem;
+            flex-wrap: wrap;
+            padding: 1.5rem;
+            background-color: var(--bg-grey);
+            border-radius: var(--border-radius);
+        }
+        #reports-panel .report-controls .form-group {
+            margin-bottom: 0;
+            flex-grow: 1;
+        }
+        #reports-panel .report-summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+        .summary-card {
+            background-color: var(--bg-light);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+            border-left: 4px solid var(--primary-color);
+        }
+        .summary-card .label {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+        .summary-card .value {
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+        #reports-panel #report-chart-container {
+            margin-top: 2rem;
+            padding: 2rem;
+            background-color: var(--bg-light);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+        }
     </style>
 </head>
 <body class="light-mode">
@@ -1114,7 +1234,7 @@ $pending_appointments = 0;
                         <h3>Quick Actions</h3>
                         <div class="actions-grid">
                             <a href="#" class="action-btn" id="quick-add-user-btn"><i class="fas fa-user-plus"></i> Add User</a>
-                            <a href="#" class="action-btn"><i class="fas fa-file-alt"></i> Generate Report</a>
+                            <a href="#" class="action-btn nav-link" data-target="reports"><i class="fas fa-file-alt"></i> Generate Report</a>
                             <a href="#" class="action-btn"><i class="fas fa-database"></i> Backup Data</a>
                             <a href="#" class="action-btn"><i class="fas fa-bullhorn"></i> Send Notification</a>
                         </div>
@@ -1234,6 +1354,43 @@ $pending_appointments = 0;
                 <div id="rooms-container" class="resource-grid-container">
                     </div>
             </div>
+             <div id="reports-panel" class="content-panel">
+                <div class="report-controls">
+                    <div class="form-group">
+                        <label for="report-type">Report Type</label>
+                        <select id="report-type" name="report_type">
+                            <option value="financial">Financial</option>
+                            <option value="patient">Patient Statistics</option>
+                            <option value="resource">Resource Utilization</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="report-period">Period</label>
+                        <select id="report-period" name="period">
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly" selected>Monthly</option>
+                            <option value="yearly">Yearly</option>
+                        </select>
+                    </div>
+                    <button id="generate-report-btn" class="btn btn-primary"><i class="fas fa-sync"></i> Generate Report</button>
+                    <form id="download-pdf-form" method="GET" action="admin_dashboard.php" target="_blank">
+                        <input type="hidden" name="action" value="download_pdf">
+                        <input type="hidden" id="pdf-report-type" name="report_type">
+                        <input type="hidden" id="pdf-period" name="period">
+                        <button type="submit" class="btn btn-secondary"><i class="fas fa-file-pdf"></i> Download PDF</button>
+                    </form>
+                </div>
+
+                <div class="report-summary-cards" id="report-summary-cards">
+                    <!-- Summary cards will be injected here by JavaScript -->
+                </div>
+
+                <div id="report-chart-container">
+                    <canvas id="report-chart"></canvas>
+                </div>
+            </div>
+
             <div id="settings-panel" class="content-panel">
                 <h3>My Account Details</h3>
                 <p>Edit your personal information and password here.</p>
@@ -1268,7 +1425,6 @@ $pending_appointments = 0;
             </div>
             
             <div id="shifts-panel" class="content-panel"><p>Staff Shifts Management coming soon.</p></div>
-            <div id="reports-panel" class="content-panel"><p>Reports and Analytics coming soon.</p></div>
             <div id="activity-panel" class="content-panel"><p>Activity Logs coming soon.</p></div>
             <div id="backup-panel" class="content-panel"><p>Database Backup utility coming soon.</p></div>
             <div id="notifications-panel" class="content-panel"><p>Notification management coming soon.</p></div>
@@ -1600,6 +1756,7 @@ $pending_appointments = 0;
         const welcomeMessage = document.getElementById('welcome-message');
         let currentRole = 'user'; 
         let userRolesChart = null;
+        let reportChart = null;
 
         // --- HELPER FUNCTIONS ---
         const showNotification = (message, type = 'success') => {
@@ -1719,6 +1876,7 @@ $pending_appointments = 0;
                     title = this.innerText;
                     welcomeMessage.style.display = (targetId === 'dashboard') ? 'block' : 'none';
                     if (targetId === 'settings') fetchMyProfile();
+                    if (targetId === 'reports') generateReport();
                 }
                 
                 document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
@@ -1755,18 +1913,18 @@ $pending_appointments = 0;
                 const lowMedicineStat = document.getElementById('low-medicine-stat');
                 const lowBloodStat = document.getElementById('low-blood-stat');
 
+                // FIX: Reset visibility before updating
+                lowMedicineStat.style.display = 'none';
+                lowBloodStat.style.display = 'none';
+
                 if (stats.low_medicines_count > 0) {
                     document.getElementById('low-medicine-count').textContent = stats.low_medicines_count;
                     lowMedicineStat.style.display = 'flex';
-                } else {
-                    lowMedicineStat.style.display = 'none';
                 }
 
                 if (stats.low_blood_count > 0) {
                     document.getElementById('low-blood-count').textContent = stats.low_blood_count;
                     lowBloodStat.style.display = 'flex';
-                } else {
-                    lowBloodStat.style.display = 'none';
                 }
 
                 const chartData = [
@@ -2533,11 +2691,95 @@ $pending_appointments = 0;
                 }
             }
         });
+        
+         // --- REPORTING ---
+        const generateReportBtn = document.getElementById('generate-report-btn');
+        const downloadPdfForm = document.getElementById('download-pdf-form');
+        const summaryCardsContainer = document.getElementById('report-summary-cards');
+
+        const generateReport = async () => {
+            const reportType = document.getElementById('report-type').value;
+            const period = document.getElementById('report-period').value;
+
+            // Update PDF download form
+            document.getElementById('pdf-report-type').value = reportType;
+            document.getElementById('pdf-period').value = period;
+            summaryCardsContainer.innerHTML = '<p>Loading summary...</p>';
+
+            try {
+                const response = await fetch(`?fetch=report&type=${reportType}&period=${period}`);
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message);
+                
+                const { summary, chartData } = result.data;
+
+                // Update Summary Cards
+                summaryCardsContainer.innerHTML = ''; // Clear previous cards
+                if (reportType === 'financial') {
+                    summaryCardsContainer.innerHTML = `
+                        <div class="summary-card"><span class="label">Total Revenue</span><span class="value">₹${parseFloat(summary.total_revenue || 0).toLocaleString('en-IN')}</span></div>
+                        <div class="summary-card"><span class="label">Total Refunds</span><span class="value">₹${parseFloat(summary.total_refunds || 0).toLocaleString('en-IN')}</span></div>
+                        <div class="summary-card"><span class="label">Net Revenue</span><span class="value">₹${(parseFloat(summary.total_revenue || 0) - parseFloat(summary.total_refunds || 0)).toLocaleString('en-IN')}</span></div>
+                        <div class="summary-card"><span class="label">Transactions</span><span class="value">${summary.total_transactions || 0}</span></div>
+                    `;
+                } else if (reportType === 'patient') {
+                     summaryCardsContainer.innerHTML = `
+                        <div class="summary-card"><span class="label">Total Appointments</span><span class="value">${summary.total_appointments || 0}</span></div>
+                        <div class="summary-card"><span class="label">Completed</span><span class="value">${summary.completed || 0}</span></div>
+                        <div class="summary-card"><span class="label">Cancelled</span><span class="value">${summary.cancelled || 0}</span></div>
+                    `;
+                } else if (reportType === 'resource') {
+                    const occupancy_rate = summary.total_beds > 0 ? ((summary.occupied_beds / summary.total_beds) * 100).toFixed(1) : 0;
+                     summaryCardsContainer.innerHTML = `
+                        <div class="summary-card"><span class="label">Occupied Beds</span><span class="value">${summary.occupied_beds || 0} / ${summary.total_beds || 0}</span></div>
+                        <div class="summary-card"><span class="label">Bed Occupancy Rate</span><span class="value">${occupancy_rate}%</span></div>
+                        <div class="summary-card"><span class="label">Occupied Rooms</span><span class="value">${summary.occupied_rooms || 0} / ${summary.total_rooms || 0}</span></div>
+                    `;
+                }
+                
+                const chartCtx = document.getElementById('report-chart').getContext('2d');
+                if (reportChart) {
+                    reportChart.destroy();
+                }
+                
+                const labels = chartData.map(item => item.label);
+                const data = chartData.map(item => item.value);
+                const chartLabel = reportType.charAt(0).toUpperCase() + reportType.slice(1) + ' Trend';
+
+                reportChart = new Chart(chartCtx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: chartLabel,
+                            data: data,
+                            borderColor: 'var(--primary-color)',
+                            backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: { beginAtZero: true },
+                        }
+                    }
+                });
+
+            } catch (error) {
+                showNotification('Failed to generate report: ' + error.message, 'error');
+                summaryCardsContainer.innerHTML = `<p style="color: var(--danger-color);">Could not load report summary.</p>`;
+            }
+        };
+
+        generateReportBtn.addEventListener('click', generateReport);
 
 
         // --- INITIAL LOAD ---
         updateDashboardStats();
         fetchDepartments();
+        generateReport(); // Generate default report on load
     });
     </script>
 </body>
