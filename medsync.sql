@@ -1,8 +1,26 @@
 -- This is the complete and updated database schema for MedSync.
--- It includes all tables and columns required for the latest features, including the new 'rooms' table.
+-- It includes all tables and columns required for the latest features, 
+-- including the new 'rooms' table and the 'activity_logs' for audit trails.
 
 CREATE DATABASE IF NOT EXISTS `medsync` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE `medsync`;
+
+--
+-- Table structure for table `activity_logs`
+--
+CREATE TABLE `activity_logs` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL COMMENT 'ID of the user who performed the action',
+  `action` varchar(255) NOT NULL COMMENT 'e.g., create_user, update_user, delete_medicine',
+  `target_user_id` int(11) DEFAULT NULL COMMENT 'ID of the user who was affected by the action',
+  `details` text DEFAULT NULL COMMENT 'A human-readable description of the action',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `user_id` (`user_id`),
+  KEY `target_user_id` (`target_user_id`),
+  CONSTRAINT `fk_activity_logs_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_activity_logs_target_user` FOREIGN KEY (`target_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Table structure for table `departments`

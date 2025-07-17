@@ -1,6 +1,6 @@
 <?php
 // --- CONFIG & SESSION START ---
-require_once 'config.php'; 
+require_once 'config.php';
 require_once 'vendor/autoload.php'; // Autoload Composer dependencies
 
 use Dompdf\Dompdf;
@@ -21,6 +21,28 @@ if (isset($_SESSION['loggedin_time']) && (time() - $_SESSION['loggedin_time'] > 
     exit();
 }
 $_SESSION['loggedin_time'] = time();
+
+/**
+ * Logs a specific action to the activity_logs table.
+ *
+ * @param mysqli $conn The database connection object.
+ * @param int $user_id The ID of the user performing the action (the admin).
+ * @param string $action A description of the action (e.g., 'create_user', 'update_user').
+ * @param int|null $target_user_id The ID of the user being affected. Can be null.
+ * @param string $details A detailed description of the change.
+ * @return bool True on success, false on failure.
+ */
+function log_activity($conn, $user_id, $action, $target_user_id = null, $details = '') {
+    $stmt = $conn->prepare("INSERT INTO activity_logs (user_id, action, target_user_id, details) VALUES (?, ?, ?, ?)");
+    if (!$stmt) {
+        // Handle error, e.g., log to a file, but don't stop the main execution
+        error_log("Failed to prepare statement for activity log: " . $conn->error);
+        return false;
+    }
+    $stmt->bind_param("isis", $user_id, $action, $target_user_id, $details);
+    return $stmt->execute();
+}
+
 
 /**
  * Generates a unique, sequential display ID for a new user based on their role.
@@ -90,6 +112,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
 
     header('Content-Type: application/json');
     $response = ['success' => false, 'message' => 'An unknown error occurred.'];
+    $admin_user_id_for_log = $_SESSION['user_id'];
 
     try {
         $conn = getDbConnection(); 
@@ -148,6 +171,11 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                             $stmt_admin->execute();
                         }
 
+                        // --- Audit Log ---
+                        $log_details = "Created a new user '{$username}' (ID: {$display_user_id}) with the role '{$role}'.";
+                        log_activity($conn, $admin_user_id_for_log, 'create_user', $user_id, $log_details);
+                        // --- End Audit Log ---
+
                         $conn->commit();
                         $response = ['success' => true, 'message' => ucfirst($role) . ' added successfully.'];
 
@@ -173,6 +201,13 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $date_of_birth = !empty($_POST['date_of_birth']) ? $_POST['date_of_birth'] : null;
                         $gender = !empty($_POST['gender']) ? $_POST['gender'] : null;
 
+                        // --- Audit Log: Fetch current state ---
+                        $stmt_old = $conn->prepare("SELECT * FROM users WHERE id = ?");
+                        $stmt_old->bind_param("i", $id);
+                        $stmt_old->execute();
+                        $old_user_data = $stmt_old->get_result()->fetch_assoc();
+                        // --- End Audit Log Fetch ---
+
                         $sql_parts = ["name = ?", "username = ?", "email = ?", "phone = ?", "active = ?", "date_of_birth = ?", "gender = ?"];
                         $params = [$name, $username, $email, $phone, $active, $date_of_birth, $gender];
                         $types = "ssssiss";
@@ -192,13 +227,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $stmt->bind_param($types, ...$params);
                         $stmt->execute();
 
-                        // Fetch user's role to update role-specific tables
-                        $role_stmt = $conn->prepare("SELECT role FROM users WHERE id = ?");
-                        $role_stmt->bind_param("i", $id);
-                        $role_stmt->execute();
-                        $user_role = $role_stmt->get_result()->fetch_assoc()['role'];
-
-                        if ($user_role === 'doctor') {
+                        if ($old_user_data['role'] === 'doctor') {
                              $stmt_doctor = $conn->prepare("
                                 INSERT INTO doctors (user_id, specialty, qualifications, department_id, availability) 
                                 VALUES (?, ?, ?, ?, ?)
@@ -210,7 +239,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                             ");
                             $stmt_doctor->bind_param("issii", $id, $_POST['specialty'], $_POST['qualifications'], $_POST['department_id'], $_POST['availability']);
                             $stmt_doctor->execute();
-                        } elseif ($user_role === 'staff') {
+                        } elseif ($old_user_data['role'] === 'staff') {
                             $stmt_staff = $conn->prepare("
                                 INSERT INTO staff (user_id, shift, assigned_department) 
                                 VALUES (?, ?, ?)
@@ -221,6 +250,21 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                             $stmt_staff->bind_param("iss", $id, $_POST['shift'], $_POST['assigned_department']);
                             $stmt_staff->execute();
                         }
+                        
+                        // --- Audit Log: Compare and log changes ---
+                        $changes = [];
+                        if ($old_user_data['name'] !== $name) $changes[] = "name from '{$old_user_data['name']}' to '{$name}'";
+                        if ($old_user_data['username'] !== $username) $changes[] = "username from '{$old_user_data['username']}' to '{$username}'";
+                        if ($old_user_data['email'] !== $email) $changes[] = "email from '{$old_user_data['email']}' to '{$email}'";
+                        if ($old_user_data['phone'] !== $phone) $changes[] = "phone number";
+                        if ($old_user_data['active'] != $active) $changes[] = "status from " . ($old_user_data['active'] ? "'Active'" : "'Inactive'") . " to " . ($active ? "'Active'" : "'Inactive'");
+                        if (!empty($_POST['password'])) $changes[] = "password";
+                        
+                        if (!empty($changes)) {
+                            $log_details = "Updated user '{$username}': changed " . implode(', ', $changes) . ".";
+                            log_activity($conn, $admin_user_id_for_log, 'update_user', $id, $log_details);
+                        }
+                        // --- End Audit Log ---
 
                         $conn->commit();
                         $response = ['success' => true, 'message' => 'User updated successfully.'];
@@ -261,6 +305,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
 
                     if ($stmt->execute()) {
                         $_SESSION['username'] = $name; 
+                        log_activity($conn, $admin_user_id_for_log, 'update_own_profile', $id, 'Admin updated their own profile details.');
                         $response = ['success' => true, 'message' => 'Your profile has been updated successfully.'];
                     } else {
                         throw new Exception('Failed to update your profile.');
@@ -272,9 +317,18 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         throw new Exception('Invalid user ID.');
                     }
                     $id = (int)$_POST['id'];
+                    // --- Audit Log: Fetch user info before deactivating ---
+                    $stmt_old = $conn->prepare("SELECT username, display_user_id FROM users WHERE id = ?");
+                    $stmt_old->bind_param("i", $id);
+                    $stmt_old->execute();
+                    $old_user_data = $stmt_old->get_result()->fetch_assoc();
+                    // --- End Audit Log Fetch ---
+
                     $stmt = $conn->prepare("UPDATE users SET active = 0 WHERE id = ?");
                     $stmt->bind_param("i", $id);
                     if ($stmt->execute()) {
+                        $log_details = "Deactivated user '{$old_user_data['username']}' (ID: {$old_user_data['display_user_id']}).";
+                        log_activity($conn, $admin_user_id_for_log, 'deactivate_user', $id, $log_details);
                         $response = ['success' => true, 'message' => 'User deactivated successfully.'];
                     } else {
                         throw new Exception('Failed to deactivate user.');
@@ -295,6 +349,8 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt = $conn->prepare("INSERT INTO medicines (name, description, quantity, unit_price, low_stock_threshold) VALUES (?, ?, ?, ?, ?)");
                     $stmt->bind_param("ssidi", $name, $description, $quantity, $unit_price, $low_stock_threshold);
                     if ($stmt->execute()) {
+                        $log_details = "Added new medicine '{$name}' with quantity {$quantity}.";
+                        log_activity($conn, $admin_user_id_for_log, 'add_medicine', null, $log_details);
                         $response = ['success' => true, 'message' => 'Medicine added successfully.'];
                     } else {
                         throw new Exception('Failed to add medicine. It might already exist.');
@@ -315,6 +371,8 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt = $conn->prepare("UPDATE medicines SET name = ?, description = ?, quantity = ?, unit_price = ?, low_stock_threshold = ? WHERE id = ?");
                     $stmt->bind_param("ssidii", $name, $description, $quantity, $unit_price, $low_stock_threshold, $id);
                     if ($stmt->execute()) {
+                        $log_details = "Updated medicine '{$name}' (ID: {$id}). New quantity: {$quantity}.";
+                        log_activity($conn, $admin_user_id_for_log, 'update_medicine', null, $log_details);
                         $response = ['success' => true, 'message' => 'Medicine updated successfully.'];
                     } else {
                         throw new Exception('Failed to update medicine.');
@@ -326,9 +384,20 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         throw new Exception('Medicine ID is required.');
                     }
                     $id = (int)$_POST['id'];
+                    
+                     // --- Audit Log: Fetch medicine name before delete ---
+                    $stmt_med = $conn->prepare("SELECT name FROM medicines WHERE id = ?");
+                    $stmt_med->bind_param("i", $id);
+                    $stmt_med->execute();
+                    $med_data = $stmt_med->get_result()->fetch_assoc();
+                    $med_name = $med_data ? $med_data['name'] : 'Unknown';
+                    // --- End Fetch ---
+
                     $stmt = $conn->prepare("DELETE FROM medicines WHERE id = ?");
                     $stmt->bind_param("i", $id);
                     if ($stmt->execute()) {
+                        $log_details = "Deleted medicine '{$med_name}' (ID: {$id}).";
+                        log_activity($conn, $admin_user_id_for_log, 'delete_medicine', null, $log_details);
                         $response = ['success' => true, 'message' => 'Medicine deleted successfully.'];
                     } else {
                         throw new Exception('Failed to delete medicine.');
@@ -346,6 +415,8 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt = $conn->prepare("INSERT INTO blood_inventory (blood_group, quantity_ml, low_stock_threshold_ml) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE quantity_ml = ?, low_stock_threshold_ml = ?");
                     $stmt->bind_param("siiii", $blood_group, $quantity_ml, $low_stock_threshold_ml, $quantity_ml, $low_stock_threshold_ml);
                     if ($stmt->execute()) {
+                        $log_details = "Updated blood inventory for group '{$blood_group}' to {$quantity_ml} ml.";
+                        log_activity($conn, $admin_user_id_for_log, 'update_blood_inventory', null, $log_details);
                         $response = ['success' => true, 'message' => 'Blood inventory updated successfully.'];
                     } else {
                         throw new Exception('Failed to update blood inventory.');
@@ -730,6 +801,21 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
 
                     $response = ['success' => true, 'data' => $data];
                     break;
+                case 'activity':
+                    $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
+                    $sql = "SELECT a.id, a.action, a.details, a.created_at, u.username as admin_username, t.username as target_username
+                            FROM activity_logs a
+                            JOIN users u ON a.user_id = u.id
+                            LEFT JOIN users t ON a.target_user_id = t.id
+                            ORDER BY a.created_at DESC
+                            LIMIT ?";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("i", $limit);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
              }
         }
 
@@ -928,7 +1014,7 @@ $pending_appointments = 0;
         .quick-actions .action-btn:hover { transform: translateY(-5px); box-shadow: var(--shadow-lg); background-color: var(--primary-color); color: white; }
         .quick-actions .action-btn i { font-size: 1.8rem; margin-bottom: 0.75rem; }
 
-        /* --- USER MANAGEMENT TABLE & GENERIC TABLE STYLES --- */
+        /* --- USER MANAGEMENT & GENERIC TABLE STYLES --- */
         .table-container { overflow-x: auto; }
         .data-table { width: 100%; border-collapse: collapse; }
         .data-table th, .data-table td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--border-light); white-space: nowrap; }
@@ -1140,6 +1226,40 @@ $pending_appointments = 0;
             background-color: var(--bg-light);
             border-radius: var(--border-radius);
             box-shadow: var(--shadow-md);
+        }
+
+        /* --- ACTIVITY LOGS (AUDIT TRAIL) --- */
+        #activity-panel .log-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-light);
+        }
+        #activity-panel .log-item:last-child {
+            border-bottom: none;
+        }
+        #activity-panel .log-icon {
+            font-size: 1.2rem;
+            color: var(--text-light);
+            background-color: var(--primary-color);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            flex-shrink: 0;
+        }
+        #activity-panel .log-icon.update { background-color: var(--warning-color); }
+        #activity-panel .log-icon.delete { background-color: var(--danger-color); }
+        #activity-panel .log-details p {
+            margin: 0;
+            font-weight: 500;
+        }
+        #activity-panel .log-details .log-meta {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
         }
     </style>
 </head>
@@ -1383,12 +1503,20 @@ $pending_appointments = 0;
                 </div>
 
                 <div class="report-summary-cards" id="report-summary-cards">
-                    <!-- Summary cards will be injected here by JavaScript -->
-                </div>
+                    </div>
 
                 <div id="report-chart-container">
                     <canvas id="report-chart"></canvas>
                 </div>
+            </div>
+            
+            <div id="activity-panel" class="content-panel">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <h2>Recent Activity Logs</h2>
+                    <button id="refresh-logs-btn" class="btn btn-secondary"><i class="fas fa-sync-alt"></i> Refresh</button>
+                </div>
+                <div id="activity-log-container">
+                    </div>
             </div>
 
             <div id="settings-panel" class="content-panel">
@@ -1425,7 +1553,6 @@ $pending_appointments = 0;
             </div>
             
             <div id="shifts-panel" class="content-panel"><p>Staff Shifts Management coming soon.</p></div>
-            <div id="activity-panel" class="content-panel"><p>Activity Logs coming soon.</p></div>
             <div id="backup-panel" class="content-panel"><p>Database Backup utility coming soon.</p></div>
             <div id="notifications-panel" class="content-panel"><p>Notification management coming soon.</p></div>
         </main>
@@ -1838,7 +1965,7 @@ $pending_appointments = 0;
                 e.preventDefault();
                 const targetId = this.dataset.target;
 
-                document.querySelectorAll('.sidebar-nav a.active').forEach(a => a.classList.remove('active'));
+                document.querySelectorAll('.sidebar-nav a.active, .sidebar-nav .nav-dropdown-toggle.active').forEach(a => a.classList.remove('active'));
                 this.classList.add('active');
                 
                 let parentDropdown = this.closest('.nav-dropdown');
@@ -1877,6 +2004,7 @@ $pending_appointments = 0;
                     welcomeMessage.style.display = (targetId === 'dashboard') ? 'block' : 'none';
                     if (targetId === 'settings') fetchMyProfile();
                     if (targetId === 'reports') generateReport();
+                    if (targetId === 'activity') fetchActivityLogs();
                 }
                 
                 document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
@@ -2774,6 +2902,55 @@ $pending_appointments = 0;
         };
 
         generateReportBtn.addEventListener('click', generateReport);
+
+        // --- ACTIVITY LOG (AUDIT TRAIL) ---
+        const activityLogContainer = document.getElementById('activity-log-container');
+        const refreshLogsBtn = document.getElementById('refresh-logs-btn');
+
+        const fetchActivityLogs = async () => {
+            activityLogContainer.innerHTML = '<p style="text-align: center;">Loading logs...</p>';
+            try {
+                const response = await fetch(`?fetch=activity&limit=50`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message);
+
+                if (result.data.length > 0) {
+                    activityLogContainer.innerHTML = result.data.map(log => {
+                        let iconClass = 'fa-plus';
+                        let iconBgClass = 'create';
+                        if (log.action.includes('update')) {
+                            iconClass = 'fa-pencil-alt';
+                            iconBgClass = 'update';
+                        } else if (log.action.includes('delete') || log.action.includes('deactivate')) {
+                            iconClass = 'fa-trash-alt';
+                            iconBgClass = 'delete';
+                        }
+                        
+                        const time = new Date(log.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+
+                        return `
+                        <div class="log-item">
+                            <div class="log-icon ${iconBgClass}"><i class="fas ${iconClass}"></i></div>
+                            <div class="log-details">
+                                <p>${log.details}</p>
+                                <div class="log-meta">
+                                    By: <strong>${log.admin_username}</strong> on ${time}
+                                </div>
+                            </div>
+                        </div>
+                        `;
+                    }).join('');
+                } else {
+                    activityLogContainer.innerHTML = `<p style="text-align: center;">No recent activity found.</p>`;
+                }
+            } catch (error) {
+                console.error('Fetch error:', error);
+                activityLogContainer.innerHTML = `<p style="text-align: center; color: var(--danger-color);">Failed to load activity logs.</p>`;
+            }
+        };
+
+        refreshLogsBtn.addEventListener('click', fetchActivityLogs);
 
 
         // --- INITIAL LOAD ---
