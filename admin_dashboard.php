@@ -142,6 +142,19 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $role = $_POST['role'];
                         $phone = $_POST['phone'];
                         $gender = !empty($_POST['gender']) ? $_POST['gender'] : null;
+                        
+                        $profile_picture = 'default.png';
+                        if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == 0) {
+                            $target_dir = "uploads/profile_pictures/";
+                            if (!file_exists($target_dir)) {
+                                mkdir($target_dir, 0777, true);
+                            }
+                            $image_name = uniqid() . '_' . basename($_FILES["profile_picture"]["name"]);
+                            $target_file = $target_dir . $image_name;
+                            if (move_uploaded_file($_FILES["profile_picture"]["tmp_name"], $target_file)) {
+                                $profile_picture = $image_name;
+                            }
+                        }
 
                         $display_user_id = generateDisplayId($role, $conn);
 
@@ -152,8 +165,8 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                             throw new Exception('Username or email already exists.');
                         }
                         
-                        $stmt = $conn->prepare("INSERT INTO users (display_user_id, name, username, email, password, role, gender, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-                        $stmt->bind_param("ssssssss", $display_user_id, $name, $username, $email, $password, $role, $gender, $phone);
+                        $stmt = $conn->prepare("INSERT INTO users (display_user_id, name, username, email, password, role, gender, phone, profile_picture) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                        $stmt->bind_param("sssssssss", $display_user_id, $name, $username, $email, $password, $role, $gender, $phone, $profile_picture);
                         $stmt->execute();
                         $user_id = $conn->insert_id;
 
@@ -200,7 +213,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $active = isset($_POST['active']) ? (int)$_POST['active'] : 1;
                         $date_of_birth = !empty($_POST['date_of_birth']) ? $_POST['date_of_birth'] : null;
                         $gender = !empty($_POST['gender']) ? $_POST['gender'] : null;
-
+                         
                         // --- Audit Log: Fetch current state ---
                         $stmt_old = $conn->prepare("SELECT * FROM users WHERE id = ?");
                         $stmt_old->bind_param("i", $id);
@@ -211,6 +224,20 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $sql_parts = ["name = ?", "username = ?", "email = ?", "phone = ?", "active = ?", "date_of_birth = ?", "gender = ?"];
                         $params = [$name, $username, $email, $phone, $active, $date_of_birth, $gender];
                         $types = "ssssiss";
+                        
+                        if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == 0) {
+                            $target_dir = "uploads/profile_pictures/";
+                             if (!file_exists($target_dir)) {
+                                mkdir($target_dir, 0777, true);
+                            }
+                            $image_name = uniqid() . '_' . basename($_FILES["profile_picture"]["name"]);
+                            $target_file = $target_dir . $image_name;
+                            if (move_uploaded_file($_FILES["profile_picture"]["tmp_name"], $target_file)) {
+                                $sql_parts[] = "profile_picture = ?";
+                                $params[] = $image_name;
+                                $types .= "s";
+                            }
+                        }
 
                         if (!empty($_POST['password'])) {
                             $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
@@ -647,7 +674,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     if (!isset($_GET['role'])) throw new Exception('User role not specified.');
                     $role = $_GET['role'];
                     
-                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, u.email, u.phone, u.role, u.active, u.created_at, u.date_of_birth, u.gender";
+                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, u.email, u.phone, u.role, u.active, u.created_at, u.date_of_birth, u.gender, u.profile_picture";
                     
                     if ($role === 'doctor') {
                         $sql .= ", d.specialty, d.qualifications, d.department_id, d.availability 
@@ -669,6 +696,41 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt->execute();
                     $result = $stmt->get_result();
                     $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+                case 'user_details':
+                    if (empty($_GET['id'])) throw new Exception('User ID not specified.');
+                    $user_id = (int)$_GET['id'];
+                    $data = [];
+
+                    // Fetch basic user info
+                    $stmt = $conn->prepare("SELECT u.*, d.specialty, d.qualifications, s.shift 
+                                            FROM users u 
+                                            LEFT JOIN doctors d ON u.id = d.user_id AND u.role = 'doctor'
+                                            LEFT JOIN staff s ON u.id = s.user_id AND u.role = 'staff'
+                                            WHERE u.id = ?");
+                    $stmt->bind_param("i", $user_id);
+                    $stmt->execute();
+                    $data['user'] = $stmt->get_result()->fetch_assoc();
+
+                    // Fetch activity logs for this user
+                    $stmt = $conn->prepare("SELECT * FROM activity_logs WHERE target_user_id = ? ORDER BY created_at DESC LIMIT 20");
+                    $stmt->bind_param("i", $user_id);
+                    $stmt->execute();
+                    $data['activity'] = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+                    // Fetch assigned patients (if doctor)
+                    if ($data['user']['role'] === 'doctor') {
+                        $stmt = $conn->prepare("SELECT u.name, u.display_user_id, a.appointment_date, a.status 
+                                                FROM appointments a 
+                                                JOIN users u ON a.user_id = u.id 
+                                                WHERE a.doctor_id = ? 
+                                                ORDER BY a.appointment_date DESC LIMIT 20");
+                        $stmt->bind_param("i", $user_id);
+                        $stmt->execute();
+                        $data['assigned_patients'] = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    }
+
                     $response = ['success' => true, 'data' => $data];
                     break;
                 
@@ -989,9 +1051,8 @@ $pending_appointments = 0;
         .header-actions { display: flex; align-items: center; gap: 1rem; }
         .user-profile-widget { display: flex; align-items: center; gap: 1rem; background-color: var(--bg-light); padding: 0.5rem 1rem; border-radius: var(--border-radius); box-shadow: var(--shadow-md); }
         .user-profile-widget i { font-size: 1.5rem; color: var(--primary-color); }
-        .content-panel { display: none; background-color: var(--bg-light); padding: 2rem; border-radius: var(--border-radius); box-shadow: var(--shadow-md); animation: fadeIn 0.5s ease-in-out; }
+        .content-panel { display: none; background-color: var(--bg-light); padding: 2rem; border-radius: var(--border-radius); box-shadow: var(--shadow-md); }
         .content-panel.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
         /* --- DASHBOARD HOME --- */
         .stat-cards-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin-top: 2rem; }
@@ -1021,6 +1082,8 @@ $pending_appointments = 0;
         .data-table th { font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
         .data-table tbody tr { transition: background-color var(--transition-speed); }
         .data-table tbody tr:hover { background-color: var(--bg-grey); }
+        .data-table tbody tr.clickable-row { cursor: pointer; }
+        .user-list-pfp { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin-right: 10px; }
         .status-badge { padding: 0.25rem 0.6rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600; }
         .status-badge.active, .status-badge.in-stock { background-color: #D1FAE5; color: #065F46; }
         .status-badge.inactive, .status-badge.low-stock { background-color: #FEE2E2; color: #991B1B; }
@@ -1050,6 +1113,7 @@ $pending_appointments = 0;
         .modal, .notification-container, .confirm-dialog { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1050; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); background-color: rgba(0,0,0,0.5); }
         .modal.show, .notification-container.show, .confirm-dialog.show { display: flex; }
         .modal-content, .confirm-content { background-color: var(--bg-light); padding: 2rem; border-radius: var(--border-radius); box-shadow: var(--shadow-lg); width: 90%; max-width: 500px; animation: slideIn 0.3s ease-out; max-height: 90vh; overflow-y: auto; }
+        #user-detail-modal .modal-content { max-width: 800px; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding-bottom: 1rem; margin-bottom: 1.5rem; }
         .modal-header h3 { margin: 0; }
         .modal-close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); }
@@ -1229,17 +1293,17 @@ $pending_appointments = 0;
         }
 
         /* --- ACTIVITY LOGS (AUDIT TRAIL) --- */
-        #activity-panel .log-item {
+        #activity-panel .log-item, #user-detail-activity-log .log-item {
             display: flex;
             align-items: flex-start;
             gap: 1rem;
             padding: 1rem;
             border-bottom: 1px solid var(--border-light);
         }
-        #activity-panel .log-item:last-child {
+        #activity-panel .log-item:last-child, #user-detail-activity-log .log-item:last-child {
             border-bottom: none;
         }
-        #activity-panel .log-icon {
+        .log-icon {
             font-size: 1.2rem;
             color: var(--text-light);
             background-color: var(--primary-color);
@@ -1250,16 +1314,64 @@ $pending_appointments = 0;
             place-items: center;
             flex-shrink: 0;
         }
-        #activity-panel .log-icon.update { background-color: var(--warning-color); }
-        #activity-panel .log-icon.delete { background-color: var(--danger-color); }
-        #activity-panel .log-details p {
+        .log-icon.update { background-color: var(--warning-color); }
+        .log-icon.delete { background-color: var(--danger-color); }
+        .log-details p {
             margin: 0;
             font-weight: 500;
         }
-        #activity-panel .log-details .log-meta {
+        .log-details .log-meta {
             font-size: 0.85rem;
             color: var(--text-muted);
             margin-top: 0.25rem;
+        }
+        
+        /* --- USER DETAIL MODAL --- */
+        .user-detail-header {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .user-detail-pfp {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 4px solid var(--bg-grey);
+        }
+        .user-detail-info h4 {
+            font-size: 1.5rem;
+            margin: 0;
+        }
+        .user-detail-info p {
+            color: var(--text-muted);
+            margin: 0.25rem 0;
+        }
+        .detail-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-light);
+            margin-bottom: 1.5rem;
+        }
+        .detail-tab-button {
+            padding: 0.75rem 1.25rem;
+            cursor: pointer;
+            background: none;
+            border: none;
+            font-weight: 600;
+            color: var(--text-muted);
+            border-bottom: 3px solid transparent;
+            margin-bottom: -1px; /* Overlap border */
+        }
+        .detail-tab-button.active {
+            color: var(--primary-color);
+            border-bottom-color: var(--primary-color);
+        }
+        .detail-tab-content {
+            display: none;
+        }
+        .detail-tab-content.active {
+            display: block;
         }
     </style>
 </head>
@@ -1371,8 +1483,8 @@ $pending_appointments = 0;
                     <table class="data-table user-table">
                         <thead>
                             <tr>
-                                <th>User ID</th>
                                 <th>Name</th>
+                                <th>User ID</th>
                                 <th>Username</th>
                                 <th>Email</th>
                                 <th>Phone</th>
@@ -1566,7 +1678,7 @@ $pending_appointments = 0;
                 <h3 id="modal-title">Add New User</h3>
                 <button class="modal-close-btn">&times;</button>
             </div>
-            <form id="user-form">
+            <form id="user-form" enctype="multipart/form-data">
                 <input type="hidden" name="id" id="user-id">
                 <input type="hidden" name="action" id="form-action">
                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
@@ -1574,6 +1686,10 @@ $pending_appointments = 0;
                 <div class="form-group">
                     <label for="name">Full Name</label>
                     <input type="text" id="name" name="name" required>
+                </div>
+                 <div class="form-group">
+                    <label for="profile_picture">Profile Picture</label>
+                    <input type="file" id="profile_picture" name="profile_picture" accept="image/*">
                 </div>
                 <div class="form-group">
                     <label for="username">Username</label>
@@ -1667,6 +1783,17 @@ $pending_appointments = 0;
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Save User</button>
             </form>
+        </div>
+    </div>
+    
+    <div id="user-detail-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>User Profile</h3>
+                <button class="modal-close-btn">&times;</button>
+            </div>
+            <div id="user-detail-content">
+                </div>
         </div>
     </div>
     
@@ -2092,9 +2219,10 @@ $pending_appointments = 0;
             }
         };
 
-        // --- USER MANAGEMENT (CRUD) ---
+        // --- USER MANAGEMENT (CRUD & Detail View) ---
         const userModal = document.getElementById('user-modal');
         const userForm = document.getElementById('user-form');
+        const userDetailModal = document.getElementById('user-detail-modal');
         const addUserBtn = document.getElementById('add-user-btn');
         const quickAddUserBtn = document.getElementById('quick-add-user-btn');
         const modalTitle = document.getElementById('modal-title');
@@ -2103,6 +2231,77 @@ $pending_appointments = 0;
         const roleSelect = document.getElementById('role');
         const doctorFields = document.getElementById('doctor-fields');
         const staffFields = document.getElementById('staff-fields');
+        
+        const openDetailedProfileModal = async (userId) => {
+            const contentDiv = document.getElementById('user-detail-content');
+            contentDiv.innerHTML = '<p>Loading profile...</p>';
+            userDetailModal.classList.add('show');
+            try {
+                const response = await fetch(`?fetch=user_details&id=${userId}`);
+                const result = await response.json();
+                if(!result.success) throw new Error(result.message);
+
+                const { user, activity, assigned_patients } = result.data;
+                const pfpPath = `uploads/profile_pictures/${user.profile_picture || 'default.png'}`;
+                
+                let roleSpecificTabs = '';
+                let roleSpecificContent = '';
+
+                if (user.role === 'doctor') {
+                    roleSpecificTabs = `<button class="detail-tab-button" data-tab="patients">Assigned Patients</button>`;
+                    roleSpecificContent = `<div id="patients-tab" class="detail-tab-content">
+                        <h3>Assigned Patients</h3>
+                        ${assigned_patients.length > 0 ? assigned_patients.map(p => `<p>${p.name} (${p.display_user_id}) - Last Appointment: ${new Date(p.appointment_date).toLocaleDateString()}</p>`).join('') : '<p>No patients assigned.</p>'}
+                    </div>`;
+                }
+
+                contentDiv.innerHTML = `
+                    <div class="user-detail-header">
+                        <img src="${pfpPath}" alt="Profile Picture" class="user-detail-pfp" onerror="this.src='uploads/profile_pictures/default.png'">
+                        <div class="user-detail-info">
+                            <h4>${user.name}</h4>
+                            <p>${user.username} (${user.display_user_id})</p>
+                            <p>${user.email}</p>
+                        </div>
+                    </div>
+                    <div class="detail-tabs">
+                        <button class="detail-tab-button active" data-tab="activity">Activity Log</button>
+                        ${roleSpecificTabs}
+                    </div>
+                    <div id="activity-tab" class="detail-tab-content active">
+                        <h3>Recent Activity</h3>
+                        <div id="user-detail-activity-log">
+                        ${activity.length > 0 ? activity.map(log => {
+                            let iconClass = 'fa-plus';
+                            if (log.action.includes('update')) iconClass = 'fa-pencil-alt';
+                            if (log.action.includes('delete') || log.action.includes('deactivate')) iconClass = 'fa-trash-alt';
+                            return `<div class="log-item">
+                                <div class="log-icon"><i class="fas ${iconClass}"></i></div>
+                                <div class="log-details">
+                                    <p>${log.details}</p>
+                                    <div class="log-meta">${new Date(log.created_at).toLocaleString()}</div>
+                                </div>
+                            </div>`
+                        }).join('') : '<p>No activity recorded for this user.</p>'}
+                        </div>
+                    </div>
+                    ${roleSpecificContent}
+                `;
+
+                // Add event listeners for the new tabs
+                 contentDiv.querySelectorAll('.detail-tab-button').forEach(button => {
+                    button.addEventListener('click', () => {
+                        const tabId = button.dataset.tab;
+                        contentDiv.querySelectorAll('.detail-tab-button').forEach(btn => btn.classList.remove('active'));
+                        contentDiv.querySelectorAll('.detail-tab-content').forEach(content => content.classList.remove('active'));
+                        button.classList.add('active');
+                        document.getElementById(`${tabId}-tab`).classList.add('active');
+                    });
+                });
+            } catch (error) {
+                contentDiv.innerHTML = `<p style="color:var(--danger-color);">Failed to load profile: ${error.message}</p>`;
+            }
+        };
 
         const toggleRoleFields = () => {
             const selectedRole = roleSelect.value;
@@ -2182,6 +2381,8 @@ $pending_appointments = 0;
         });
         userModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(userModal));
         userModal.addEventListener('click', (e) => { if (e.target === userModal) closeModal(userModal); });
+        userDetailModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(userDetailModal));
+        userDetailModal.addEventListener('click', (e) => { if (e.target === userDetailModal) closeModal(userDetailModal); });
 
         const fetchUsers = async (role) => {
             currentRole = role;
@@ -2197,17 +2398,22 @@ $pending_appointments = 0;
 
                 if (result.data.length > 0) {
                     tableBody.innerHTML = result.data.map(user => `
-                        <tr data-user='${JSON.stringify(user)}'>
+                        <tr class="clickable-row" data-user-id="${user.id}">
+                            <td>
+                                <div style="display: flex; align-items: center;">
+                                    <img src="uploads/profile_pictures/${user.profile_picture || 'default.png'}" alt="pfp" class="user-list-pfp" onerror="this.onerror=null;this.src='uploads/profile_pictures/default.png';">
+                                    ${user.name || 'N/A'}
+                                </div>
+                            </td>
                             <td>${user.display_user_id || 'N/A'}</td>
-                            <td>${user.name || 'N/A'}</td>
                             <td>${user.username}</td>
                             <td>${user.email}</td>
                             <td>${user.phone || 'N/A'}</td>
                             <td><span class="status-badge ${user.active == 1 ? 'active' : 'inactive'}">${user.active == 1 ? 'Active' : 'Inactive'}</span></td>
                             <td>${new Date(user.created_at).toLocaleDateString()}</td>
                             <td class="action-buttons">
-                                <button class="btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
-                                <button class="btn-delete" title="Deactivate"><i class="fas fa-trash-alt"></i></button>
+                                <button class="btn-edit" data-user='${JSON.stringify(user)}' title="Edit"><i class="fas fa-edit"></i></button>
+                                <button class="btn-delete" data-user='${JSON.stringify(user)}' title="Deactivate"><i class="fas fa-trash-alt"></i></button>
                             </td>
                         </tr>
                     `).join('');
@@ -2222,16 +2428,22 @@ $pending_appointments = 0;
         };
         
         document.getElementById('user-table-body').addEventListener('click', async (e) => {
+            const row = e.target.closest('tr');
+            if (!row) return;
+
             const editBtn = e.target.closest('.btn-edit');
             const deleteBtn = e.target.closest('.btn-delete');
             
             if (editBtn) {
-                const user = JSON.parse(editBtn.closest('tr').dataset.user);
+                e.stopPropagation(); // Prevent row click from triggering
+                const user = JSON.parse(editBtn.dataset.user);
                 openUserModal('edit', user);
+                return;
             }
             
             if (deleteBtn) {
-                const user = JSON.parse(deleteBtn.closest('tr').dataset.user);
+                e.stopPropagation(); // Prevent row click from triggering
+                const user = JSON.parse(deleteBtn.dataset.user);
                 const confirmed = await showConfirmation('Deactivate User', `Are you sure you want to deactivate ${user.username}?`);
                 if (confirmed) {
                     const formData = new FormData();
@@ -2240,6 +2452,13 @@ $pending_appointments = 0;
                     formData.append('csrf_token', csrfToken);
                     handleFormSubmit(formData, `users-${currentRole}`);
                 }
+                return;
+            }
+
+            // If no button was clicked, it's a row click
+            if (row.classList.contains('clickable-row')) {
+                const userId = row.dataset.userId;
+                openDetailedProfileModal(userId);
             }
         });
 

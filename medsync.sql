@@ -1,6 +1,7 @@
 -- This is the complete and updated database schema for MedSync.
--- It includes all tables and columns required for the latest features, 
--- including the new 'rooms' table and the 'activity_logs' for audit trails.
+-- It includes all tables and columns required for the latest features,
+-- including the new 'rooms' table, 'activity_logs' for audit trails,
+-- and the 'profile_picture' column in the users table.
 
 CREATE DATABASE IF NOT EXISTS `medsync` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE `medsync`;
@@ -45,6 +46,7 @@ CREATE TABLE `users` (
   `role` enum('user','doctor','staff','admin') NOT NULL DEFAULT 'user',
   `name` varchar(100) DEFAULT NULL,
   `gender` enum('Male','Female','Other') DEFAULT NULL,
+  `profile_picture` VARCHAR(255) NULL DEFAULT 'default.png',
   `phone` varchar(25) NULL DEFAULT NULL,
   `date_of_birth` date DEFAULT NULL,
   `active` tinyint(1) NOT NULL DEFAULT 1,
