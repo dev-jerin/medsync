@@ -183,14 +183,13 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                             $stmt_staff = $conn->prepare("INSERT INTO staff (user_id, shift, assigned_department) VALUES (?, ?, ?)");
                             $stmt_staff->bind_param("iss", $user_id, $_POST['shift'], $_POST['assigned_department']);
                             $stmt_staff->execute();
-                        } elseif ($role === 'admin') {
-                            $stmt_admin = $conn->prepare("INSERT INTO admins (user_id) VALUES (?)");
-                            $stmt_admin->bind_param("i", $user_id);
-                            $stmt_admin->execute();
                         }
 
                         // --- Audit Log ---
                         $log_details = "Created a new user '{$username}' (ID: {$display_user_id}) with the role '{$role}'.";
+                        if ($profile_picture !== 'default.png') {
+                            $log_details .= " Profile picture was added.";
+                        }
                         log_activity($conn, $admin_user_id_for_log, 'create_user', $user_id, $log_details);
                         // --- End Audit Log ---
 
@@ -231,7 +230,22 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $params = [$name, $username, $email, $phone, $active, $date_of_birth, $gender];
                         $types = "ssssiss";
 
+                        $changes = [];
+
                         if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == 0) {
+                            // --- Delete old profile picture ---
+                            if ($old_user_data && $old_user_data['profile_picture'] !== 'default.png') {
+                                $old_pfp_path = "uploads/profile_pictures/" . $old_user_data['profile_picture'];
+                                if (file_exists($old_pfp_path)) {
+                                    unlink($old_pfp_path);
+                                }
+                            }
+                            // --- End delete old picture ---
+
+                            $changes[] = "profile picture";
+
+                            $target_dir = "uploads/profile_pictures/";
+
                             $target_dir = "uploads/profile_pictures/";
                             if (!file_exists($target_dir)) {
                                 mkdir($target_dir, 0777, true);
@@ -285,7 +299,6 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         }
 
                         // --- Audit Log: Compare and log changes ---
-                        $changes = [];
                         if ($old_user_data['name'] !== $name)
                             $changes[] = "name from '{$old_user_data['name']}' to '{$name}'";
                         if ($old_user_data['username'] !== $username)
@@ -372,6 +385,36 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $response = ['success' => true, 'message' => 'User deactivated successfully.'];
                     } else {
                         throw new Exception('Failed to deactivate user.');
+                    }
+                    break;
+
+                case 'removeProfilePicture':
+                    if (empty($_POST['id'])) {
+                        throw new Exception('Invalid user ID.');
+                    }
+                    $id = (int) $_POST['id'];
+
+                    // Fetch user info before updating
+                    $stmt_old = $conn->prepare("SELECT username, profile_picture FROM users WHERE id = ?");
+                    $stmt_old->bind_param("i", $id);
+                    $stmt_old->execute();
+                    $user_data = $stmt_old->get_result()->fetch_assoc();
+
+                    if ($user_data && $user_data['profile_picture'] !== 'default.png') {
+                        $pfp_path = "uploads/profile_pictures/" . $user_data['profile_picture'];
+                        if (file_exists($pfp_path)) {
+                            unlink($pfp_path);
+                        }
+                    }
+
+                    $stmt = $conn->prepare("UPDATE users SET profile_picture = 'default.png' WHERE id = ?");
+                    $stmt->bind_param("i", $id);
+                    if ($stmt->execute()) {
+                        $log_details = "Removed profile picture for user '{$user_data['username']}'.";
+                        log_activity($conn, $admin_user_id_for_log, 'update_user', $id, $log_details);
+                        $response = ['success' => true, 'message' => 'Profile picture removed successfully.'];
+                    } else {
+                        throw new Exception('Failed to remove profile picture.');
                     }
                     break;
 
@@ -678,30 +721,30 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     break;
 
-                    case 'update_doctor_schedule':
-    if (empty($_POST['doctor_id']) || !isset($_POST['slots'])) {
-        throw new Exception('Doctor ID and slots data are required.');
-    }
-    $doctor_id = (int)$_POST['doctor_id'];
-    $slots_json = $_POST['slots']; // This will be a JSON string from the frontend
+                case 'update_doctor_schedule':
+                    if (empty($_POST['doctor_id']) || !isset($_POST['slots'])) {
+                        throw new Exception('Doctor ID and slots data are required.');
+                    }
+                    $doctor_id = (int) $_POST['doctor_id'];
+                    $slots_json = $_POST['slots']; // This will be a JSON string from the frontend
 
-    $stmt = $conn->prepare("UPDATE doctors SET slots = ? WHERE user_id = ?");
-    $stmt->bind_param("si", $slots_json, $doctor_id);
+                    $stmt = $conn->prepare("UPDATE doctors SET slots = ? WHERE user_id = ?");
+                    $stmt->bind_param("si", $slots_json, $doctor_id);
 
-    if ($stmt->execute()) {
-        log_activity($conn, $admin_user_id_for_log, 'update_doctor_schedule', $doctor_id, "Updated schedule for doctor ID {$doctor_id}.");
-        $response = ['success' => true, 'message' => 'Doctor schedule updated successfully.'];
-    } else {
-        throw new Exception('Failed to update doctor schedule.');
-    }
-    break;
+                    if ($stmt->execute()) {
+                        log_activity($conn, $admin_user_id_for_log, 'update_doctor_schedule', $doctor_id, "Updated schedule for doctor ID {$doctor_id}.");
+                        $response = ['success' => true, 'message' => 'Doctor schedule updated successfully.'];
+                    } else {
+                        throw new Exception('Failed to update doctor schedule.');
+                    }
+                    break;
 
 
                 case 'update_staff_shift':
                     if (empty($_POST['staff_id']) || empty($_POST['shift'])) {
                         throw new Exception('Staff ID and shift are required.');
                     }
-                    $staff_id = (int)$_POST['staff_id'];
+                    $staff_id = (int) $_POST['staff_id'];
                     $shift = $_POST['shift'];
                     if (!in_array($shift, ['day', 'night', 'off'])) {
                         throw new Exception('Invalid shift value.');
@@ -802,28 +845,35 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $response = ['success' => true, 'data' => $data];
                     break;
 
-                    case 'doctors_for_scheduling':
-    $result = $conn->query("SELECT u.id, u.name, u.display_user_id FROM users u JOIN doctors d ON u.id = d.user_id WHERE u.active = 1 AND u.role = 'doctor' ORDER BY u.name ASC");
-    $data = $result->fetch_all(MYSQLI_ASSOC);
-    $response = ['success' => true, 'data' => $data];
-    break;
+                case 'doctors_for_scheduling':
+                    $result = $conn->query("SELECT u.id, u.name, u.display_user_id FROM users u JOIN doctors d ON u.id = d.user_id WHERE u.active = 1 AND u.role = 'doctor' ORDER BY u.name ASC");
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
 
-case 'fetch_doctor_schedule':
-    if (empty($_GET['doctor_id'])) throw new Exception('Doctor ID is required.');
-    $doctor_id = (int)$_GET['doctor_id'];
-    $stmt = $conn->prepare("SELECT slots FROM doctors WHERE user_id = ?");
-    $stmt->bind_param("i", $doctor_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $data = $result->fetch_assoc();
-    // Provide a default structure if slots are null
-    $slots = $data['slots'] ? json_decode($data['slots'], true) : [
-        'Monday' => [], 'Tuesday' => [], 'Wednesday' => [], 'Thursday' => [], 'Friday' => [], 'Saturday' => [], 'Sunday' => []
-    ];
-    $response = ['success' => true, 'data' => $slots];
-    break;
+                case 'fetch_doctor_schedule':
+                    if (empty($_GET['doctor_id']))
+                        throw new Exception('Doctor ID is required.');
+                    $doctor_id = (int) $_GET['doctor_id'];
+                    $stmt = $conn->prepare("SELECT slots FROM doctors WHERE user_id = ?");
+                    $stmt->bind_param("i", $doctor_id);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $data = $result->fetch_assoc();
+                    // Provide a default structure if slots are null
+                    $slots = $data['slots'] ? json_decode($data['slots'], true) : [
+                        'Monday' => [],
+                        'Tuesday' => [],
+                        'Wednesday' => [],
+                        'Thursday' => [],
+                        'Friday' => [],
+                        'Saturday' => [],
+                        'Sunday' => []
+                    ];
+                    $response = ['success' => true, 'data' => $slots];
+                    break;
 
-                    case 'staff_for_shifting':
+                case 'staff_for_shifting':
                     $result = $conn->query("SELECT u.id, u.name, u.display_user_id, s.shift FROM users u JOIN staff s ON u.id = s.user_id WHERE u.active = 1 AND u.role = 'staff' ORDER BY u.name ASC");
                     $data = $result->fetch_all(MYSQLI_ASSOC);
                     $response = ['success' => true, 'data' => $data];
@@ -1068,158 +1118,185 @@ $pending_appointments = 0;
     <link rel="manifest" href="images/favicon/site.webmanifest">
 
     <style>
+        /* --- Schedules Panel --- */
+        /* (Keep all existing .schedule-* CSS rules) */
+
+        .time-slot {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            /* Add gap for spacing */
+            background-color: var(--bg-grey);
+            padding: 0.5rem 0.75rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-light);
+        }
+
+        .time-slot label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .time-slot input[type="time"] {
+            border: none;
+            background: transparent;
+            outline: none;
+            flex-grow: 1;
+            /* This is the key change */
+            width: 100%;
+            /* Fallback for some browsers */
+            color: var(--text-dark);
+            font-family: 'Poppins', sans-serif;
+        }
+
+        /* Style for the time input's picker indicator to match the theme */
+        input[type="time"]::-webkit-calendar-picker-indicator {
+            filter: invert(0.5);
+            /* A simple trick to make it visible in both light/dark modes */
+        }
+
+        body.dark-mode input[type="time"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+        }
+
+        .time-slot .remove-slot-btn {
+            background: none;
+            border: none;
+            color: var(--danger-color);
+            cursor: pointer;
+            font-size: 1.1rem;
+        }
+
+        /* (Keep the rest of the existing schedule CSS rules) */
 
         /* --- Schedules Panel --- */
-/* (Keep all existing .schedule-* CSS rules) */
+        .schedule-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-light);
+            margin-bottom: 2rem;
+        }
 
-.time-slot {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem; /* Add gap for spacing */
-    background-color: var(--bg-grey);
-    padding: 0.5rem 0.75rem;
-    border-radius: 8px;
-    border: 1px solid var(--border-light);
-}
-.time-slot label {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    font-weight: 500;
-}
-.time-slot input[type="time"] {
-    border: none;
-    background: transparent;
-    outline: none;
-    flex-grow: 1; /* This is the key change */
-    width: 100%; /* Fallback for some browsers */
-    color: var(--text-dark);
-    font-family: 'Poppins', sans-serif;
-}
-/* Style for the time input's picker indicator to match the theme */
-input[type="time"]::-webkit-calendar-picker-indicator {
-    filter: invert(0.5); /* A simple trick to make it visible in both light/dark modes */
-}
-body.dark-mode input[type="time"]::-webkit-calendar-picker-indicator {
-    filter: invert(1);
-}
+        .schedule-tab-button {
+            padding: 0.75rem 1.5rem;
+            cursor: pointer;
+            background: none;
+            border: none;
+            font-weight: 600;
+            color: var(--text-muted);
+            border-bottom: 3px solid transparent;
+            margin-bottom: -1px;
+            /* Overlap border */
+            transition: all 0.3s ease;
+        }
 
-.time-slot .remove-slot-btn {
-    background: none;
-    border: none;
-    color: var(--danger-color);
-    cursor: pointer;
-    font-size: 1.1rem;
-}
-/* (Keep the rest of the existing schedule CSS rules) */
+        .schedule-tab-button.active,
+        .schedule-tab-button:hover {
+            color: var(--primary-color);
+            border-bottom-color: var(--primary-color);
+        }
 
-        /* --- Schedules Panel --- */
-.schedule-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--border-light);
-    margin-bottom: 2rem;
-}
-.schedule-tab-button {
-    padding: 0.75rem 1.5rem;
-    cursor: pointer;
-    background: none;
-    border: none;
-    font-weight: 600;
-    color: var(--text-muted);
-    border-bottom: 3px solid transparent;
-    margin-bottom: -1px; /* Overlap border */
-    transition: all 0.3s ease;
-}
-.schedule-tab-button.active, .schedule-tab-button:hover {
-    color: var(--primary-color);
-    border-bottom-color: var(--primary-color);
-}
-.schedule-tab-content {
-    display: none;
-}
-.schedule-tab-content.active {
-    display: block;
-}
-.schedule-controls {
-    display: flex;
-    gap: 1.5rem;
-    align-items: flex-end;
-    margin-bottom: 2rem;
-    padding: 1.5rem;
-    background-color: var(--bg-grey);
-    border-radius: var(--border-radius);
-}
-.schedule-editor-container .placeholder-text {
-    text-align: center;
-    color: var(--text-muted);
-    padding: 3rem;
-    background-color: var(--bg-grey);
-    border-radius: var(--border-radius);
-}
-.day-schedule-card {
-    background-color: var(--bg-light);
-    border: 1px solid var(--border-light);
-    border-radius: var(--border-radius);
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-}
-.day-schedule-card h4 {
-    margin-bottom: 1.5rem;
-    font-weight: 600;
-}
-.time-slots-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); /* Increased min-width */
-    gap: 1rem;
-}
-.time-slot {
-    display: flex;
-    align-items: center;
-    background-color: var(--bg-grey);
-    padding: 0.5rem 0.75rem;
-    border-radius: 8px;
-}
-.time-slot input {
-    border: none;
-    background: transparent;
-    outline: none;
-    width: 100%;
-}
-.time-slot .remove-slot-btn {
-    background: none;
-    border: none;
-    color: var(--danger-color);
-    cursor: pointer;
-    font-size: 1.1rem;
-    margin-left: 0.5rem;
-}
-.add-slot-btn {
-    margin-top: 1rem;
-    background: none;
-    border: 1px dashed var(--primary-color);
-    color: var(--primary-color);
-    font-weight: 600;
-    padding: 0.5rem 1rem;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-.add-slot-btn:hover {
-    background-color: var(--primary-color);
-    color: white;
-}
-.schedule-actions {
-    margin-top: 2rem;
-    text-align: right;
-}
-.shift-select {
-    padding: 0.5rem;
-    border-radius: 8px;
-    border: 1px solid var(--border-light);
-    background-color: var(--bg-grey);
-    color: var(--text-dark);
-    font-family: 'Poppins', sans-serif;
-    font-weight: 500;
-}
+        .schedule-tab-content {
+            display: none;
+        }
+
+        .schedule-tab-content.active {
+            display: block;
+        }
+
+        .schedule-controls {
+            display: flex;
+            gap: 1.5rem;
+            align-items: flex-end;
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background-color: var(--bg-grey);
+            border-radius: var(--border-radius);
+        }
+
+        .schedule-editor-container .placeholder-text {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 3rem;
+            background-color: var(--bg-grey);
+            border-radius: var(--border-radius);
+        }
+
+        .day-schedule-card {
+            background-color: var(--bg-light);
+            border: 1px solid var(--border-light);
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .day-schedule-card h4 {
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+        }
+
+        .time-slots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            /* Increased min-width */
+            gap: 1rem;
+        }
+
+        .time-slot {
+            display: flex;
+            align-items: center;
+            background-color: var(--bg-grey);
+            padding: 0.5rem 0.75rem;
+            border-radius: 8px;
+        }
+
+        .time-slot input {
+            border: none;
+            background: transparent;
+            outline: none;
+            width: 100%;
+        }
+
+        .time-slot .remove-slot-btn {
+            background: none;
+            border: none;
+            color: var(--danger-color);
+            cursor: pointer;
+            font-size: 1.1rem;
+            margin-left: 0.5rem;
+        }
+
+        .add-slot-btn {
+            margin-top: 1rem;
+            background: none;
+            border: 1px dashed var(--primary-color);
+            color: var(--primary-color);
+            font-weight: 600;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .add-slot-btn:hover {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .schedule-actions {
+            margin-top: 2rem;
+            text-align: right;
+        }
+
+        .shift-select {
+            padding: 0.5rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-light);
+            background-color: var(--bg-grey);
+            color: var(--text-dark);
+            font-family: 'Poppins', sans-serif;
+            font-weight: 500;
+        }
 
         /* --- Enhanced Search Bar --- */
         .search-container {
@@ -2462,7 +2539,8 @@ body.dark-mode input[type="time"]::-webkit-calendar-picker-indicator {
                                         class="fas fa-door-closed"></i> Rooms</a></li>
                         </ul>
                     </li>
-<li><a href="#" class="nav-link" data-target="schedules"><i class="fas fa-calendar-alt"></i> Schedules</a></li>
+                    <li><a href="#" class="nav-link" data-target="schedules"><i class="fas fa-calendar-alt"></i>
+                            Schedules</a></li>
                     <li><a href="#" class="nav-link" data-target="reports"><i class="fas fa-chart-line"></i> Reports</a>
                     </li>
                     <li><a href="#" class="nav-link" data-target="activity"><i class="fas fa-history"></i> Activity
@@ -2774,44 +2852,46 @@ body.dark-mode input[type="time"]::-webkit-calendar-picker-indicator {
                 </form>
             </div>
 
-<div id="schedules-panel" class="content-panel">
-    <div class="schedule-tabs">
-        <button class="schedule-tab-button active" data-tab="doctor-availability">Doctor Availability</button>
-        <button class="schedule-tab-button" data-tab="staff-shifts">Staff Shifts</button>
-    </div>
+            <div id="schedules-panel" class="content-panel">
+                <div class="schedule-tabs">
+                    <button class="schedule-tab-button active" data-tab="doctor-availability">Doctor
+                        Availability</button>
+                    <button class="schedule-tab-button" data-tab="staff-shifts">Staff Shifts</button>
+                </div>
 
-    <div id="doctor-availability-content" class="schedule-tab-content active">
-        <div class="schedule-controls">
-            <div class="form-group" style="flex-grow: 1;">
-                <label for="doctor-select">Select Doctor</label>
-                <select id="doctor-select" name="doctor_select"></select>
+                <div id="doctor-availability-content" class="schedule-tab-content active">
+                    <div class="schedule-controls">
+                        <div class="form-group" style="flex-grow: 1;">
+                            <label for="doctor-select">Select Doctor</label>
+                            <select id="doctor-select" name="doctor_select"></select>
+                        </div>
+                    </div>
+                    <div id="doctor-schedule-editor" class="schedule-editor-container">
+                        <p class="placeholder-text">Please select a doctor to view or edit their schedule.</p>
+                    </div>
+                    <div class="schedule-actions" style="display:none;">
+                        <button id="save-schedule-btn" class="btn btn-primary"><i class="fas fa-save"></i> Save
+                            Schedule</button>
+                    </div>
+                </div>
+
+                <div id="staff-shifts-content" class="schedule-tab-content">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Staff Name</th>
+                                    <th>User ID</th>
+                                    <th>Current Shift</th>
+                                    <th>Assign New Shift</th>
+                                </tr>
+                            </thead>
+                            <tbody id="staff-shifts-table-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
-        </div>
-        <div id="doctor-schedule-editor" class="schedule-editor-container">
-            <p class="placeholder-text">Please select a doctor to view or edit their schedule.</p>
-        </div>
-        <div class="schedule-actions" style="display:none;">
-            <button id="save-schedule-btn" class="btn btn-primary"><i class="fas fa-save"></i> Save Schedule</button>
-        </div>
-    </div>
-
-    <div id="staff-shifts-content" class="schedule-tab-content">
-         <div class="table-container">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Staff Name</th>
-                        <th>User ID</th>
-                        <th>Current Shift</th>
-                        <th>Assign New Shift</th>
-                    </tr>
-                </thead>
-                <tbody id="staff-shifts-table-body">
-                    </tbody>
-            </table>
-        </div>
-    </div>
-</div>
             <div id="backup-panel" class="content-panel">
                 <p>Database Backup utility coming soon.</p>
             </div>
@@ -2840,7 +2920,12 @@ body.dark-mode input[type="time"]::-webkit-calendar-picker-indicator {
                 </div>
                 <div class="form-group">
                     <label for="profile_picture">Profile Picture</label>
-                    <input type="file" id="profile_picture" name="profile_picture" accept="image/*">
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <input type="file" id="profile_picture" name="profile_picture" accept="image/*"
+                            style="flex-grow: 1;">
+                        <button type="button" id="remove-pfp-btn" class="btn btn-secondary"
+                            style="display: none;">Remove Photo</button>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="username">Username</label>
@@ -3301,12 +3386,12 @@ body.dark-mode input[type="time"]::-webkit-calendar-picker-indicator {
                     panelTitle.textContent = title;
 
                     if (targetId === 'schedules' && doctorSelect.options.length <= 1) {
-    fetchDoctorsForScheduling();
-}
+                        fetchDoctorsForScheduling();
+                    }
 
                     if (window.innerWidth <= 992 && sidebar.classList.contains('active')) toggleMenu();
                 });
-                
+
             });
 
             // --- CHART.JS & DASHBOARD STATS ---
@@ -3510,6 +3595,26 @@ body.dark-mode input[type="time"]::-webkit-calendar-picker-indicator {
                     passwordGroup.style.display = 'block';
                     activeGroup.style.display = 'none';
                 } else { // edit mode
+
+                    // At the top of the edit mode block
+                    const removePfpBtn = document.getElementById('remove-pfp-btn');
+                    removePfpBtn.style.display = 'none'; // Hide by default
+
+                    // ... inside the edit block ...
+                    if (user.profile_picture && user.profile_picture !== 'default.png') {
+                        removePfpBtn.style.display = 'block';
+                        removePfpBtn.onclick = async () => {
+                            const confirmed = await showConfirmation('Remove Picture', `Are you sure you want to remove the profile picture for ${user.username}?`);
+                            if (confirmed) {
+                                const formData = new FormData();
+                                formData.append('action', 'removeProfilePicture');
+                                formData.append('id', user.id);
+                                formData.append('csrf_token', csrfToken);
+                                handleFormSubmit(formData, `users-${currentRole}`);
+                                closeModal(userModal); // Close the modal after action
+                            }
+                        };
+                    }
                     modalTitle.textContent = `Edit ${user.username}`;
                     document.getElementById('form-action').value = 'updateUser';
                     document.getElementById('user-id').value = user.id;
@@ -4342,31 +4447,31 @@ body.dark-mode input[type="time"]::-webkit-calendar-picker-indicator {
 
             refreshLogsBtn.addEventListener('click', fetchActivityLogs);
 
-// --- SCHEDULES PANEL LOGIC ---
-const schedulesPanel = document.getElementById('schedules-panel');
-const doctorSelect = document.getElementById('doctor-select');
-const scheduleEditorContainer = document.getElementById('doctor-schedule-editor');
-const saveScheduleBtn = document.getElementById('save-schedule-btn');
+            // --- SCHEDULES PANEL LOGIC ---
+            const schedulesPanel = document.getElementById('schedules-panel');
+            const doctorSelect = document.getElementById('doctor-select');
+            const scheduleEditorContainer = document.getElementById('doctor-schedule-editor');
+            const saveScheduleBtn = document.getElementById('save-schedule-btn');
 
-const fetchDoctorsForScheduling = async () => {
-    try {
-        const response = await fetch('?fetch=doctors_for_scheduling');
-        const result = await response.json();
-        if (!result.success) throw new Error(result.message);
-        
-        doctorSelect.innerHTML = '<option value="">Select a Doctor...</option>';
-        result.data.forEach(doctor => {
-            doctorSelect.innerHTML += `<option value="${doctor.id}">${doctor.name} (${doctor.display_user_id})</option>`;
-        });
-    } catch (error) {
-        console.error("Failed to fetch doctors:", error);
-        doctorSelect.innerHTML = '<option value="">Could not load doctors</option>';
-    }
-};
+            const fetchDoctorsForScheduling = async () => {
+                try {
+                    const response = await fetch('?fetch=doctors_for_scheduling');
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
 
-const renderScheduleEditor = (slots) => {
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-scheduleEditorContainer.innerHTML = days.map(day => `
+                    doctorSelect.innerHTML = '<option value="">Select a Doctor...</option>';
+                    result.data.forEach(doctor => {
+                        doctorSelect.innerHTML += `<option value="${doctor.id}">${doctor.name} (${doctor.display_user_id})</option>`;
+                    });
+                } catch (error) {
+                    console.error("Failed to fetch doctors:", error);
+                    doctorSelect.innerHTML = '<option value="">Could not load doctors</option>';
+                }
+            };
+
+            const renderScheduleEditor = (slots) => {
+                const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                scheduleEditorContainer.innerHTML = days.map(day => `
     <div class="day-schedule-card" data-day="${day}">
         <h4>${day}</h4>
         <div class="time-slots-grid">
@@ -4383,106 +4488,106 @@ scheduleEditorContainer.innerHTML = days.map(day => `
         <button class="add-slot-btn"><i class="fas fa-plus"></i> Add Slot</button>
     </div>
 `).join('');
-    document.querySelector('.schedule-actions').style.display = 'block';
-};
+                document.querySelector('.schedule-actions').style.display = 'block';
+            };
 
-const fetchDoctorSchedule = async (doctorId) => {
-    if (!doctorId) {
-        scheduleEditorContainer.innerHTML = '<p class="placeholder-text">Please select a doctor to view or edit their schedule.</p>';
-        document.querySelector('.schedule-actions').style.display = 'none';
-        return;
-    }
-    scheduleEditorContainer.innerHTML = '<p class="placeholder-text">Loading schedule...</p>';
-    try {
-        const response = await fetch(`?fetch=fetch_doctor_schedule&doctor_id=${doctorId}`);
-        const result = await response.json();
-        if (!result.success) throw new Error(result.message);
-        renderScheduleEditor(result.data);
-    } catch (error) {
-        scheduleEditorContainer.innerHTML = `<p class="placeholder-text" style="color:var(--danger-color)">Failed to load schedule: ${error.message}</p>`;
-    }
-};
+            const fetchDoctorSchedule = async (doctorId) => {
+                if (!doctorId) {
+                    scheduleEditorContainer.innerHTML = '<p class="placeholder-text">Please select a doctor to view or edit their schedule.</p>';
+                    document.querySelector('.schedule-actions').style.display = 'none';
+                    return;
+                }
+                scheduleEditorContainer.innerHTML = '<p class="placeholder-text">Loading schedule...</p>';
+                try {
+                    const response = await fetch(`?fetch=fetch_doctor_schedule&doctor_id=${doctorId}`);
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
+                    renderScheduleEditor(result.data);
+                } catch (error) {
+                    scheduleEditorContainer.innerHTML = `<p class="placeholder-text" style="color:var(--danger-color)">Failed to load schedule: ${error.message}</p>`;
+                }
+            };
 
-doctorSelect.addEventListener('change', () => {
-    fetchDoctorSchedule(doctorSelect.value);
-});
+            doctorSelect.addEventListener('change', () => {
+                fetchDoctorSchedule(doctorSelect.value);
+            });
 
-scheduleEditorContainer.addEventListener('click', (e) => {
-if (e.target.closest('.add-slot-btn')) {
-    const grid = e.target.closest('.day-schedule-card').querySelector('.time-slots-grid');
-    const slotDiv = document.createElement('div');
-    slotDiv.className = 'time-slot';
-    slotDiv.innerHTML = `
+            scheduleEditorContainer.addEventListener('click', (e) => {
+                if (e.target.closest('.add-slot-btn')) {
+                    const grid = e.target.closest('.day-schedule-card').querySelector('.time-slots-grid');
+                    const slotDiv = document.createElement('div');
+                    slotDiv.className = 'time-slot';
+                    slotDiv.innerHTML = `
         <label>From:</label>
         <input type="time" class="slot-from" value="09:00" />
         <label>To:</label>
         <input type="time" class="slot-to" value="13:00" />
         <button class="remove-slot-btn" title="Remove slot"><i class="fas fa-times"></i></button>
     `;
-    grid.appendChild(slotDiv);
-}
-    if (e.target.closest('.remove-slot-btn')) {
-        e.target.closest('.time-slot').remove();
-    }
-});
+                    grid.appendChild(slotDiv);
+                }
+                if (e.target.closest('.remove-slot-btn')) {
+                    e.target.closest('.time-slot').remove();
+                }
+            });
 
-saveScheduleBtn.addEventListener('click', async () => {
-    const doctorId = doctorSelect.value;
-    if (!doctorId) {
-        showNotification('Please select a doctor first.', 'error');
-        return;
-    }
+            saveScheduleBtn.addEventListener('click', async () => {
+                const doctorId = doctorSelect.value;
+                if (!doctorId) {
+                    showNotification('Please select a doctor first.', 'error');
+                    return;
+                }
 
-const scheduleData = {};
-let isValid = true;
-document.querySelectorAll('.day-schedule-card').forEach(dayCard => {
-    const day = dayCard.dataset.day;
-    const slots = [];
-    dayCard.querySelectorAll('.time-slot').forEach(slotElement => {
-        const from = slotElement.querySelector('.slot-from').value;
-        const to = slotElement.querySelector('.slot-to').value;
-        if (from && to) {
-            if (to <= from) {
-                showNotification(`'To' time must be after 'From' time for a slot on ${day}.`, 'error');
-                isValid = false;
-            }
-            slots.push({ from, to });
-        }
-    });
-    scheduleData[day] = slots;
-});
+                const scheduleData = {};
+                let isValid = true;
+                document.querySelectorAll('.day-schedule-card').forEach(dayCard => {
+                    const day = dayCard.dataset.day;
+                    const slots = [];
+                    dayCard.querySelectorAll('.time-slot').forEach(slotElement => {
+                        const from = slotElement.querySelector('.slot-from').value;
+                        const to = slotElement.querySelector('.slot-to').value;
+                        if (from && to) {
+                            if (to <= from) {
+                                showNotification(`'To' time must be after 'From' time for a slot on ${day}.`, 'error');
+                                isValid = false;
+                            }
+                            slots.push({ from, to });
+                        }
+                    });
+                    scheduleData[day] = slots;
+                });
 
-if (!isValid) return; // Stop if there's a time validation error
+                if (!isValid) return; // Stop if there's a time validation error
 
-    const formData = new FormData();
-    formData.append('action', 'update_doctor_schedule');
-    formData.append('doctor_id', doctorId);
-    formData.append('slots', JSON.stringify(scheduleData));
-    formData.append('csrf_token', csrfToken);
+                const formData = new FormData();
+                formData.append('action', 'update_doctor_schedule');
+                formData.append('doctor_id', doctorId);
+                formData.append('slots', JSON.stringify(scheduleData));
+                formData.append('csrf_token', csrfToken);
 
-    try {
-        const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
-        const result = await response.json();
-        if (result.success) {
-            showNotification(result.message, 'success');
-        } else {
-            throw new Error(result.message);
-        }
-    } catch (error) {
-        showNotification(`Error saving schedule: ${error.message}`, 'error');
-    }
-});
+                try {
+                    const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
+                    const result = await response.json();
+                    if (result.success) {
+                        showNotification(result.message, 'success');
+                    } else {
+                        throw new Error(result.message);
+                    }
+                } catch (error) {
+                    showNotification(`Error saving schedule: ${error.message}`, 'error');
+                }
+            });
 
-    const fetchStaffShifts = async () => {
-        const staffTableBody = document.getElementById('staff-shifts-table-body');
-        staffTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading staff shifts...</td></tr>';
-        try {
-            const response = await fetch('?fetch=staff_for_shifting');
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
+            const fetchStaffShifts = async () => {
+                const staffTableBody = document.getElementById('staff-shifts-table-body');
+                staffTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading staff shifts...</td></tr>';
+                try {
+                    const response = await fetch('?fetch=staff_for_shifting');
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
 
-            if(result.data.length > 0) {
-                staffTableBody.innerHTML = result.data.map(staff => `
+                    if (result.data.length > 0) {
+                        staffTableBody.innerHTML = result.data.map(staff => `
                     <tr data-staff-id="${staff.id}">
                         <td>${staff.name}</td>
                         <td>${staff.display_user_id}</td>
@@ -4496,61 +4601,61 @@ if (!isValid) return; // Stop if there's a time validation error
                         </td>
                     </tr>
                 `).join('');
-            } else {
-                staffTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No active staff found.</td></tr>';
-            }
-        } catch (error) {
-            staffTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--danger-color);">Failed to load shifts: ${error.message}</td></tr>`;
-        }
-    };
+                    } else {
+                        staffTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No active staff found.</td></tr>';
+                    }
+                } catch (error) {
+                    staffTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--danger-color);">Failed to load shifts: ${error.message}</td></tr>`;
+                }
+            };
 
-// Tab switching logic for the Schedules panel
-schedulesPanel.querySelectorAll('.schedule-tab-button').forEach(button => {
-    button.addEventListener('click', function() {
-        const tabId = this.dataset.tab;
-        
-        schedulesPanel.querySelectorAll('.schedule-tab-button').forEach(btn => btn.classList.remove('active'));
-        this.classList.add('active');
-        
-        schedulesPanel.querySelectorAll('.schedule-tab-content').forEach(content => content.classList.remove('active'));
-        document.getElementById(`${tabId}-content`).classList.add('active');
-        
-        // Fetch data if the tab is being opened for the first time or needs refresh
-        if (tabId === 'doctor-availability' && doctorSelect.options.length <= 1) {
-            fetchDoctorsForScheduling();
-        } else if (tabId === 'staff-shifts') {
-            // Future implementation: fetchStaffShifts();
-fetchStaffShifts();
-        }
-    });
-});
+            // Tab switching logic for the Schedules panel
+            schedulesPanel.querySelectorAll('.schedule-tab-button').forEach(button => {
+                button.addEventListener('click', function () {
+                    const tabId = this.dataset.tab;
 
-document.getElementById('staff-shifts-table-body').addEventListener('change', async (e) => {
-    if (e.target.classList.contains('shift-select')) {
-        const staffId = e.target.dataset.id;
-        const newShift = e.target.value;
+                    schedulesPanel.querySelectorAll('.schedule-tab-button').forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
 
-        const formData = new FormData();
-        formData.append('action', 'update_staff_shift');
-        formData.append('staff_id', staffId);
-        formData.append('shift', newShift);
-        formData.append('csrf_token', csrfToken);
-        
-        try {
-            const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
-            const result = await response.json();
-            if (result.success) {
-                showNotification(result.message, 'success');
-                document.getElementById(`shift-status-${staffId}`).textContent = newShift;
-            } else {
-                throw new Error(result.message);
-            }
-        } catch (error) {
-            showNotification(`Error: ${error.message}`, 'error');
-            fetchStaffShifts(); 
-        }
-    }
-});
+                    schedulesPanel.querySelectorAll('.schedule-tab-content').forEach(content => content.classList.remove('active'));
+                    document.getElementById(`${tabId}-content`).classList.add('active');
+
+                    // Fetch data if the tab is being opened for the first time or needs refresh
+                    if (tabId === 'doctor-availability' && doctorSelect.options.length <= 1) {
+                        fetchDoctorsForScheduling();
+                    } else if (tabId === 'staff-shifts') {
+                        // Future implementation: fetchStaffShifts();
+                        fetchStaffShifts();
+                    }
+                });
+            });
+
+            document.getElementById('staff-shifts-table-body').addEventListener('change', async (e) => {
+                if (e.target.classList.contains('shift-select')) {
+                    const staffId = e.target.dataset.id;
+                    const newShift = e.target.value;
+
+                    const formData = new FormData();
+                    formData.append('action', 'update_staff_shift');
+                    formData.append('staff_id', staffId);
+                    formData.append('shift', newShift);
+                    formData.append('csrf_token', csrfToken);
+
+                    try {
+                        const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
+                        const result = await response.json();
+                        if (result.success) {
+                            showNotification(result.message, 'success');
+                            document.getElementById(`shift-status-${staffId}`).textContent = newShift;
+                        } else {
+                            throw new Error(result.message);
+                        }
+                    } catch (error) {
+                        showNotification(`Error: ${error.message}`, 'error');
+                        fetchStaffShifts();
+                    }
+                }
+            });
             // --- INITIAL LOAD ---
             updateDashboardStats();
             fetchDepartments();
