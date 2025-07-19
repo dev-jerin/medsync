@@ -32,7 +32,8 @@ $_SESSION['loggedin_time'] = time();
  * @param string $details A detailed description of the change.
  * @return bool True on success, false on failure.
  */
-function log_activity($conn, $user_id, $action, $target_user_id = null, $details = '') {
+function log_activity($conn, $user_id, $action, $target_user_id = null, $details = '')
+{
     $stmt = $conn->prepare("INSERT INTO activity_logs (user_id, action, target_user_id, details) VALUES (?, ?, ?, ?)");
     if (!$stmt) {
         // Handle error, e.g., log to a file, but don't stop the main execution
@@ -54,7 +55,8 @@ function log_activity($conn, $user_id, $action, $target_user_id = null, $details
  * @return string The formatted display ID.
  * @throws Exception If the role is invalid or a database error occurs.
  */
-function generateDisplayId($role, $conn) {
+function generateDisplayId($role, $conn)
+{
     $prefix_map = [
         'admin' => 'A',
         'doctor' => 'D',
@@ -85,7 +87,7 @@ function generateDisplayId($role, $conn) {
         $update_stmt = $conn->prepare("UPDATE role_counters SET last_id = ? WHERE role_prefix = ?");
         $update_stmt->bind_param("is", $new_id_num, $prefix);
         $update_stmt->execute();
-        
+
         // Commit the transaction
         $conn->commit();
 
@@ -105,8 +107,10 @@ function generateDisplayId($role, $conn) {
 // --- API ENDPOINT LOGIC (Handles all AJAX requests) ---
 // ===================================================================================
 if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHOD'] === 'POST')) {
-    set_error_handler(function($severity, $message, $file, $line) {
-        if (!(error_reporting() & $severity)) { return; }
+    set_error_handler(function ($severity, $message, $file, $line) {
+        if (!(error_reporting() & $severity)) {
+            return;
+        }
         throw new ErrorException($message, 0, $severity, $file, $line);
     });
 
@@ -115,7 +119,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
     $admin_user_id_for_log = $_SESSION['user_id'];
 
     try {
-        $conn = getDbConnection(); 
+        $conn = getDbConnection();
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
@@ -136,13 +140,14 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $name = $_POST['name'];
                         $username = $_POST['username'];
                         $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
-                        if (!$email) throw new Exception('Invalid email format.');
-                        
+                        if (!$email)
+                            throw new Exception('Invalid email format.');
+
                         $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
                         $role = $_POST['role'];
                         $phone = $_POST['phone'];
                         $gender = !empty($_POST['gender']) ? $_POST['gender'] : null;
-                        
+
                         $profile_picture = 'default.png';
                         if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == 0) {
                             $target_dir = "uploads/profile_pictures/";
@@ -164,7 +169,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         if ($stmt->get_result()->num_rows > 0) {
                             throw new Exception('Username or email already exists.');
                         }
-                        
+
                         $stmt = $conn->prepare("INSERT INTO users (display_user_id, name, username, email, password, role, gender, phone, profile_picture) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
                         $stmt->bind_param("sssssssss", $display_user_id, $name, $username, $email, $password, $role, $gender, $phone, $profile_picture);
                         $stmt->execute();
@@ -204,16 +209,17 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         if (empty($_POST['id']) || empty($_POST['name']) || empty($_POST['username']) || empty($_POST['email'])) {
                             throw new Exception('Invalid data provided.');
                         }
-                        $id = (int)$_POST['id'];
+                        $id = (int) $_POST['id'];
                         $name = $_POST['name'];
                         $username = $_POST['username'];
                         $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
-                        if (!$email) throw new Exception('Invalid email format.');
+                        if (!$email)
+                            throw new Exception('Invalid email format.');
                         $phone = $_POST['phone'];
-                        $active = isset($_POST['active']) ? (int)$_POST['active'] : 1;
+                        $active = isset($_POST['active']) ? (int) $_POST['active'] : 1;
                         $date_of_birth = !empty($_POST['date_of_birth']) ? $_POST['date_of_birth'] : null;
                         $gender = !empty($_POST['gender']) ? $_POST['gender'] : null;
-                         
+
                         // --- Audit Log: Fetch current state ---
                         $stmt_old = $conn->prepare("SELECT * FROM users WHERE id = ?");
                         $stmt_old->bind_param("i", $id);
@@ -224,10 +230,10 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $sql_parts = ["name = ?", "username = ?", "email = ?", "phone = ?", "active = ?", "date_of_birth = ?", "gender = ?"];
                         $params = [$name, $username, $email, $phone, $active, $date_of_birth, $gender];
                         $types = "ssssiss";
-                        
+
                         if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == 0) {
                             $target_dir = "uploads/profile_pictures/";
-                             if (!file_exists($target_dir)) {
+                            if (!file_exists($target_dir)) {
                                 mkdir($target_dir, 0777, true);
                             }
                             $image_name = uniqid() . '_' . basename($_FILES["profile_picture"]["name"]);
@@ -249,13 +255,13 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $sql = "UPDATE users SET " . implode(", ", $sql_parts) . " WHERE id = ?";
                         $params[] = $id;
                         $types .= "i";
-                        
+
                         $stmt = $conn->prepare($sql);
                         $stmt->bind_param($types, ...$params);
                         $stmt->execute();
 
                         if ($old_user_data['role'] === 'doctor') {
-                             $stmt_doctor = $conn->prepare("
+                            $stmt_doctor = $conn->prepare("
                                 INSERT INTO doctors (user_id, specialty, qualifications, department_id, availability) 
                                 VALUES (?, ?, ?, ?, ?)
                                 ON DUPLICATE KEY UPDATE 
@@ -277,16 +283,22 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                             $stmt_staff->bind_param("iss", $id, $_POST['shift'], $_POST['assigned_department']);
                             $stmt_staff->execute();
                         }
-                        
+
                         // --- Audit Log: Compare and log changes ---
                         $changes = [];
-                        if ($old_user_data['name'] !== $name) $changes[] = "name from '{$old_user_data['name']}' to '{$name}'";
-                        if ($old_user_data['username'] !== $username) $changes[] = "username from '{$old_user_data['username']}' to '{$username}'";
-                        if ($old_user_data['email'] !== $email) $changes[] = "email from '{$old_user_data['email']}' to '{$email}'";
-                        if ($old_user_data['phone'] !== $phone) $changes[] = "phone number";
-                        if ($old_user_data['active'] != $active) $changes[] = "status from " . ($old_user_data['active'] ? "'Active'" : "'Inactive'") . " to " . ($active ? "'Active'" : "'Inactive'");
-                        if (!empty($_POST['password'])) $changes[] = "password";
-                        
+                        if ($old_user_data['name'] !== $name)
+                            $changes[] = "name from '{$old_user_data['name']}' to '{$name}'";
+                        if ($old_user_data['username'] !== $username)
+                            $changes[] = "username from '{$old_user_data['username']}' to '{$username}'";
+                        if ($old_user_data['email'] !== $email)
+                            $changes[] = "email from '{$old_user_data['email']}' to '{$email}'";
+                        if ($old_user_data['phone'] !== $phone)
+                            $changes[] = "phone number";
+                        if ($old_user_data['active'] != $active)
+                            $changes[] = "status from " . ($old_user_data['active'] ? "'Active'" : "'Inactive'") . " to " . ($active ? "'Active'" : "'Inactive'");
+                        if (!empty($_POST['password']))
+                            $changes[] = "password";
+
                         if (!empty($changes)) {
                             $log_details = "Updated user '{$username}': changed " . implode(', ', $changes) . ".";
                             log_activity($conn, $admin_user_id_for_log, 'update_user', $id, $log_details);
@@ -297,19 +309,20 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $response = ['success' => true, 'message' => 'User updated successfully.'];
 
                     } catch (Exception $e) {
-                         $conn->rollback();
+                        $conn->rollback();
                         throw new Exception('Failed to update user: ' . $e->getMessage());
                     }
                     break;
-                
-                case 'updateProfile': 
+
+                case 'updateProfile':
                     if (empty($_POST['name']) || empty($_POST['email'])) {
                         throw new Exception('Name and Email are required.');
                     }
                     $id = $_SESSION['user_id'];
                     $name = $_POST['name'];
                     $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
-                    if (!$email) throw new Exception('Invalid email format.');
+                    if (!$email)
+                        throw new Exception('Invalid email format.');
                     $phone = $_POST['phone'];
 
                     $sql_parts = ["name = ?", "email = ?", "phone = ?"];
@@ -326,12 +339,12 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $sql = "UPDATE users SET " . implode(", ", $sql_parts) . " WHERE id = ?";
                     $params[] = $id;
                     $types .= "i";
-                    
+
                     $stmt = $conn->prepare($sql);
                     $stmt->bind_param($types, ...$params);
 
                     if ($stmt->execute()) {
-                        $_SESSION['username'] = $name; 
+                        $_SESSION['username'] = $name;
                         log_activity($conn, $admin_user_id_for_log, 'update_own_profile', $id, 'Admin updated their own profile details.');
                         $response = ['success' => true, 'message' => 'Your profile has been updated successfully.'];
                     } else {
@@ -343,7 +356,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     if (empty($_POST['id'])) {
                         throw new Exception('Invalid user ID.');
                     }
-                    $id = (int)$_POST['id'];
+                    $id = (int) $_POST['id'];
                     // --- Audit Log: Fetch user info before deactivating ---
                     $stmt_old = $conn->prepare("SELECT username, display_user_id FROM users WHERE id = ?");
                     $stmt_old->bind_param("i", $id);
@@ -361,7 +374,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         throw new Exception('Failed to deactivate user.');
                     }
                     break;
-                
+
                 // --- INVENTORY MANAGEMENT ACTIONS ---
                 case 'addMedicine':
                     if (empty($_POST['name']) || empty($_POST['quantity']) || empty($_POST['unit_price'])) {
@@ -369,9 +382,9 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     $name = $_POST['name'];
                     $description = $_POST['description'] ?? null;
-                    $quantity = (int)$_POST['quantity'];
-                    $unit_price = (float)$_POST['unit_price'];
-                    $low_stock_threshold = (int)($_POST['low_stock_threshold'] ?? 10);
+                    $quantity = (int) $_POST['quantity'];
+                    $unit_price = (float) $_POST['unit_price'];
+                    $low_stock_threshold = (int) ($_POST['low_stock_threshold'] ?? 10);
 
                     $stmt = $conn->prepare("INSERT INTO medicines (name, description, quantity, unit_price, low_stock_threshold) VALUES (?, ?, ?, ?, ?)");
                     $stmt->bind_param("ssidi", $name, $description, $quantity, $unit_price, $low_stock_threshold);
@@ -388,12 +401,12 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     if (empty($_POST['id']) || empty($_POST['name']) || empty($_POST['quantity']) || empty($_POST['unit_price'])) {
                         throw new Exception('Medicine ID, name, quantity, and unit price are required.');
                     }
-                    $id = (int)$_POST['id'];
+                    $id = (int) $_POST['id'];
                     $name = $_POST['name'];
                     $description = $_POST['description'] ?? null;
-                    $quantity = (int)$_POST['quantity'];
-                    $unit_price = (float)$_POST['unit_price'];
-                    $low_stock_threshold = (int)($_POST['low_stock_threshold'] ?? 10);
+                    $quantity = (int) $_POST['quantity'];
+                    $unit_price = (float) $_POST['unit_price'];
+                    $low_stock_threshold = (int) ($_POST['low_stock_threshold'] ?? 10);
 
                     $stmt = $conn->prepare("UPDATE medicines SET name = ?, description = ?, quantity = ?, unit_price = ?, low_stock_threshold = ? WHERE id = ?");
                     $stmt->bind_param("ssidii", $name, $description, $quantity, $unit_price, $low_stock_threshold, $id);
@@ -410,9 +423,9 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     if (empty($_POST['id'])) {
                         throw new Exception('Medicine ID is required.');
                     }
-                    $id = (int)$_POST['id'];
-                    
-                     // --- Audit Log: Fetch medicine name before delete ---
+                    $id = (int) $_POST['id'];
+
+                    // --- Audit Log: Fetch medicine name before delete ---
                     $stmt_med = $conn->prepare("SELECT name FROM medicines WHERE id = ?");
                     $stmt_med->bind_param("i", $id);
                     $stmt_med->execute();
@@ -436,8 +449,8 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         throw new Exception('Blood group and quantity are required.');
                     }
                     $blood_group = $_POST['blood_group'];
-                    $quantity_ml = (int)$_POST['quantity_ml'];
-                    $low_stock_threshold_ml = (int)($_POST['low_stock_threshold_ml'] ?? 5000);
+                    $quantity_ml = (int) $_POST['quantity_ml'];
+                    $low_stock_threshold_ml = (int) ($_POST['low_stock_threshold_ml'] ?? 5000);
 
                     $stmt = $conn->prepare("INSERT INTO blood_inventory (blood_group, quantity_ml, low_stock_threshold_ml) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE quantity_ml = ?, low_stock_threshold_ml = ?");
                     $stmt->bind_param("siiii", $blood_group, $quantity_ml, $low_stock_threshold_ml, $quantity_ml, $low_stock_threshold_ml);
@@ -449,15 +462,15 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         throw new Exception('Failed to update blood inventory.');
                     }
                     break;
-                
+
                 case 'addWard':
                     if (empty($_POST['name']) || empty($_POST['capacity'])) {
                         throw new Exception('Ward name and capacity are required.');
                     }
                     $name = $_POST['name'];
-                    $capacity = (int)$_POST['capacity'];
+                    $capacity = (int) $_POST['capacity'];
                     $description = $_POST['description'] ?? null;
-                    $is_active = isset($_POST['is_active']) ? (int)$_POST['is_active'] : 1;
+                    $is_active = isset($_POST['is_active']) ? (int) $_POST['is_active'] : 1;
 
                     $stmt = $conn->prepare("INSERT INTO wards (name, capacity, description, is_active) VALUES (?, ?, ?, ?)");
                     $stmt->bind_param("sisi", $name, $capacity, $description, $is_active);
@@ -467,16 +480,16 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         throw new Exception('Failed to add ward. It might already exist.');
                     }
                     break;
-                
+
                 case 'updateWard':
                     if (empty($_POST['id']) || empty($_POST['name']) || empty($_POST['capacity'])) {
                         throw new Exception('Ward ID, name, and capacity are required.');
                     }
-                    $id = (int)$_POST['id'];
+                    $id = (int) $_POST['id'];
                     $name = $_POST['name'];
-                    $capacity = (int)$_POST['capacity'];
+                    $capacity = (int) $_POST['capacity'];
                     $description = $_POST['description'] ?? null;
-                    $is_active = isset($_POST['is_active']) ? (int)$_POST['is_active'] : 1;
+                    $is_active = isset($_POST['is_active']) ? (int) $_POST['is_active'] : 1;
 
                     $stmt = $conn->prepare("UPDATE wards SET name = ?, capacity = ?, description = ?, is_active = ? WHERE id = ?");
                     $stmt->bind_param("sisii", $name, $capacity, $description, $is_active, $id);
@@ -491,7 +504,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     if (empty($_POST['id'])) {
                         throw new Exception('Ward ID is required.');
                     }
-                    $id = (int)$_POST['id'];
+                    $id = (int) $_POST['id'];
                     // Consider soft delete or checking if beds are occupied
                     $stmt = $conn->prepare("DELETE FROM wards WHERE id = ?"); // Or UPDATE wards SET is_active = 0
                     $stmt->bind_param("i", $id);
@@ -506,10 +519,10 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     if (empty($_POST['ward_id']) || empty($_POST['bed_number'])) {
                         throw new Exception('Ward and bed number are required.');
                     }
-                    $ward_id = (int)$_POST['ward_id'];
+                    $ward_id = (int) $_POST['ward_id'];
                     $bed_number = $_POST['bed_number'];
                     $status = $_POST['status'] ?? 'available';
-                    $patient_id = !empty($_POST['patient_id']) ? (int)$_POST['patient_id'] : null;
+                    $patient_id = !empty($_POST['patient_id']) ? (int) $_POST['patient_id'] : null;
                     $occupied_since = ($status === 'occupied' && $patient_id) ? date('Y-m-d H:i:s') : null;
                     $reserved_since = ($status === 'reserved' && $patient_id) ? date('Y-m-d H:i:s') : null;
 
@@ -526,11 +539,11 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     if (empty($_POST['id']) || empty($_POST['ward_id']) || empty($_POST['bed_number']) || empty($_POST['status'])) {
                         throw new Exception('Bed ID, ward, bed number, and status are required.');
                     }
-                    $id = (int)$_POST['id'];
-                    $ward_id = (int)$_POST['ward_id'];
+                    $id = (int) $_POST['id'];
+                    $ward_id = (int) $_POST['ward_id'];
                     $bed_number = $_POST['bed_number'];
                     $new_status = $_POST['status'];
-                    $new_patient_id = !empty($_POST['patient_id']) ? (int)$_POST['patient_id'] : null;
+                    $new_patient_id = !empty($_POST['patient_id']) ? (int) $_POST['patient_id'] : null;
 
                     // --- Start Transaction for safe update ---
                     $conn->begin_transaction();
@@ -588,7 +601,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     if (empty($_POST['id'])) {
                         throw new Exception('Bed ID is required.');
                     }
-                    $id = (int)$_POST['id'];
+                    $id = (int) $_POST['id'];
                     $stmt = $conn->prepare("DELETE FROM beds WHERE id = ?");
                     $stmt->bind_param("i", $id);
                     if ($stmt->execute()) {
@@ -597,15 +610,15 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         throw new Exception('Failed to delete bed.');
                     }
                     break;
-                
+
                 case 'addRoom':
                     if (empty($_POST['room_number']) || !isset($_POST['price_per_day'])) {
                         throw new Exception('Room number and price are required.');
                     }
                     $room_number = $_POST['room_number'];
                     $status = $_POST['status'] ?? 'available';
-                    $patient_id = !empty($_POST['patient_id']) ? (int)$_POST['patient_id'] : null;
-                    $price_per_day = (float)$_POST['price_per_day'];
+                    $patient_id = !empty($_POST['patient_id']) ? (int) $_POST['patient_id'] : null;
+                    $price_per_day = (float) $_POST['price_per_day'];
                     $occupied_since = ($status === 'occupied' && $patient_id) ? date('Y-m-d H:i:s') : null;
                     $reserved_since = ($status === 'reserved' && $patient_id) ? date('Y-m-d H:i:s') : null;
 
@@ -622,15 +635,15 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     if (empty($_POST['id']) || empty($_POST['room_number']) || !isset($_POST['price_per_day']) || empty($_POST['status'])) {
                         throw new Exception('Room ID, number, price, and status are required.');
                     }
-                    $id = (int)$_POST['id'];
+                    $id = (int) $_POST['id'];
                     $room_number = $_POST['room_number'];
                     $status = $_POST['status'];
-                    $patient_id = !empty($_POST['patient_id']) ? (int)$_POST['patient_id'] : null;
-                    $price_per_day = (float)$_POST['price_per_day'];
-                    
+                    $patient_id = !empty($_POST['patient_id']) ? (int) $_POST['patient_id'] : null;
+                    $price_per_day = (float) $_POST['price_per_day'];
+
                     $occupied_since = null;
                     $reserved_since = null;
-                    
+
                     if ($status === 'occupied' && $patient_id) {
                         $occupied_since = date('Y-m-d H:i:s');
                     } elseif ($status === 'reserved' && $patient_id) {
@@ -640,7 +653,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     if ($status === 'available' || $status === 'cleaning') {
                         $patient_id = null;
                     }
-                    
+
                     $stmt = $conn->prepare("UPDATE rooms SET room_number = ?, status = ?, patient_id = ?, occupied_since = ?, reserved_since = ?, price_per_day = ? WHERE id = ?");
                     $stmt->bind_param("ssissdi", $room_number, $status, $patient_id, $occupied_since, $reserved_since, $price_per_day, $id);
 
@@ -655,7 +668,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     if (empty($_POST['id'])) {
                         throw new Exception('Room ID is required.');
                     }
-                    $id = (int)$_POST['id'];
+                    $id = (int) $_POST['id'];
                     $stmt = $conn->prepare("DELETE FROM rooms WHERE id = ?");
                     $stmt->bind_param("i", $id);
                     if ($stmt->execute()) {
@@ -665,42 +678,97 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     break;
 
-            }
-        }
-        elseif (isset($_GET['fetch'])) {
-             $fetch_target = $_GET['fetch'];
-             switch ($fetch_target) {
-                case 'users':
-                    if (!isset($_GET['role'])) throw new Exception('User role not specified.');
-                    $role = $_GET['role'];
-                    
-                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, u.email, u.phone, u.role, u.active, u.created_at, u.date_of_birth, u.gender, u.profile_picture";
-                    
-                    if ($role === 'doctor') {
-                        $sql .= ", d.specialty, d.qualifications, d.department_id, d.availability 
-                                 FROM users u 
-                                 LEFT JOIN doctors d ON u.id = d.user_id 
-                                 WHERE u.role = ?";
-                    } elseif ($role === 'staff') {
-                        $sql .= ", s.shift, s.assigned_department 
-                                 FROM users u 
-                                 LEFT JOIN staff s ON u.id = s.user_id 
-                                 WHERE u.role = ?";
-                    } else {
-                        $sql .= " FROM users u WHERE u.role = ?";
+                    case 'update_doctor_schedule':
+    if (empty($_POST['doctor_id']) || !isset($_POST['slots'])) {
+        throw new Exception('Doctor ID and slots data are required.');
+    }
+    $doctor_id = (int)$_POST['doctor_id'];
+    $slots_json = $_POST['slots']; // This will be a JSON string from the frontend
+
+    $stmt = $conn->prepare("UPDATE doctors SET slots = ? WHERE user_id = ?");
+    $stmt->bind_param("si", $slots_json, $doctor_id);
+
+    if ($stmt->execute()) {
+        log_activity($conn, $admin_user_id_for_log, 'update_doctor_schedule', $doctor_id, "Updated schedule for doctor ID {$doctor_id}.");
+        $response = ['success' => true, 'message' => 'Doctor schedule updated successfully.'];
+    } else {
+        throw new Exception('Failed to update doctor schedule.');
+    }
+    break;
+
+
+                case 'update_staff_shift':
+                    if (empty($_POST['staff_id']) || empty($_POST['shift'])) {
+                        throw new Exception('Staff ID and shift are required.');
                     }
-                    $sql .= " ORDER BY u.created_at DESC";
+                    $staff_id = (int)$_POST['staff_id'];
+                    $shift = $_POST['shift'];
+                    if (!in_array($shift, ['day', 'night', 'off'])) {
+                        throw new Exception('Invalid shift value.');
+                    }
+
+                    $stmt = $conn->prepare("UPDATE staff SET shift = ? WHERE user_id = ?");
+                    $stmt->bind_param("si", $shift, $staff_id);
+                    if ($stmt->execute()) {
+                        log_activity($conn, $admin_user_id_for_log, 'update_staff_shift', $staff_id, "Updated shift to '{$shift}' for staff ID {$staff_id}.");
+                        $response = ['success' => true, 'message' => 'Staff shift updated successfully.'];
+                    } else {
+                        throw new Exception('Failed to update staff shift.');
+                    }
+                    break;
+
+            }
+        } elseif (isset($_GET['fetch'])) {
+            $fetch_target = $_GET['fetch'];
+            switch ($fetch_target) {
+                case 'users':
+                    if (!isset($_GET['role']))
+                        throw new Exception('User role not specified.');
+                    $role = $_GET['role'];
+                    $search = $_GET['search'] ?? ''; // Get the search term from the request
+
+                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, u.email, u.phone, u.role, u.active, u.created_at, u.date_of_birth, u.gender, u.profile_picture";
+                    $params = [];
+                    $types = "";
+
+                    $base_from = " FROM users u ";
+                    if ($role === 'doctor') {
+                        $sql .= ", d.specialty, d.qualifications, d.department_id, d.availability";
+                        $base_from = " FROM users u LEFT JOIN doctors d ON u.id = d.user_id ";
+                    } elseif ($role === 'staff') {
+                        $sql .= ", s.shift, s.assigned_department";
+                        $base_from = " FROM users u LEFT JOIN staff s ON u.id = s.user_id ";
+                    }
+                    $sql .= $base_from;
+
+                    $where_clauses = ["u.role = ?"];
+                    $params[] = $role;
+                    $types .= "s";
+
+                    if (!empty($search)) {
+                        // Add conditions to search across multiple fields
+                        $where_clauses[] = "(u.name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR u.display_user_id LIKE ?)";
+                        $search_term = "%{$search}%";
+                        array_push($params, $search_term, $search_term, $search_term, $search_term);
+                        $types .= "ssss";
+                    }
+
+                    $sql .= " WHERE " . implode(' AND ', $where_clauses) . " ORDER BY u.created_at DESC";
 
                     $stmt = $conn->prepare($sql);
-                    $stmt->bind_param("s", $role);
+                    // Bind parameters dynamically
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
                     $stmt->execute();
                     $result = $stmt->get_result();
                     $data = $result->fetch_all(MYSQLI_ASSOC);
                     $response = ['success' => true, 'data' => $data];
                     break;
                 case 'user_details':
-                    if (empty($_GET['id'])) throw new Exception('User ID not specified.');
-                    $user_id = (int)$_GET['id'];
+                    if (empty($_GET['id']))
+                        throw new Exception('User ID not specified.');
+                    $user_id = (int) $_GET['id'];
                     $data = [];
 
                     // Fetch basic user info
@@ -733,7 +801,34 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
 
                     $response = ['success' => true, 'data' => $data];
                     break;
-                
+
+                    case 'doctors_for_scheduling':
+    $result = $conn->query("SELECT u.id, u.name, u.display_user_id FROM users u JOIN doctors d ON u.id = d.user_id WHERE u.active = 1 AND u.role = 'doctor' ORDER BY u.name ASC");
+    $data = $result->fetch_all(MYSQLI_ASSOC);
+    $response = ['success' => true, 'data' => $data];
+    break;
+
+case 'fetch_doctor_schedule':
+    if (empty($_GET['doctor_id'])) throw new Exception('Doctor ID is required.');
+    $doctor_id = (int)$_GET['doctor_id'];
+    $stmt = $conn->prepare("SELECT slots FROM doctors WHERE user_id = ?");
+    $stmt->bind_param("i", $doctor_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $data = $result->fetch_assoc();
+    // Provide a default structure if slots are null
+    $slots = $data['slots'] ? json_decode($data['slots'], true) : [
+        'Monday' => [], 'Tuesday' => [], 'Wednesday' => [], 'Thursday' => [], 'Friday' => [], 'Saturday' => [], 'Sunday' => []
+    ];
+    $response = ['success' => true, 'data' => $slots];
+    break;
+
+                    case 'staff_for_shifting':
+                    $result = $conn->query("SELECT u.id, u.name, u.display_user_id, s.shift FROM users u JOIN staff s ON u.id = s.user_id WHERE u.active = 1 AND u.role = 'staff' ORDER BY u.name ASC");
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
                 case 'departments':
                     $result = $conn->query("SELECT id, name FROM departments WHERE is_active = 1 ORDER BY name");
                     $data = $result->fetch_all(MYSQLI_ASSOC);
@@ -744,13 +839,13 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stats = [];
                     $stats['total_users'] = $conn->query("SELECT COUNT(*) as c FROM users")->fetch_assoc()['c'];
                     $stats['active_doctors'] = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='doctor' AND active=1")->fetch_assoc()['c'];
-                    
+
                     $role_counts_sql = "SELECT role, COUNT(*) as count FROM users GROUP BY role";
                     $result = $conn->query($role_counts_sql);
                     $counts = ['user' => 0, 'doctor' => 0, 'staff' => 0, 'admin' => 0];
-                     while($row = $result->fetch_assoc()){
-                        if(array_key_exists($row['role'], $counts)){
-                            $counts[$row['role']] = (int)$row['count'];
+                    while ($row = $result->fetch_assoc()) {
+                        if (array_key_exists($row['role'], $counts)) {
+                            $counts[$row['role']] = (int) $row['count'];
                         }
                     }
                     $stats['role_counts'] = $counts;
@@ -764,8 +859,8 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
 
                     $response = ['success' => true, 'data' => $stats];
                     break;
-                
-                case 'my_profile': 
+
+                case 'my_profile':
                     $admin_id = $_SESSION['user_id'];
                     $stmt = $conn->prepare("SELECT name, email, phone, username FROM users WHERE id = ?");
                     $stmt->bind_param("i", $admin_id);
@@ -774,7 +869,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $data = $result->fetch_assoc();
                     $response = ['success' => true, 'data' => $data];
                     break;
-                
+
                 // --- INVENTORY FETCH ENDPOINTS ---
                 case 'medicines':
                     $result = $conn->query("SELECT * FROM medicines ORDER BY name ASC");
@@ -804,7 +899,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $data = $result->fetch_all(MYSQLI_ASSOC);
                     $response = ['success' => true, 'data' => $data];
                     break;
-                
+
                 case 'rooms':
                     $sql = "SELECT r.id, r.room_number, r.status, r.patient_id, u.name as patient_name, r.occupied_since, r.reserved_since, r.price_per_day 
                             FROM rooms r
@@ -814,29 +909,41 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $data = $result->fetch_all(MYSQLI_ASSOC);
                     $response = ['success' => true, 'data' => $data];
                     break;
-                
+
                 case 'patients_for_beds': // Re-used for rooms as well
                     $result = $conn->query("SELECT id, name, display_user_id FROM users WHERE role = 'user' AND active = 1 ORDER BY name ASC");
                     $data = $result->fetch_all(MYSQLI_ASSOC);
                     $response = ['success' => true, 'data' => $data];
                     break;
-                
+
                 case 'report':
                     if (empty($_GET['type']) || empty($_GET['period'])) {
                         throw new Exception('Report type and period are required.');
                     }
                     $reportType = $_GET['type'];
                     $period = $_GET['period'];
-                    
+
                     $data = ['summary' => [], 'chartData' => []];
                     $date_format = '%Y-%m-%d';
                     $interval = '1 YEAR';
 
-                    switch($period) {
-                        case 'daily': $date_format = '%Y-%m-%d'; $interval = '1 MONTH'; break;
-                        case 'weekly': $date_format = '%Y-W%U'; $interval = '3 MONTH'; break;
-                        case 'monthly': $date_format = '%Y-%m'; $interval = '1 YEAR'; break;
-                        case 'yearly': $date_format = '%Y'; $interval = '5 YEAR'; break;
+                    switch ($period) {
+                        case 'daily':
+                            $date_format = '%Y-%m-%d';
+                            $interval = '1 MONTH';
+                            break;
+                        case 'weekly':
+                            $date_format = '%Y-W%U';
+                            $interval = '3 MONTH';
+                            break;
+                        case 'monthly':
+                            $date_format = '%Y-%m';
+                            $interval = '1 YEAR';
+                            break;
+                        case 'yearly':
+                            $date_format = '%Y';
+                            $interval = '5 YEAR';
+                            break;
                     }
 
                     if ($reportType === 'financial') {
@@ -846,7 +953,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $summary_sql = "SELECT COUNT(*) as total_appointments, SUM(IF(status='completed', 1, 0)) as completed, SUM(IF(status='cancelled', 1, 0)) as cancelled FROM appointments WHERE appointment_date >= DATE_SUB(NOW(), INTERVAL $interval)";
                         $chart_sql = "SELECT DATE_FORMAT(appointment_date, '$date_format') as label, COUNT(*) as value FROM appointments WHERE appointment_date >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
                     } else { // resource
-                         $summary_sql = "SELECT 
+                        $summary_sql = "SELECT 
                             (SELECT COUNT(*) FROM beds) as total_beds,
                             (SELECT COUNT(*) FROM rooms) as total_rooms,
                             (SELECT COUNT(*) FROM beds WHERE status = 'occupied') as occupied_beds,
@@ -864,7 +971,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $response = ['success' => true, 'data' => $data];
                     break;
                 case 'activity':
-                    $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
+                    $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 50;
                     $sql = "SELECT a.id, a.action, a.details, a.created_at, u.username as admin_username, t.username as target_username
                             FROM activity_logs a
                             JOIN users u ON a.user_id = u.id
@@ -878,14 +985,14 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $data = $result->fetch_all(MYSQLI_ASSOC);
                     $response = ['success' => true, 'data' => $data];
                     break;
-             }
+            }
         }
 
-    } catch (Throwable $e) { 
-        http_response_code(400); 
+    } catch (Throwable $e) {
+        http_response_code(400);
         $response['message'] = $e->getMessage();
     }
-    
+
     restore_error_handler();
     echo json_encode($response);
     exit();
@@ -900,19 +1007,19 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pdf') {
 
     // In a real application, you would fetch the data again here based on the report type and period
     // For this example, we'll just create a simple PDF
-    
-    $html = '<h1>Report: '.htmlspecialchars($reportType).'</h1>';
-    $html .= '<h2>Period: '.htmlspecialchars($period).'</h2>';
-    $html .= '<p>This is a sample report generated on '.date('Y-m-d H:i:s').'.</p>';
+
+    $html = '<h1>Report: ' . htmlspecialchars($reportType) . '</h1>';
+    $html .= '<h2>Period: ' . htmlspecialchars($period) . '</h2>';
+    $html .= '<p>This is a sample report generated on ' . date('Y-m-d H:i:s') . '.</p>';
     // You would loop through your data and build a table here
-    
+
     $options = new Options();
     $options->set('isHtml5ParserEnabled', true);
     $dompdf = new Dompdf($options);
     $dompdf->loadHtml($html);
     $dompdf->setPaper('A4', 'portrait');
     $dompdf->render();
-    $dompdf->stream(strtolower(str_replace(' ', '_', $reportType)).'_report.pdf', ["Attachment" => 1]);
+    $dompdf->stream(strtolower(str_replace(' ', '_', $reportType)) . '_report.pdf', ["Attachment" => 1]);
     exit();
 }
 
@@ -939,17 +1046,19 @@ $_SESSION['csrf_token'] = $csrf_token;
 
 $total_users = $conn->query("SELECT COUNT(*) as c FROM users")->fetch_assoc()['c'];
 $active_doctors = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='doctor' AND active=1")->fetch_assoc()['c'];
-$pending_appointments = 0; 
+$pending_appointments = 0;
 
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard - MedSync</title>
-    
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -959,20 +1068,243 @@ $pending_appointments = 0;
     <link rel="manifest" href="images/favicon/site.webmanifest">
 
     <style>
+
+        /* --- Schedules Panel --- */
+/* (Keep all existing .schedule-* CSS rules) */
+
+.time-slot {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem; /* Add gap for spacing */
+    background-color: var(--bg-grey);
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-light);
+}
+.time-slot label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+.time-slot input[type="time"] {
+    border: none;
+    background: transparent;
+    outline: none;
+    flex-grow: 1; /* This is the key change */
+    width: 100%; /* Fallback for some browsers */
+    color: var(--text-dark);
+    font-family: 'Poppins', sans-serif;
+}
+/* Style for the time input's picker indicator to match the theme */
+input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.5); /* A simple trick to make it visible in both light/dark modes */
+}
+body.dark-mode input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+}
+
+.time-slot .remove-slot-btn {
+    background: none;
+    border: none;
+    color: var(--danger-color);
+    cursor: pointer;
+    font-size: 1.1rem;
+}
+/* (Keep the rest of the existing schedule CSS rules) */
+
+        /* --- Schedules Panel --- */
+.schedule-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border-light);
+    margin-bottom: 2rem;
+}
+.schedule-tab-button {
+    padding: 0.75rem 1.5rem;
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-weight: 600;
+    color: var(--text-muted);
+    border-bottom: 3px solid transparent;
+    margin-bottom: -1px; /* Overlap border */
+    transition: all 0.3s ease;
+}
+.schedule-tab-button.active, .schedule-tab-button:hover {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+.schedule-tab-content {
+    display: none;
+}
+.schedule-tab-content.active {
+    display: block;
+}
+.schedule-controls {
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-end;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background-color: var(--bg-grey);
+    border-radius: var(--border-radius);
+}
+.schedule-editor-container .placeholder-text {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 3rem;
+    background-color: var(--bg-grey);
+    border-radius: var(--border-radius);
+}
+.day-schedule-card {
+    background-color: var(--bg-light);
+    border: 1px solid var(--border-light);
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+.day-schedule-card h4 {
+    margin-bottom: 1.5rem;
+    font-weight: 600;
+}
+.time-slots-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); /* Increased min-width */
+    gap: 1rem;
+}
+.time-slot {
+    display: flex;
+    align-items: center;
+    background-color: var(--bg-grey);
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+}
+.time-slot input {
+    border: none;
+    background: transparent;
+    outline: none;
+    width: 100%;
+}
+.time-slot .remove-slot-btn {
+    background: none;
+    border: none;
+    color: var(--danger-color);
+    cursor: pointer;
+    font-size: 1.1rem;
+    margin-left: 0.5rem;
+}
+.add-slot-btn {
+    margin-top: 1rem;
+    background: none;
+    border: 1px dashed var(--primary-color);
+    color: var(--primary-color);
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+.add-slot-btn:hover {
+    background-color: var(--primary-color);
+    color: white;
+}
+.schedule-actions {
+    margin-top: 2rem;
+    text-align: right;
+}
+.shift-select {
+    padding: 0.5rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-light);
+    background-color: var(--bg-grey);
+    color: var(--text-dark);
+    font-family: 'Poppins', sans-serif;
+    font-weight: 500;
+}
+
+        /* --- Enhanced Search Bar --- */
+        .search-container {
+            position: relative;
+            background-color: var(--bg-grey);
+            border-radius: var(--border-radius);
+            display: flex;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .search-container:focus-within {
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+            background-color: var(--bg-light);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 1rem;
+            color: var(--text-muted);
+            font-size: 1rem;
+            transition: color 0.3s ease;
+        }
+
+        .search-container:focus-within .search-icon {
+            color: var(--primary-color);
+        }
+
+        #user-search-input {
+            width: 100%;
+            border: 1px solid var(--border-light);
+            background-color: transparent;
+            border-radius: var(--border-radius);
+            padding: 1.5rem 1rem 0.5rem 3rem;
+            /* Top padding for label */
+            font-size: 1rem;
+            color: var(--text-dark);
+            outline: none;
+        }
+
+        #user-search-input::placeholder {
+            color: transparent;
+            /* Hide placeholder initially */
+        }
+
+        #user-search-label {
+            position: absolute;
+            left: 3rem;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+            color: var(--text-muted);
+            transition: all 0.3s ease;
+            font-size: 1rem;
+        }
+
+        /* Floating label effect */
+        #user-search-input:focus+#user-search-label,
+        #user-search-input:not(:placeholder-shown)+#user-search-label {
+            top: 0.5rem;
+            transform: translateY(0);
+            font-size: 0.75rem;
+            color: var(--primary-color);
+        }
+
         /* --- THEMES AND MODERN ADMIN COLOR PALETTE --- */
         :root {
-            --primary-color: #3B82F6; /* A modern, vibrant blue */
+            --primary-color: #3B82F6;
+            /* A modern, vibrant blue */
             --primary-color-dark: #2563EB;
             --danger-color: #EF4444;
             --success-color: #22C55E;
             --warning-color: #F97316;
-            
-            --text-dark: #1F2937; /* Dark Gray */
-            --text-light: #F9FAFB; /* Almost White */
-            --text-muted: #6B7280; /* Medium Gray */
-            
-            --bg-light: #FFFFFF; /* White */
-            --bg-grey: #F3F4F6; /* Lightest Gray */
+
+            --text-dark: #1F2937;
+            /* Dark Gray */
+            --text-light: #F9FAFB;
+            /* Almost White */
+            --text-muted: #6B7280;
+            /* Medium Gray */
+
+            --bg-light: #FFFFFF;
+            /* White */
+            --bg-grey: #F3F4F6;
+            /* Lightest Gray */
             --border-light: #E5E7EB;
 
             --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
@@ -987,13 +1319,20 @@ $pending_appointments = 0;
             --text-dark: #F9FAFB;
             --text-light: #1F2937;
             --text-muted: #9CA3AF;
-            --bg-light: #1F2937; /* Card Background */
-            --bg-grey: #111827; /* Main Background */
+            --bg-light: #1F2937;
+            /* Card Background */
+            --bg-grey: #111827;
+            /* Main Background */
             --border-light: #374151;
         }
 
         /* --- BASE STYLES --- */
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
             font-family: 'Poppins', sans-serif;
             background-color: var(--bg-grey);
@@ -1001,7 +1340,11 @@ $pending_appointments = 0;
             transition: background-color var(--transition-speed), color var(--transition-speed);
             font-size: 16px;
         }
-        .dashboard-layout { display: flex; min-height: 100vh; }
+
+        .dashboard-layout {
+            display: flex;
+            min-height: 100vh;
+        }
 
         /* --- SIDEBAR --- */
         .sidebar {
@@ -1019,138 +1362,696 @@ $pending_appointments = 0;
             left: 0;
             border-right: 1px solid var(--border-light);
         }
-        .sidebar-header { display: flex; align-items: center; margin-bottom: 2.5rem; padding-left: 0.5rem; }
-        .sidebar-header .logo-img { height: 40px; margin-right: 10px; }
-        .sidebar-header .logo-text { font-size: 1.5rem; font-weight: 600; color: var(--text-dark); }
-        .sidebar-nav { flex-grow: 1; overflow-y: auto; }
-        .sidebar-nav ul { list-style: none; }
-        .sidebar-nav a, .nav-dropdown-toggle {
-            display: flex; align-items: center; padding: 0.9rem 1rem; color: var(--text-muted);
-            text-decoration: none; border-radius: 8px; margin-bottom: 0.5rem;
-            transition: background-color var(--transition-speed), color var(--transition-speed);
-            font-weight: 500; cursor: pointer;
+
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 2.5rem;
+            padding-left: 0.5rem;
         }
-        .sidebar-nav a i, .nav-dropdown-toggle i { width: 20px; margin-right: 1rem; font-size: 1.1rem; text-align: center; }
-        .sidebar-nav a:hover, .nav-dropdown-toggle:hover { background-color: var(--bg-grey); color: var(--primary-color); }
-        .sidebar-nav a.active, .nav-dropdown-toggle.active { background-color: var(--primary-color); color: white; }
-        body.dark-mode .sidebar-nav a.active, body.dark-mode .nav-dropdown-toggle.active { background-color: var(--primary-color-dark); }
-        .nav-dropdown-toggle .arrow { margin-left: auto; transition: transform var(--transition-speed); }
-        .nav-dropdown-toggle.active .arrow { transform: rotate(90deg); }
-        .nav-dropdown { list-style: none; max-height: 0; overflow: hidden; transition: max-height 0.4s ease-in-out; padding-left: 1.5rem; }
-        .nav-dropdown a { font-size: 0.95rem; padding: 0.7rem 1rem 0.7rem 0.5rem; background-color: rgba(100,100,100,0.05); }
-        body.dark-mode .nav-dropdown a { background-color: rgba(255,255,255,0.05); }
-        .logout-btn { display: flex; align-items: center; justify-content: center; width: 100%; padding: 0.9rem 1rem; background-color: transparent; color: var(--danger-color); border: 1px solid var(--danger-color); border-radius: 8px; font-size: 1rem; font-family: 'Poppins', sans-serif; font-weight: 500; cursor: pointer; transition: all var(--transition-speed); margin-top: 1rem; }
-        .logout-btn:hover { background-color: var(--danger-color); color: white; }
+
+        .sidebar-header .logo-img {
+            height: 40px;
+            margin-right: 10px;
+        }
+
+        .sidebar-header .logo-text {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        .sidebar-nav {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .sidebar-nav ul {
+            list-style: none;
+        }
+
+        .sidebar-nav a,
+        .nav-dropdown-toggle {
+            display: flex;
+            align-items: center;
+            padding: 0.9rem 1rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            transition: background-color var(--transition-speed), color var(--transition-speed);
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .sidebar-nav a i,
+        .nav-dropdown-toggle i {
+            width: 20px;
+            margin-right: 1rem;
+            font-size: 1.1rem;
+            text-align: center;
+        }
+
+        .sidebar-nav a:hover,
+        .nav-dropdown-toggle:hover {
+            background-color: var(--bg-grey);
+            color: var(--primary-color);
+        }
+
+        .sidebar-nav a.active,
+        .nav-dropdown-toggle.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        body.dark-mode .sidebar-nav a.active,
+        body.dark-mode .nav-dropdown-toggle.active {
+            background-color: var(--primary-color-dark);
+        }
+
+        .nav-dropdown-toggle .arrow {
+            margin-left: auto;
+            transition: transform var(--transition-speed);
+        }
+
+        .nav-dropdown-toggle.active .arrow {
+            transform: rotate(90deg);
+        }
+
+        .nav-dropdown {
+            list-style: none;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease-in-out;
+            padding-left: 1.5rem;
+        }
+
+        .nav-dropdown a {
+            font-size: 0.95rem;
+            padding: 0.7rem 1rem 0.7rem 0.5rem;
+            background-color: rgba(100, 100, 100, 0.05);
+        }
+
+        body.dark-mode .nav-dropdown a {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .logout-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding: 0.9rem 1rem;
+            background-color: transparent;
+            color: var(--danger-color);
+            border: 1px solid var(--danger-color);
+            border-radius: 8px;
+            font-size: 1rem;
+            font-family: 'Poppins', sans-serif;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-speed);
+            margin-top: 1rem;
+        }
+
+        .logout-btn:hover {
+            background-color: var(--danger-color);
+            color: white;
+        }
 
         /* --- MAIN CONTENT --- */
-        .main-content { flex-grow: 1; padding: 2rem; overflow-y: auto; margin-left: 280px; transition: margin-left var(--transition-speed); }
-        .main-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
-        .main-header .title-group { flex-grow: 1; }
-        .main-header h1 { font-size: 1.8rem; font-weight: 600; margin: 0; }
-        .main-header h2 { font-size: 1.2rem; font-weight: 400; color: var(--text-muted); margin: 0.25rem 0 0 0; }
-        .header-actions { display: flex; align-items: center; gap: 1rem; }
-        .user-profile-widget { display: flex; align-items: center; gap: 1rem; background-color: var(--bg-light); padding: 0.5rem 1rem; border-radius: var(--border-radius); box-shadow: var(--shadow-md); }
-        .user-profile-widget i { font-size: 1.5rem; color: var(--primary-color); }
-        .content-panel { display: none; background-color: var(--bg-light); padding: 2rem; border-radius: var(--border-radius); box-shadow: var(--shadow-md); }
-        .content-panel.active { display: block; }
-        
+        .main-content {
+            flex-grow: 1;
+            padding: 2rem;
+            overflow-y: auto;
+            margin-left: 280px;
+            transition: margin-left var(--transition-speed);
+        }
+
+        .main-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .main-header .title-group {
+            flex-grow: 1;
+        }
+
+        .main-header h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .main-header h2 {
+            font-size: 1.2rem;
+            font-weight: 400;
+            color: var(--text-muted);
+            margin: 0.25rem 0 0 0;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-profile-widget {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            background-color: var(--bg-light);
+            padding: 0.5rem 1rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+        }
+
+        .user-profile-widget i {
+            font-size: 1.5rem;
+            color: var(--primary-color);
+        }
+
+        .content-panel {
+            display: none;
+            background-color: var(--bg-light);
+            padding: 2rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+        }
+
+        .content-panel.active {
+            display: block;
+        }
+
         /* --- DASHBOARD HOME --- */
-        .stat-cards-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin-top: 2rem; }
-        .stat-card { background: var(--bg-light); padding: 1.5rem; border-radius: var(--border-radius); box-shadow: var(--shadow-md); display: flex; align-items: center; gap: 1.5rem; border-left: 5px solid var(--primary-color); transition: transform 0.2s, box-shadow 0.2s; }
-        .stat-card:hover { transform: translateY(-5px); box-shadow: var(--shadow-lg); }
-        .stat-card .icon { font-size: 2rem; padding: 1rem; border-radius: 50%; color: var(--primary-color); background-color: var(--bg-grey); }
-        .stat-card.blue { border-left-color: #3B82F6; } .stat-card.blue .icon { color: #3B82F6; }
-        .stat-card.green { border-left-color: var(--success-color); } .stat-card.green .icon { color: var(--success-color); }
-        .stat-card.orange { border-left-color: var(--warning-color); } .stat-card.orange .icon { color: var(--warning-color); }
-        .stat-card.red { border-left-color: var(--danger-color); } .stat-card.red .icon { color: var(--danger-color); } /* Added for low stock */
-        .stat-card .info .value { font-size: 1.75rem; font-weight: 600; }
-        .stat-card .info .label { color: var(--text-muted); font-size: 0.9rem; }
-        .dashboard-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; margin-top: 2rem; }
-        .grid-card { background-color: var(--bg-light); padding: 1.5rem; border-radius: var(--border-radius); box-shadow: var(--shadow-md); }
-        .grid-card h3 { margin-bottom: 1.5rem; font-weight: 600; }
+        .stat-cards-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg-light);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            border-left: 5px solid var(--primary-color);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .stat-card .icon {
+            font-size: 2rem;
+            padding: 1rem;
+            border-radius: 50%;
+            color: var(--primary-color);
+            background-color: var(--bg-grey);
+        }
+
+        .stat-card.blue {
+            border-left-color: #3B82F6;
+        }
+
+        .stat-card.blue .icon {
+            color: #3B82F6;
+        }
+
+        .stat-card.green {
+            border-left-color: var(--success-color);
+        }
+
+        .stat-card.green .icon {
+            color: var(--success-color);
+        }
+
+        .stat-card.orange {
+            border-left-color: var(--warning-color);
+        }
+
+        .stat-card.orange .icon {
+            color: var(--warning-color);
+        }
+
+        .stat-card.red {
+            border-left-color: var(--danger-color);
+        }
+
+        .stat-card.red .icon {
+            color: var(--danger-color);
+        }
+
+        /* Added for low stock */
+        .stat-card .info .value {
+            font-size: 1.75rem;
+            font-weight: 600;
+        }
+
+        .stat-card .info .label {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .grid-card {
+            background-color: var(--bg-light);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+        }
+
+        .grid-card h3 {
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+        }
 
         /* --- QUICK ACTIONS --- */
-        .quick-actions .actions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1rem; }
-        .quick-actions .action-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.2rem 1rem; border-radius: var(--border-radius); background-color: var(--bg-grey); color: var(--text-dark); text-decoration: none; font-weight: 500; text-align: center; transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s, color 0.2s; }
-        .quick-actions .action-btn:hover { transform: translateY(-5px); box-shadow: var(--shadow-lg); background-color: var(--primary-color); color: white; }
-        .quick-actions .action-btn i { font-size: 1.8rem; margin-bottom: 0.75rem; }
+        .quick-actions .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 1rem;
+        }
+
+        .quick-actions .action-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1.2rem 1rem;
+            border-radius: var(--border-radius);
+            background-color: var(--bg-grey);
+            color: var(--text-dark);
+            text-decoration: none;
+            font-weight: 500;
+            text-align: center;
+            transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s, color 0.2s;
+        }
+
+        .quick-actions .action-btn:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .quick-actions .action-btn i {
+            font-size: 1.8rem;
+            margin-bottom: 0.75rem;
+        }
 
         /* --- USER MANAGEMENT & GENERIC TABLE STYLES --- */
-        .table-container { overflow-x: auto; }
-        .data-table { width: 100%; border-collapse: collapse; }
-        .data-table th, .data-table td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--border-light); white-space: nowrap; }
-        .data-table th { font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
-        .data-table tbody tr { transition: background-color var(--transition-speed); }
-        .data-table tbody tr:hover { background-color: var(--bg-grey); }
-        .data-table tbody tr.clickable-row { cursor: pointer; }
-        .user-list-pfp { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; margin-right: 10px; }
-        .status-badge { padding: 0.25rem 0.6rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600; }
-        .status-badge.active, .status-badge.in-stock { background-color: #D1FAE5; color: #065F46; }
-        .status-badge.inactive, .status-badge.low-stock { background-color: #FEE2E2; color: #991B1B; }
-        body.dark-mode .status-badge.active, body.dark-mode .status-badge.in-stock { background-color: #064E3B; color: #A7F3D0; }
-        body.dark-mode .status-badge.inactive, body.dark-mode .status-badge.low-stock { background-color: #7F1D1D; color: #FECACA; }
-        .action-buttons button { background: none; border: none; cursor: pointer; font-size: 1.1rem; margin: 0 5px; transition: color var(--transition-speed); }
-        .action-buttons .btn-edit { color: var(--primary-color); }
-        .action-buttons .btn-delete { color: var(--danger-color); }
-        .quantity-good { color: var(--success-color); font-weight: 600; }
-        .quantity-low { color: var(--danger-color); font-weight: 600; }
+        .table-container {
+            overflow-x: auto;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-light);
+            white-space: nowrap;
+        }
+
+        .data-table th {
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .data-table tbody tr {
+            transition: background-color var(--transition-speed);
+        }
+
+        .data-table tbody tr:hover {
+            background-color: var(--bg-grey);
+        }
+
+        .data-table tbody tr.clickable-row {
+            cursor: pointer;
+        }
+
+        .user-list-pfp {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-right: 10px;
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.6rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .status-badge.active,
+        .status-badge.in-stock {
+            background-color: #D1FAE5;
+            color: #065F46;
+        }
+
+        .status-badge.inactive,
+        .status-badge.low-stock {
+            background-color: #FEE2E2;
+            color: #991B1B;
+        }
+
+        body.dark-mode .status-badge.active,
+        body.dark-mode .status-badge.in-stock {
+            background-color: #064E3B;
+            color: #A7F3D0;
+        }
+
+        body.dark-mode .status-badge.inactive,
+        body.dark-mode .status-badge.low-stock {
+            background-color: #7F1D1D;
+            color: #FECACA;
+        }
+
+        .action-buttons button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1.1rem;
+            margin: 0 5px;
+            transition: color var(--transition-speed);
+        }
+
+        .action-buttons .btn-edit {
+            color: var(--primary-color);
+        }
+
+        .action-buttons .btn-delete {
+            color: var(--danger-color);
+        }
+
+        .quantity-good {
+            color: var(--success-color);
+            font-weight: 600;
+        }
+
+        .quantity-low {
+            color: var(--danger-color);
+            font-weight: 600;
+        }
 
         /* --- BUTTONS & FORMS --- */
-        .btn { padding: 0.7rem 1.4rem; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all var(--transition-speed); border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem; }
-        .btn-primary { background-color: var(--primary-color); color: white; }
-        .btn-primary:hover { background-color: var(--primary-color-dark); }
-        .form-group { margin-bottom: 1rem; }
-        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
-        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 0.75rem; border: 1px solid var(--border-light); border-radius: 8px; background-color: var(--bg-grey); color: var(--text-dark); transition: all var(--transition-speed); }
-        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
+        .btn {
+            padding: 0.7rem 1.4rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all var(--transition-speed);
+            border: 1px solid transparent;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-color-dark);
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            background-color: var(--bg-grey);
+            color: var(--text-dark);
+            transition: all var(--transition-speed);
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+
         .role-specific-fields {
             border-top: 1px solid var(--border-light);
             margin-top: 1.5rem;
             padding-top: 1.5rem;
         }
-        
+
         /* --- MODAL, NOTIFICATION, CONFIRMATION STYLES --- */
-        .modal, .notification-container, .confirm-dialog { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1050; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); background-color: rgba(0,0,0,0.5); }
-        .modal.show, .notification-container.show, .confirm-dialog.show { display: flex; }
-        .modal-content, .confirm-content { background-color: var(--bg-light); padding: 2rem; border-radius: var(--border-radius); box-shadow: var(--shadow-lg); width: 90%; max-width: 500px; animation: slideIn 0.3s ease-out; max-height: 90vh; overflow-y: auto; }
-        #user-detail-modal .modal-content { max-width: 800px; }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding-bottom: 1rem; margin-bottom: 1.5rem; }
-        .modal-header h3 { margin: 0; }
-        .modal-close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); }
-        @keyframes slideIn { from { transform: translateY(-30px) scale(0.95); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
-        .notification { padding: 1rem 1.5rem; border-radius: 8px; color: white; box-shadow: var(--shadow-lg); animation: slideIn 0.3s, fadeOut 0.5s 4.5s forwards; position: fixed; top: 20px; right: 20px; z-index: 1100; }
-        .notification.success { background-color: var(--success-color); }
-        .notification.error { background-color: var(--danger-color); }
-        .notification.warning { background-color: var(--warning-color); }
-        @keyframes fadeOut { to { opacity: 0; transform: translateY(-20px); } }
-        .confirm-content { text-align: center; }
-        .confirm-content h4 { margin-bottom: 1rem; } .confirm-content p { margin-bottom: 1.5rem; color: var(--text-muted); }
-        .confirm-buttons { display: flex; justify-content: center; gap: 1rem; }
-        .btn-secondary { background-color: var(--bg-grey); color: var(--text-dark); border-color: var(--border-light); }
-        body.dark-mode .btn-secondary { background-color: #374151; color: var(--text-light); border-color: #4B5563; }
-        .btn-secondary:hover { background-color: #E5E7EB; }
-        body.dark-mode .btn-secondary:hover { background-color: #4B5563; }
-        .btn-danger { background-color: var(--danger-color); color: white; }
+        .modal,
+        .notification-container,
+        .confirm-dialog {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1050;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal.show,
+        .notification-container.show,
+        .confirm-dialog.show {
+            display: flex;
+        }
+
+        .modal-content,
+        .confirm-content {
+            background-color: var(--bg-light);
+            padding: 2rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-lg);
+            width: 90%;
+            max-width: 500px;
+            animation: slideIn 0.3s ease-out;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        #user-detail-modal .modal-content {
+            max-width: 800px;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-light);
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+        }
+
+        .modal-close-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-muted);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-30px) scale(0.95);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+        }
+
+        .notification {
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            color: white;
+            box-shadow: var(--shadow-lg);
+            animation: slideIn 0.3s, fadeOut 0.5s 4.5s forwards;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1100;
+        }
+
+        .notification.success {
+            background-color: var(--success-color);
+        }
+
+        .notification.error {
+            background-color: var(--danger-color);
+        }
+
+        .notification.warning {
+            background-color: var(--warning-color);
+        }
+
+        @keyframes fadeOut {
+            to {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+        }
+
+        .confirm-content {
+            text-align: center;
+        }
+
+        .confirm-content h4 {
+            margin-bottom: 1rem;
+        }
+
+        .confirm-content p {
+            margin-bottom: 1.5rem;
+            color: var(--text-muted);
+        }
+
+        .confirm-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        .btn-secondary {
+            background-color: var(--bg-grey);
+            color: var(--text-dark);
+            border-color: var(--border-light);
+        }
+
+        body.dark-mode .btn-secondary {
+            background-color: #374151;
+            color: var(--text-light);
+            border-color: #4B5563;
+        }
+
+        .btn-secondary:hover {
+            background-color: #E5E7EB;
+        }
+
+        body.dark-mode .btn-secondary:hover {
+            background-color: #4B5563;
+        }
+
+        .btn-danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
 
         /* --- DARK/LIGHT THEME TOGGLE --- */
-        .theme-switch-wrapper { display: flex; align-items: center; }
-        .theme-switch { display: inline-block; height: 24px; position: relative; width: 48px; }
-        .theme-switch input { display: none; }
-        .slider { background-color: #ccc; bottom: 0; cursor: pointer; left: 0; position: absolute; right: 0; top: 0; transition: .4s; border-radius: 24px; }
-        .slider:before { background-color: #fff; content: ""; height: 18px; left: 3px; position: absolute; bottom: 3px; transition: .4s; width: 18px; border-radius: 50%; }
-        input:checked + .slider { background-color: var(--primary-color-dark); }
-        input:checked + .slider:before { transform: translateX(24px); }
-        .theme-switch-wrapper .fa-sun, .theme-switch-wrapper .fa-moon { margin: 0 8px; color: var(--text-muted); }
-        
+        .theme-switch-wrapper {
+            display: flex;
+            align-items: center;
+        }
+
+        .theme-switch {
+            display: inline-block;
+            height: 24px;
+            position: relative;
+            width: 48px;
+        }
+
+        .theme-switch input {
+            display: none;
+        }
+
+        .slider {
+            background-color: #ccc;
+            bottom: 0;
+            cursor: pointer;
+            left: 0;
+            position: absolute;
+            right: 0;
+            top: 0;
+            transition: .4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            background-color: #fff;
+            content: "";
+            height: 18px;
+            left: 3px;
+            position: absolute;
+            bottom: 3px;
+            transition: .4s;
+            width: 18px;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: var(--primary-color-dark);
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(24px);
+        }
+
+        .theme-switch-wrapper .fa-sun,
+        .theme-switch-wrapper .fa-moon {
+            margin: 0 8px;
+            color: var(--text-muted);
+        }
+
         /* --- INVENTORY: BEDS & ROOMS --- */
-        .resource-grid-container, .ward-beds-container {
+        .resource-grid-container,
+        .ward-beds-container {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
             gap: 1.5rem;
         }
+
         .ward-section {
             margin-bottom: 2rem;
         }
+
         .ward-header {
             padding-bottom: 1rem;
             margin-bottom: 1.5rem;
@@ -1159,12 +2060,15 @@ $pending_appointments = 0;
             justify-content: space-between;
             align-items: center;
         }
+
         .ward-header h3 {
             font-size: 1.5rem;
             font-weight: 600;
             color: var(--text-dark);
         }
-        .bed-card, .room-card {
+
+        .bed-card,
+        .room-card {
             background-color: var(--bg-light);
             padding: 1.25rem;
             border-radius: var(--border-radius);
@@ -1174,77 +2078,189 @@ $pending_appointments = 0;
             transition: transform 0.2s, box-shadow 0.2s;
             cursor: pointer;
         }
-        .bed-card:hover, .room-card:hover {
+
+        .bed-card:hover,
+        .room-card:hover {
             transform: translateY(-5px);
             box-shadow: var(--shadow-lg);
         }
-        .bed-card.available, .room-card.available { border-color: var(--success-color); }
-        .bed-card.occupied, .room-card.occupied { border-color: var(--danger-color); }
-        .bed-card.reserved, .room-card.reserved { border-color: var(--primary-color); }
-        .bed-card.cleaning, .room-card.cleaning { border-color: var(--warning-color); }
 
-        .bed-card .bed-icon, .room-card .room-icon {
+        .bed-card.available,
+        .room-card.available {
+            border-color: var(--success-color);
+        }
+
+        .bed-card.occupied,
+        .room-card.occupied {
+            border-color: var(--danger-color);
+        }
+
+        .bed-card.reserved,
+        .room-card.reserved {
+            border-color: var(--primary-color);
+        }
+
+        .bed-card.cleaning,
+        .room-card.cleaning {
+            border-color: var(--warning-color);
+        }
+
+        .bed-card .bed-icon,
+        .room-card .room-icon {
             font-size: 2rem;
             margin-bottom: 0.75rem;
         }
-        .bed-card.available .bed-icon, .room-card.available .room-icon { color: var(--success-color); }
-        .bed-card.occupied .bed-icon, .room-card.occupied .room-icon { color: var(--danger-color); }
-        .bed-card.reserved .bed-icon, .room-card.reserved .room-icon { color: var(--primary-color); }
-        .bed-card.cleaning .bed-icon, .room-card.cleaning .room-icon { color: var(--warning-color); }
 
-        .bed-card .bed-number, .room-card .room-number {
+        .bed-card.available .bed-icon,
+        .room-card.available .room-icon {
+            color: var(--success-color);
+        }
+
+        .bed-card.occupied .bed-icon,
+        .room-card.occupied .room-icon {
+            color: var(--danger-color);
+        }
+
+        .bed-card.reserved .bed-icon,
+        .room-card.reserved .room-icon {
+            color: var(--primary-color);
+        }
+
+        .bed-card.cleaning .bed-icon,
+        .room-card.cleaning .room-icon {
+            color: var(--warning-color);
+        }
+
+        .bed-card .bed-number,
+        .room-card .room-number {
             font-size: 1.2rem;
             font-weight: 600;
             margin-bottom: 0.25rem;
         }
-        .bed-card .bed-status, .room-card .room-status {
+
+        .bed-card .bed-status,
+        .room-card .room-status {
             font-size: 0.85rem;
             font-weight: 500;
             text-transform: capitalize;
             margin-bottom: 0.5rem;
             color: var(--text-muted);
         }
-        .bed-card .patient-info, .room-card .patient-info {
+
+        .bed-card .patient-info,
+        .room-card .patient-info {
             font-size: 0.8rem;
             color: var(--text-muted);
             margin-top: 0.25rem;
         }
-        .bed-card .action-buttons, .room-card .action-buttons {
+
+        .bed-card .action-buttons,
+        .room-card .action-buttons {
             margin-top: 1rem;
             display: flex;
             justify-content: center;
             gap: 0.5rem;
         }
-        .bed-card .action-buttons button, .room-card .action-buttons button {
+
+        .bed-card .action-buttons button,
+        .room-card .action-buttons button {
             padding: 0.25rem 0.5rem;
             font-size: 0.8rem;
         }
 
         /* --- MOBILE & RESPONSIVE --- */
-        .hamburger-btn { display: none; background: none; border: none; font-size: 1.5rem; color: var(--text-dark); cursor: pointer; z-index: 1001; }
-        .overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.5); z-index: 998; }
+        .hamburger-btn {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: var(--text-dark);
+            cursor: pointer;
+            z-index: 1001;
+        }
+
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 998;
+        }
 
         @media (max-width: 992px) {
-            .sidebar { left: -280px; }
-            .sidebar.active { left: 0; box-shadow: var(--shadow-lg); }
-            .main-content { margin-left: 0; }
-            .hamburger-btn { display: block; }
-            .main-header { justify-content: flex-start; gap: 1rem; }
-            .main-header .title-group { order: 2; }
-            .header-actions { margin-left: auto; order: 3; }
-            .overlay.active { display: block; }
-            .dashboard-grid { grid-template-columns: 1fr; }
+            .sidebar {
+                left: -280px;
+            }
+
+            .sidebar.active {
+                left: 0;
+                box-shadow: var(--shadow-lg);
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .hamburger-btn {
+                display: block;
+            }
+
+            .main-header {
+                justify-content: flex-start;
+                gap: 1rem;
+            }
+
+            .main-header .title-group {
+                order: 2;
+            }
+
+            .header-actions {
+                margin-left: auto;
+                order: 3;
+            }
+
+            .overlay.active {
+                display: block;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
         }
+
         @media (max-width: 576px) {
-            .main-content { padding: 1rem; }
-            .main-header h1 { font-size: 1.4rem; }
-            .main-header h2 { font-size: 1rem; }
-            .stat-cards-container { grid-template-columns: 1fr; }
-            .header-actions { gap: 0.5rem; }
-            .user-profile-widget { padding: 0.5rem; }
-            .user-profile-widget .user-info { display: none; }
+            .main-content {
+                padding: 1rem;
+            }
+
+            .main-header h1 {
+                font-size: 1.4rem;
+            }
+
+            .main-header h2 {
+                font-size: 1rem;
+            }
+
+            .stat-cards-container {
+                grid-template-columns: 1fr;
+            }
+
+            .header-actions {
+                gap: 0.5rem;
+            }
+
+            .user-profile-widget {
+                padding: 0.5rem;
+            }
+
+            .user-profile-widget .user-info {
+                display: none;
+            }
         }
-        
+
         /* --- REPORTS PANEL --- */
         #reports-panel .report-controls {
             display: flex;
@@ -1256,16 +2272,19 @@ $pending_appointments = 0;
             background-color: var(--bg-grey);
             border-radius: var(--border-radius);
         }
+
         #reports-panel .report-controls .form-group {
             margin-bottom: 0;
             flex-grow: 1;
         }
+
         #reports-panel .report-summary-cards {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 1.5rem;
             margin-bottom: 2.5rem;
         }
+
         .summary-card {
             background-color: var(--bg-light);
             padding: 1.5rem;
@@ -1273,17 +2292,20 @@ $pending_appointments = 0;
             box-shadow: var(--shadow-md);
             border-left: 4px solid var(--primary-color);
         }
+
         .summary-card .label {
             font-size: 0.9rem;
             color: var(--text-muted);
             margin-bottom: 0.5rem;
             display: block;
         }
+
         .summary-card .value {
             font-size: 2rem;
             font-weight: 600;
             color: var(--text-dark);
         }
+
         #reports-panel #report-chart-container {
             margin-top: 2rem;
             padding: 2rem;
@@ -1293,16 +2315,20 @@ $pending_appointments = 0;
         }
 
         /* --- ACTIVITY LOGS (AUDIT TRAIL) --- */
-        #activity-panel .log-item, #user-detail-activity-log .log-item {
+        #activity-panel .log-item,
+        #user-detail-activity-log .log-item {
             display: flex;
             align-items: flex-start;
             gap: 1rem;
             padding: 1rem;
             border-bottom: 1px solid var(--border-light);
         }
-        #activity-panel .log-item:last-child, #user-detail-activity-log .log-item:last-child {
+
+        #activity-panel .log-item:last-child,
+        #user-detail-activity-log .log-item:last-child {
             border-bottom: none;
         }
+
         .log-icon {
             font-size: 1.2rem;
             color: var(--text-light);
@@ -1314,18 +2340,26 @@ $pending_appointments = 0;
             place-items: center;
             flex-shrink: 0;
         }
-        .log-icon.update { background-color: var(--warning-color); }
-        .log-icon.delete { background-color: var(--danger-color); }
+
+        .log-icon.update {
+            background-color: var(--warning-color);
+        }
+
+        .log-icon.delete {
+            background-color: var(--danger-color);
+        }
+
         .log-details p {
             margin: 0;
             font-weight: 500;
         }
+
         .log-details .log-meta {
             font-size: 0.85rem;
             color: var(--text-muted);
             margin-top: 0.25rem;
         }
-        
+
         /* --- USER DETAIL MODAL --- */
         .user-detail-header {
             display: flex;
@@ -1333,6 +2367,7 @@ $pending_appointments = 0;
             gap: 1.5rem;
             margin-bottom: 2rem;
         }
+
         .user-detail-pfp {
             width: 100px;
             height: 100px;
@@ -1340,19 +2375,23 @@ $pending_appointments = 0;
             object-fit: cover;
             border: 4px solid var(--bg-grey);
         }
+
         .user-detail-info h4 {
             font-size: 1.5rem;
             margin: 0;
         }
+
         .user-detail-info p {
             color: var(--text-muted);
             margin: 0.25rem 0;
         }
+
         .detail-tabs {
             display: flex;
             border-bottom: 1px solid var(--border-light);
             margin-bottom: 1.5rem;
         }
+
         .detail-tab-button {
             padding: 0.75rem 1.25rem;
             cursor: pointer;
@@ -1361,20 +2400,25 @@ $pending_appointments = 0;
             font-weight: 600;
             color: var(--text-muted);
             border-bottom: 3px solid transparent;
-            margin-bottom: -1px; /* Overlap border */
+            margin-bottom: -1px;
+            /* Overlap border */
         }
+
         .detail-tab-button.active {
             color: var(--primary-color);
             border-bottom-color: var(--primary-color);
         }
+
         .detail-tab-content {
             display: none;
         }
+
         .detail-tab-content.active {
             display: block;
         }
     </style>
 </head>
+
 <body class="light-mode">
     <div class="dashboard-layout">
         <aside class="sidebar" id="sidebar">
@@ -1384,16 +2428,21 @@ $pending_appointments = 0;
             </div>
             <nav class="sidebar-nav">
                 <ul>
-                    <li><a href="#" class="nav-link active" data-target="dashboard"><i class="fas fa-home"></i> Dashboard</a></li>
+                    <li><a href="#" class="nav-link active" data-target="dashboard"><i class="fas fa-home"></i>
+                            Dashboard</a></li>
                     <li>
                         <div class="nav-dropdown-toggle">
                             <i class="fas fa-users"></i> Users <i class="fas fa-chevron-right arrow"></i>
                         </div>
                         <ul class="nav-dropdown">
-                            <li><a href="#" class="nav-link" data-target="users-user"><i class="fas fa-user-injured"></i> Regular Users</a></li>
-                            <li><a href="#" class="nav-link" data-target="users-doctor"><i class="fas fa-user-md"></i> Doctors</a></li>
-                            <li><a href="#" class="nav-link" data-target="users-staff"><i class="fas fa-user-shield"></i> Staff</a></li>
-                            <li><a href="#" class="nav-link" data-target="users-admin"><i class="fas fa-user-cog"></i> Admins</a></li>
+                            <li><a href="#" class="nav-link" data-target="users-user"><i
+                                        class="fas fa-user-injured"></i> Regular Users</a></li>
+                            <li><a href="#" class="nav-link" data-target="users-doctor"><i class="fas fa-user-md"></i>
+                                    Doctors</a></li>
+                            <li><a href="#" class="nav-link" data-target="users-staff"><i
+                                        class="fas fa-user-shield"></i> Staff</a></li>
+                            <li><a href="#" class="nav-link" data-target="users-admin"><i class="fas fa-user-cog"></i>
+                                    Admins</a></li>
                         </ul>
                     </li>
                     <li>
@@ -1401,19 +2450,29 @@ $pending_appointments = 0;
                             <i class="fas fa-warehouse"></i> Inventory <i class="fas fa-chevron-right arrow"></i>
                         </div>
                         <ul class="nav-dropdown">
-                            <li><a href="#" class="nav-link" data-target="inventory-blood"><i class="fas fa-tint"></i> Blood Inventory</a></li>
-                            <li><a href="#" class="nav-link" data-target="inventory-medicine"><i class="fas fa-pills"></i> Medicine Inventory</a></li>
-                            <li><a href="#" class="nav-link" data-target="inventory-wards"><i class="fas fa-hospital"></i> Wards</a></li>
-                            <li><a href="#" class="nav-link" data-target="inventory-beds"><i class="fas fa-bed"></i> Beds</a></li>
-                            <li><a href="#" class="nav-link" data-target="inventory-rooms"><i class="fas fa-door-closed"></i> Rooms</a></li>
+                            <li><a href="#" class="nav-link" data-target="inventory-blood"><i class="fas fa-tint"></i>
+                                    Blood Inventory</a></li>
+                            <li><a href="#" class="nav-link" data-target="inventory-medicine"><i
+                                        class="fas fa-pills"></i> Medicine Inventory</a></li>
+                            <li><a href="#" class="nav-link" data-target="inventory-wards"><i
+                                        class="fas fa-hospital"></i> Wards</a></li>
+                            <li><a href="#" class="nav-link" data-target="inventory-beds"><i class="fas fa-bed"></i>
+                                    Beds</a></li>
+                            <li><a href="#" class="nav-link" data-target="inventory-rooms"><i
+                                        class="fas fa-door-closed"></i> Rooms</a></li>
                         </ul>
                     </li>
-                    <li><a href="#" class="nav-link" data-target="shifts"><i class="fas fa-calendar-alt"></i> Staff Shifts</a></li>
-                    <li><a href="#" class="nav-link" data-target="reports"><i class="fas fa-chart-line"></i> Reports</a></li>
-                    <li><a href="#" class="nav-link" data-target="activity"><i class="fas fa-history"></i> Activity Logs</a></li>
-                    <li><a href="#" class="nav-link" data-target="settings"><i class="fas fa-user-edit"></i> My Account</a></li>
-                    <li><a href="#" class="nav-link" data-target="backup"><i class="fas fa-database"></i> Backup</a></li>
-                    <li><a href="#" class="nav-link" data-target="notifications"><i class="fas fa-bullhorn"></i> Notifications</a></li>
+<li><a href="#" class="nav-link" data-target="schedules"><i class="fas fa-calendar-alt"></i> Schedules</a></li>
+                    <li><a href="#" class="nav-link" data-target="reports"><i class="fas fa-chart-line"></i> Reports</a>
+                    </li>
+                    <li><a href="#" class="nav-link" data-target="activity"><i class="fas fa-history"></i> Activity
+                            Logs</a></li>
+                    <li><a href="#" class="nav-link" data-target="settings"><i class="fas fa-user-edit"></i> My
+                            Account</a></li>
+                    <li><a href="#" class="nav-link" data-target="backup"><i class="fas fa-database"></i> Backup</a>
+                    </li>
+                    <li><a href="#" class="nav-link" data-target="notifications"><i class="fas fa-bullhorn"></i>
+                            Notifications</a></li>
                 </ul>
             </nav>
             <a href="logout.php" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
@@ -1441,7 +2500,8 @@ $pending_appointments = 0;
                         <i class="fas fa-user-crown"></i>
                         <div class="user-info">
                             <strong><?php echo $admin_name; ?></strong><br>
-                            <span style="color: var(--text-muted); font-size: 0.8rem;">ID: <?php echo $display_user_id; ?></span>
+                            <span style="color: var(--text-muted); font-size: 0.8rem;">ID:
+                                <?php echo $display_user_id; ?></span>
                         </div>
                     </div>
                 </div>
@@ -1449,11 +2509,41 @@ $pending_appointments = 0;
 
             <div id="dashboard-panel" class="content-panel active">
                 <div class="stat-cards-container">
-                    <div class="stat-card blue"><div class="icon"><i class="fas fa-users"></i></div><div class="info"><div class="value" id="total-users-stat"><?php echo $total_users; ?></div><div class="label">Total Users</div></div></div>
-                    <div class="stat-card green"><div class="icon"><i class="fas fa-user-md"></i></div><div class="info"><div class="value" id="active-doctors-stat"><?php echo $active_doctors; ?></div><div class="label">Active Doctors</div></div></div>
-                    <div class="stat-card orange"><div class="icon"><i class="fas fa-calendar-check"></i></div><div class="info"><div class="value"><?php echo $pending_appointments; ?></div><div class="label">Pending Appointments</div></div></div>
-                    <div class="stat-card red" id="low-medicine-stat" style="display: none;"><div class="icon"><i class="fas fa-pills"></i></div><div class="info"><div class="value" id="low-medicine-count">0</div><div class="label">Low Medicines</div></div></div>
-                    <div class="stat-card red" id="low-blood-stat" style="display: none;"><div class="icon"><i class="fas fa-tint"></i></div><div class="info"><div class="value" id="low-blood-count">0</div><div class="label">Low Blood Units</div></div></div>
+                    <div class="stat-card blue">
+                        <div class="icon"><i class="fas fa-users"></i></div>
+                        <div class="info">
+                            <div class="value" id="total-users-stat"><?php echo $total_users; ?></div>
+                            <div class="label">Total Users</div>
+                        </div>
+                    </div>
+                    <div class="stat-card green">
+                        <div class="icon"><i class="fas fa-user-md"></i></div>
+                        <div class="info">
+                            <div class="value" id="active-doctors-stat"><?php echo $active_doctors; ?></div>
+                            <div class="label">Active Doctors</div>
+                        </div>
+                    </div>
+                    <div class="stat-card orange">
+                        <div class="icon"><i class="fas fa-calendar-check"></i></div>
+                        <div class="info">
+                            <div class="value"><?php echo $pending_appointments; ?></div>
+                            <div class="label">Pending Appointments</div>
+                        </div>
+                    </div>
+                    <div class="stat-card red" id="low-medicine-stat" style="display: none;">
+                        <div class="icon"><i class="fas fa-pills"></i></div>
+                        <div class="info">
+                            <div class="value" id="low-medicine-count">0</div>
+                            <div class="label">Low Medicines</div>
+                        </div>
+                    </div>
+                    <div class="stat-card red" id="low-blood-stat" style="display: none;">
+                        <div class="icon"><i class="fas fa-tint"></i></div>
+                        <div class="info">
+                            <div class="value" id="low-blood-count">0</div>
+                            <div class="label">Low Blood Units</div>
+                        </div>
+                    </div>
                 </div>
                 <div class="dashboard-grid">
                     <div class="grid-card">
@@ -1465,8 +2555,10 @@ $pending_appointments = 0;
                     <div class="grid-card quick-actions">
                         <h3>Quick Actions</h3>
                         <div class="actions-grid">
-                            <a href="#" class="action-btn" id="quick-add-user-btn"><i class="fas fa-user-plus"></i> Add User</a>
-                            <a href="#" class="action-btn nav-link" data-target="reports"><i class="fas fa-file-alt"></i> Generate Report</a>
+                            <a href="#" class="action-btn" id="quick-add-user-btn"><i class="fas fa-user-plus"></i> Add
+                                User</a>
+                            <a href="#" class="action-btn nav-link" data-target="reports"><i
+                                    class="fas fa-file-alt"></i> Generate Report</a>
                             <a href="#" class="action-btn"><i class="fas fa-database"></i> Backup Data</a>
                             <a href="#" class="action-btn"><i class="fas fa-bullhorn"></i> Send Notification</a>
                         </div>
@@ -1475,8 +2567,14 @@ $pending_appointments = 0;
             </div>
 
             <div id="users-panel" class="content-panel">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
                     <h2 id="user-table-title">Users</h2>
+                    <div class="search-container" style="flex-grow: 1; max-width: 400px;">
+                        <i class="fas fa-search search-icon"></i>
+                        <input type="text" id="user-search-input" placeholder="Search...">
+                        <label for="user-search-input" id="user-search-label">Search users...</label>
+                    </div>
                     <button id="add-user-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New User</button>
                 </div>
                 <div class="table-container">
@@ -1494,15 +2592,17 @@ $pending_appointments = 0;
                             </tr>
                         </thead>
                         <tbody id="user-table-body">
-                            </tbody>
+                        </tbody>
                     </table>
                 </div>
             </div>
 
             <div id="inventory-blood-panel" class="content-panel">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
                     <h2>Blood Inventory</h2>
-                    <button id="add-blood-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Update Blood Unit</button>
+                    <button id="add-blood-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Update Blood
+                        Unit</button>
                 </div>
                 <div class="table-container">
                     <table class="data-table blood-table">
@@ -1523,9 +2623,11 @@ $pending_appointments = 0;
             </div>
 
             <div id="inventory-medicine-panel" class="content-panel">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
                     <h2>Medicine Inventory</h2>
-                    <button id="add-medicine-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Medicine</button>
+                    <button id="add-medicine-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New
+                        Medicine</button>
                 </div>
                 <div class="table-container">
                     <table class="data-table medicine-table">
@@ -1548,7 +2650,8 @@ $pending_appointments = 0;
             </div>
 
             <div id="inventory-wards-panel" class="content-panel">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
                     <h2>Ward Management</h2>
                     <button id="add-ward-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Ward</button>
                 </div>
@@ -1570,23 +2673,25 @@ $pending_appointments = 0;
             </div>
 
             <div id="inventory-beds-panel" class="content-panel">
-                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
                     <h2>Bed Management</h2>
                     <button id="add-bed-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Bed</button>
                 </div>
                 <div id="beds-container">
-                    </div>
+                </div>
             </div>
 
             <div id="inventory-rooms-panel" class="content-panel">
-                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
                     <h2>Room Management</h2>
                     <button id="add-room-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Room</button>
                 </div>
                 <div id="rooms-container" class="resource-grid-container">
-                    </div>
+                </div>
             </div>
-             <div id="reports-panel" class="content-panel">
+            <div id="reports-panel" class="content-panel">
                 <div class="report-controls">
                     <div class="form-group">
                         <label for="report-type">Report Type</label>
@@ -1605,30 +2710,33 @@ $pending_appointments = 0;
                             <option value="yearly">Yearly</option>
                         </select>
                     </div>
-                    <button id="generate-report-btn" class="btn btn-primary"><i class="fas fa-sync"></i> Generate Report</button>
+                    <button id="generate-report-btn" class="btn btn-primary"><i class="fas fa-sync"></i> Generate
+                        Report</button>
                     <form id="download-pdf-form" method="GET" action="admin_dashboard.php" target="_blank">
                         <input type="hidden" name="action" value="download_pdf">
                         <input type="hidden" id="pdf-report-type" name="report_type">
                         <input type="hidden" id="pdf-period" name="period">
-                        <button type="submit" class="btn btn-secondary"><i class="fas fa-file-pdf"></i> Download PDF</button>
+                        <button type="submit" class="btn btn-secondary"><i class="fas fa-file-pdf"></i> Download
+                            PDF</button>
                     </form>
                 </div>
 
                 <div class="report-summary-cards" id="report-summary-cards">
-                    </div>
+                </div>
 
                 <div id="report-chart-container">
                     <canvas id="report-chart"></canvas>
                 </div>
             </div>
-            
+
             <div id="activity-panel" class="content-panel">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
                     <h2>Recent Activity Logs</h2>
-                    <button id="refresh-logs-btn" class="btn btn-secondary"><i class="fas fa-sync-alt"></i> Refresh</button>
+                    <button id="refresh-logs-btn" class="btn btn-secondary"><i class="fas fa-sync-alt"></i>
+                        Refresh</button>
                 </div>
                 <div id="activity-log-container">
-                    </div>
+                </div>
             </div>
 
             <div id="settings-panel" class="content-panel">
@@ -1637,7 +2745,7 @@ $pending_appointments = 0;
                 <form id="profile-form" style="margin-top: 2rem; max-width: 600px;">
                     <input type="hidden" name="action" value="updateProfile">
                     <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
-                    
+
                     <div class="form-group">
                         <label for="profile-name">Full Name</label>
                         <input type="text" id="profile-name" name="name" required>
@@ -1648,7 +2756,8 @@ $pending_appointments = 0;
                     </div>
                     <div class="form-group">
                         <label for="profile-phone">Phone Number</label>
-                        <input type="tel" id="profile-phone" name="phone" pattern="\+[0-9]{10,15}" title="Enter in format +CountryCodeNumber">
+                        <input type="tel" id="profile-phone" name="phone" pattern="\+[0-9]{10,15}"
+                            title="Enter in format +CountryCodeNumber">
                     </div>
                     <div class="form-group">
                         <label for="profile-username">Username</label>
@@ -1658,18 +2767,60 @@ $pending_appointments = 0;
                     <div class="form-group">
                         <label for="profile-password">New Password</label>
                         <input type="password" id="profile-password" name="password">
-                        <small style="color: var(--text-muted); font-size: 0.8rem;">Leave blank to keep your current password.</small>
+                        <small style="color: var(--text-muted); font-size: 0.8rem;">Leave blank to keep your current
+                            password.</small>
                     </div>
                     <button type="submit" class="btn btn-primary">Save Changes</button>
                 </form>
             </div>
-            
-            <div id="shifts-panel" class="content-panel"><p>Staff Shifts Management coming soon.</p></div>
-            <div id="backup-panel" class="content-panel"><p>Database Backup utility coming soon.</p></div>
-            <div id="notifications-panel" class="content-panel"><p>Notification management coming soon.</p></div>
+
+<div id="schedules-panel" class="content-panel">
+    <div class="schedule-tabs">
+        <button class="schedule-tab-button active" data-tab="doctor-availability">Doctor Availability</button>
+        <button class="schedule-tab-button" data-tab="staff-shifts">Staff Shifts</button>
+    </div>
+
+    <div id="doctor-availability-content" class="schedule-tab-content active">
+        <div class="schedule-controls">
+            <div class="form-group" style="flex-grow: 1;">
+                <label for="doctor-select">Select Doctor</label>
+                <select id="doctor-select" name="doctor_select"></select>
+            </div>
+        </div>
+        <div id="doctor-schedule-editor" class="schedule-editor-container">
+            <p class="placeholder-text">Please select a doctor to view or edit their schedule.</p>
+        </div>
+        <div class="schedule-actions" style="display:none;">
+            <button id="save-schedule-btn" class="btn btn-primary"><i class="fas fa-save"></i> Save Schedule</button>
+        </div>
+    </div>
+
+    <div id="staff-shifts-content" class="schedule-tab-content">
+         <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Staff Name</th>
+                        <th>User ID</th>
+                        <th>Current Shift</th>
+                        <th>Assign New Shift</th>
+                    </tr>
+                </thead>
+                <tbody id="staff-shifts-table-body">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+            <div id="backup-panel" class="content-panel">
+                <p>Database Backup utility coming soon.</p>
+            </div>
+            <div id="notifications-panel" class="content-panel">
+                <p>Notification management coming soon.</p>
+            </div>
         </main>
     </div>
-    
+
     <div class="overlay" id="overlay"></div>
 
     <div id="user-modal" class="modal">
@@ -1682,12 +2833,12 @@ $pending_appointments = 0;
                 <input type="hidden" name="id" id="user-id">
                 <input type="hidden" name="action" id="form-action">
                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
-                
+
                 <div class="form-group">
                     <label for="name">Full Name</label>
                     <input type="text" id="name" name="name" required>
                 </div>
-                 <div class="form-group">
+                <div class="form-group">
                     <label for="profile_picture">Profile Picture</label>
                     <input type="file" id="profile_picture" name="profile_picture" accept="image/*">
                 </div>
@@ -1701,9 +2852,10 @@ $pending_appointments = 0;
                 </div>
                 <div class="form-group">
                     <label for="phone">Phone Number</label>
-                    <input type="tel" id="phone" name="phone" pattern="\+[0-9]{10,15}" title="Enter in format +CountryCodeNumber" required>
+                    <input type="tel" id="phone" name="phone" pattern="\+[0-9]{10,15}"
+                        title="Enter in format +CountryCodeNumber" required>
                 </div>
-                 <div class="form-group">
+                <div class="form-group">
                     <label for="date_of_birth">Date of Birth</label>
                     <input type="date" id="date_of_birth" name="date_of_birth">
                 </div>
@@ -1719,7 +2871,8 @@ $pending_appointments = 0;
                 <div class="form-group" id="password-group">
                     <label for="password">Password</label>
                     <input type="password" id="password" name="password">
-                    <small style="color: var(--text-muted); font-size: 0.8rem;">Leave blank to keep current password when editing.</small>
+                    <small style="color: var(--text-muted); font-size: 0.8rem;">Leave blank to keep current password
+                        when editing.</small>
                 </div>
                 <div class="form-group">
                     <label for="role">Role</label>
@@ -1769,12 +2922,12 @@ $pending_appointments = 0;
                     <div class="form-group">
                         <label for="assigned_department">Assigned Department</label>
                         <select id="assigned_department" name="assigned_department">
-                             <option value="">Select Department</option>
+                            <option value="">Select Department</option>
                         </select>
                     </div>
                 </div>
 
-                 <div class="form-group" id="active-group" style="display: none;">
+                <div class="form-group" id="active-group" style="display: none;">
                     <label for="active">Status</label>
                     <select id="active" name="active">
                         <option value="1">Active</option>
@@ -1785,7 +2938,7 @@ $pending_appointments = 0;
             </form>
         </div>
     </div>
-    
+
     <div id="user-detail-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -1793,10 +2946,10 @@ $pending_appointments = 0;
                 <button class="modal-close-btn">&times;</button>
             </div>
             <div id="user-detail-content">
-                </div>
+            </div>
         </div>
     </div>
-    
+
     <div id="medicine-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -1807,7 +2960,7 @@ $pending_appointments = 0;
                 <input type="hidden" name="id" id="medicine-id">
                 <input type="hidden" name="action" id="medicine-form-action">
                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
-                
+
                 <div class="form-group">
                     <label for="medicine-name">Medicine Name</label>
                     <input type="text" id="medicine-name" name="name" required>
@@ -1842,7 +2995,7 @@ $pending_appointments = 0;
             <form id="blood-form">
                 <input type="hidden" name="action" value="updateBlood">
                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
-                
+
                 <div class="form-group">
                     <label for="blood-group">Blood Group</label>
                     <select id="blood-group" name="blood_group" required>
@@ -1862,7 +3015,8 @@ $pending_appointments = 0;
                 </div>
                 <div class="form-group">
                     <label for="blood-low-stock-threshold-ml">Low Stock Threshold (ml)</label>
-                    <input type="number" id="blood-low-stock-threshold-ml" name="low_stock_threshold_ml" min="0" required>
+                    <input type="number" id="blood-low-stock-threshold-ml" name="low_stock_threshold_ml" min="0"
+                        required>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Update Blood</button>
             </form>
@@ -1913,11 +3067,11 @@ $pending_appointments = 0;
                 <input type="hidden" name="id" id="bed-id">
                 <input type="hidden" name="action" id="bed-form-action">
                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
-                
+
                 <div class="form-group">
                     <label for="bed-ward-id">Ward</label>
                     <select id="bed-ward-id" name="ward_id" required>
-                        </select>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label for="bed-number">Bed Number</label>
@@ -1936,7 +3090,7 @@ $pending_appointments = 0;
                     <label for="bed-patient-id">Patient</label>
                     <select id="bed-patient-id" name="patient_id">
                         <option value="">Select Patient</option>
-                        </select>
+                    </select>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Save Bed</button>
             </form>
@@ -1953,12 +3107,12 @@ $pending_appointments = 0;
                 <input type="hidden" name="id" id="room-id">
                 <input type="hidden" name="action" id="room-form-action">
                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
-                
+
                 <div class="form-group">
                     <label for="room-number">Room Number</label>
                     <input type="text" id="room-number" name="room_number" required>
                 </div>
-                 <div class="form-group">
+                <div class="form-group">
                     <label for="room-price-per-day">Price Per Day (₹)</label>
                     <input type="number" id="room-price-per-day" name="price_per_day" step="0.01" min="0" required>
                 </div>
@@ -1975,7 +3129,7 @@ $pending_appointments = 0;
                     <label for="room-patient-id">Patient</label>
                     <select id="room-patient-id" name="patient_id">
                         <option value="">Select Patient</option>
-                        </select>
+                    </select>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Save Room</button>
             </form>
@@ -1984,7 +3138,7 @@ $pending_appointments = 0;
 
 
     <div id="notification-container"></div>
-    
+
     <div id="confirm-dialog" class="confirm-dialog">
         <div class="confirm-content">
             <h4 id="confirm-title">Are you sure?</h4>
@@ -1998,264 +3152,277 @@ $pending_appointments = 0;
 
 
     <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        // --- CORE UI ELEMENTS & STATE ---
-        const csrfToken = '<?php echo $csrf_token; ?>';
-        const hamburgerBtn = document.getElementById('hamburger-btn');
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('overlay');
-        const navLinks = document.querySelectorAll('.nav-link');
-        const dropdownToggles = document.querySelectorAll('.nav-dropdown-toggle');
-        const panelTitle = document.getElementById('panel-title');
-        const welcomeMessage = document.getElementById('welcome-message');
-        let currentRole = 'user'; 
-        let userRolesChart = null;
-        let reportChart = null;
+        document.addEventListener("DOMContentLoaded", function () {
 
-        // --- HELPER FUNCTIONS ---
-        const showNotification = (message, type = 'success') => {
-            const container = document.getElementById('notification-container');
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.textContent = message;
-            container.appendChild(notification);
-            setTimeout(() => {
-                notification.remove();
-            }, 5000);
-        };
-        
-        const showConfirmation = (title, message) => {
-            return new Promise((resolve) => {
-                const dialog = document.getElementById('confirm-dialog');
-                document.getElementById('confirm-title').textContent = title;
-                document.getElementById('confirm-message').textContent = message;
-                dialog.classList.add('show');
-
-                const cancelBtn = document.getElementById('confirm-btn-cancel');
-                const okBtn = document.getElementById('confirm-btn-ok');
-
-                const cleanup = (result) => {
-                    dialog.classList.remove('show');
-                    resolve(result);
-                    okBtn.removeEventListener('click', handleOk);
-                    cancelBtn.removeEventListener('click', handleCancel);
-                };
-
-                const handleOk = () => cleanup(true);
-                const handleCancel = () => cleanup(false);
-
-                okBtn.addEventListener('click', handleOk, { once: true });
-                cancelBtn.addEventListener('click', handleCancel, { once: true });
+            const userSearchInput = document.getElementById('user-search-input');
+            userSearchInput.addEventListener('keyup', () => {
+                // A small delay to avoid sending too many requests while typing
+                setTimeout(() => {
+                    fetchUsers(currentRole, userSearchInput.value.trim());
+                }, 300);
             });
-        };
+            // --- CORE UI ELEMENTS & STATE ---
+            const csrfToken = '<?php echo $csrf_token; ?>';
+            const hamburgerBtn = document.getElementById('hamburger-btn');
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('overlay');
+            const navLinks = document.querySelectorAll('.nav-link');
+            const dropdownToggles = document.querySelectorAll('.nav-dropdown-toggle');
+            const panelTitle = document.getElementById('panel-title');
+            const welcomeMessage = document.getElementById('welcome-message');
+            let currentRole = 'user';
+            let userRolesChart = null;
+            let reportChart = null;
 
-        // --- THEME TOGGLE ---
-        const themeToggle = document.getElementById('theme-toggle');
-        const applyTheme = (theme) => {
-            document.body.className = theme;
-            themeToggle.checked = theme === 'dark-mode';
-            if (userRolesChart) {
-                updateChartAppearance();
-            }
-        };
+            // --- HELPER FUNCTIONS ---
+            const showNotification = (message, type = 'success') => {
+                const container = document.getElementById('notification-container');
+                const notification = document.createElement('div');
+                notification.className = `notification ${type}`;
+                notification.textContent = message;
+                container.appendChild(notification);
+                setTimeout(() => {
+                    notification.remove();
+                }, 5000);
+            };
 
-        themeToggle.addEventListener('change', () => {
-            const newTheme = themeToggle.checked ? 'dark-mode' : 'light-mode';
-            localStorage.setItem('theme', newTheme);
-            applyTheme(newTheme);
-        });
-        applyTheme(localStorage.getItem('theme') || 'light-mode');
+            const showConfirmation = (title, message) => {
+                return new Promise((resolve) => {
+                    const dialog = document.getElementById('confirm-dialog');
+                    document.getElementById('confirm-title').textContent = title;
+                    document.getElementById('confirm-message').textContent = message;
+                    dialog.classList.add('show');
 
+                    const cancelBtn = document.getElementById('confirm-btn-cancel');
+                    const okBtn = document.getElementById('confirm-btn-ok');
 
-        // --- SIDEBAR & NAVIGATION ---
-        const toggleMenu = () => {
-            const isActive = sidebar.classList.contains('active');
-            sidebar.classList.toggle('active');
-            overlay.classList.toggle('active');
-            hamburgerBtn.querySelector('i').className = `fas ${isActive ? 'fa-bars' : 'fa-times'}`;
-        };
+                    const cleanup = (result) => {
+                        dialog.classList.remove('show');
+                        resolve(result);
+                        okBtn.removeEventListener('click', handleOk);
+                        cancelBtn.removeEventListener('click', handleCancel);
+                    };
 
-        hamburgerBtn.addEventListener('click', e => { e.stopPropagation(); toggleMenu(); });
-        overlay.addEventListener('click', toggleMenu);
+                    const handleOk = () => cleanup(true);
+                    const handleCancel = () => cleanup(false);
 
-        dropdownToggles.forEach(toggle => {
-            toggle.addEventListener('click', function() {
-                this.classList.toggle('active');
-                const dropdown = this.nextElementSibling;
-                dropdown.style.maxHeight = dropdown.style.maxHeight ? null : dropdown.scrollHeight + "px";
-            });
-        });
+                    okBtn.addEventListener('click', handleOk, { once: true });
+                    cancelBtn.addEventListener('click', handleCancel, { once: true });
+                });
+            };
 
-        // --- PANEL SWITCHING LOGIC ---
-        navLinks.forEach(link => {
-            link.addEventListener('click', function(e) {
-                e.preventDefault();
-                const targetId = this.dataset.target;
-
-                document.querySelectorAll('.sidebar-nav a.active, .sidebar-nav .nav-dropdown-toggle.active').forEach(a => a.classList.remove('active'));
-                this.classList.add('active');
-                
-                let parentDropdown = this.closest('.nav-dropdown');
-                if (parentDropdown) {
-                    let parentDropdownToggle = parentDropdown.previousElementSibling;
-                    if (parentDropdownToggle) {
-                        parentDropdownToggle.classList.add('active');
-                        parentDropdown.style.maxHeight = parentDropdown.scrollHeight + "px";
-                    }
-                }
-
-                let panelToShowId = 'dashboard-panel';
-                let title = 'Dashboard';
-                welcomeMessage.style.display = 'block';
-                
-                if (targetId.startsWith('users-')) {
-                    panelToShowId = 'users-panel';
-                    const role = targetId.split('-')[1];
-                    title = `${role.charAt(0).toUpperCase() + role.slice(1)} Management`;
-                    welcomeMessage.style.display = 'none';
-                    fetchUsers(role);
-                } else if (targetId.startsWith('inventory-')) {
-                    panelToShowId = targetId + '-panel';
-                    title = this.innerText;
-                    welcomeMessage.style.display = 'none';
-                    const inventoryType = targetId.split('-')[1];
-                    if (inventoryType === 'blood') fetchBloodInventory();
-                    else if (inventoryType === 'medicine') fetchMedicineInventory();
-                    else if (inventoryType === 'wards') fetchWards();
-                    else if (inventoryType === 'beds') fetchWardsAndBeds();
-                    else if (inventoryType === 'rooms') fetchRooms();
-                }
-                else if (document.getElementById(targetId + '-panel')) {
-                    panelToShowId = targetId + '-panel';
-                    title = this.innerText;
-                    welcomeMessage.style.display = (targetId === 'dashboard') ? 'block' : 'none';
-                    if (targetId === 'settings') fetchMyProfile();
-                    if (targetId === 'reports') generateReport();
-                    if (targetId === 'activity') fetchActivityLogs();
-                }
-                
-                document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
-                document.getElementById(panelToShowId).classList.add('active');
-                panelTitle.textContent = title;
-
-                if (window.innerWidth <= 992 && sidebar.classList.contains('active')) toggleMenu();
-            });
-        });
-
-        // --- CHART.JS & DASHBOARD STATS ---
-        const updateChartAppearance = () => {
-            if (!userRolesChart) return;
-            const isDarkMode = document.body.classList.contains('dark-mode');
-            const textColor = isDarkMode ? '#F9FAFB' : '#1F2937';
-            const borderColor = isDarkMode ? '#111827' : '#FFFFFF';
-
-            userRolesChart.options.plugins.legend.labels.color = textColor;
-            userRolesChart.data.datasets[0].borderColor = borderColor;
-            userRolesChart.update();
-        };
-
-        const updateDashboardStats = async () => {
-            try {
-                const response = await fetch('?fetch=dashboard_stats');
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const result = await response.json();
-                if (!result.success) throw new Error(result.message);
-
-                const stats = result.data;
-                document.getElementById('total-users-stat').textContent = stats.total_users;
-                document.getElementById('active-doctors-stat').textContent = stats.active_doctors;
-                
-                const lowMedicineStat = document.getElementById('low-medicine-stat');
-                const lowBloodStat = document.getElementById('low-blood-stat');
-
-                // FIX: Reset visibility before updating
-                lowMedicineStat.style.display = 'none';
-                lowBloodStat.style.display = 'none';
-
-                if (stats.low_medicines_count > 0) {
-                    document.getElementById('low-medicine-count').textContent = stats.low_medicines_count;
-                    lowMedicineStat.style.display = 'flex';
-                }
-
-                if (stats.low_blood_count > 0) {
-                    document.getElementById('low-blood-count').textContent = stats.low_blood_count;
-                    lowBloodStat.style.display = 'flex';
-                }
-
-                const chartData = [
-                    stats.role_counts.user || 0, 
-                    stats.role_counts.doctor || 0, 
-                    stats.role_counts.staff || 0, 
-                    stats.role_counts.admin || 0
-                ];
-                
-                const ctx = document.getElementById('userRolesChart').getContext('2d');
+            // --- THEME TOGGLE ---
+            const themeToggle = document.getElementById('theme-toggle');
+            const applyTheme = (theme) => {
+                document.body.className = theme;
+                themeToggle.checked = theme === 'dark-mode';
                 if (userRolesChart) {
-                    userRolesChart.data.datasets[0].data = chartData;
-                    userRolesChart.update();
-                } else {
-                    userRolesChart = new Chart(ctx, {
-                        type: 'doughnut',
-                        data: {
-                            labels: ['Users', 'Doctors', 'Staff', 'Admins'],
-                            datasets: [{
-                                label: 'User Roles',
-                                data: chartData,
-                                backgroundColor: ['#3B82F6', '#22C55E', '#F97316', '#8B5CF6'],
-                                borderWidth: 4
-                            }]
-                        },
-                        options: {
-                            responsive: true, maintainAspectRatio: true, 
-                            plugins: { legend: { position: 'bottom' } },
-                            cutout: '70%'
-                        }
-                    });
+                    updateChartAppearance();
                 }
-                updateChartAppearance();
-            } catch (error) {
-                console.error('Failed to update dashboard stats:', error);
-                showNotification('Could not refresh dashboard data.', 'error');
-            }
-        };
+            };
 
-        // --- USER MANAGEMENT (CRUD & Detail View) ---
-        const userModal = document.getElementById('user-modal');
-        const userForm = document.getElementById('user-form');
-        const userDetailModal = document.getElementById('user-detail-modal');
-        const addUserBtn = document.getElementById('add-user-btn');
-        const quickAddUserBtn = document.getElementById('quick-add-user-btn');
-        const modalTitle = document.getElementById('modal-title');
-        const passwordGroup = document.getElementById('password-group');
-        const activeGroup = document.getElementById('active-group');
-        const roleSelect = document.getElementById('role');
-        const doctorFields = document.getElementById('doctor-fields');
-        const staffFields = document.getElementById('staff-fields');
-        
-        const openDetailedProfileModal = async (userId) => {
-            const contentDiv = document.getElementById('user-detail-content');
-            contentDiv.innerHTML = '<p>Loading profile...</p>';
-            userDetailModal.classList.add('show');
-            try {
-                const response = await fetch(`?fetch=user_details&id=${userId}`);
-                const result = await response.json();
-                if(!result.success) throw new Error(result.message);
+            themeToggle.addEventListener('change', () => {
+                const newTheme = themeToggle.checked ? 'dark-mode' : 'light-mode';
+                localStorage.setItem('theme', newTheme);
+                applyTheme(newTheme);
+            });
+            applyTheme(localStorage.getItem('theme') || 'light-mode');
 
-                const { user, activity, assigned_patients } = result.data;
-                const pfpPath = `uploads/profile_pictures/${user.profile_picture || 'default.png'}`;
+
+            // --- SIDEBAR & NAVIGATION ---
+            const toggleMenu = () => {
+                const isActive = sidebar.classList.contains('active');
+                sidebar.classList.toggle('active');
+                overlay.classList.toggle('active');
+                hamburgerBtn.querySelector('i').className = `fas ${isActive ? 'fa-bars' : 'fa-times'}`;
+            };
+
+            hamburgerBtn.addEventListener('click', e => { e.stopPropagation(); toggleMenu(); });
+            overlay.addEventListener('click', toggleMenu);
+
+            dropdownToggles.forEach(toggle => {
+                toggle.addEventListener('click', function () {
+                    this.classList.toggle('active');
+                    const dropdown = this.nextElementSibling;
+                    dropdown.style.maxHeight = dropdown.style.maxHeight ? null : dropdown.scrollHeight + "px";
+                });
+            });
+
+            // --- PANEL SWITCHING LOGIC ---
+            navLinks.forEach(link => {
+                link.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const targetId = this.dataset.target;
+
+                    document.querySelectorAll('.sidebar-nav a.active, .sidebar-nav .nav-dropdown-toggle.active').forEach(a => a.classList.remove('active'));
+                    this.classList.add('active');
+
+                    let parentDropdown = this.closest('.nav-dropdown');
+                    if (parentDropdown) {
+                        let parentDropdownToggle = parentDropdown.previousElementSibling;
+                        if (parentDropdownToggle) {
+                            parentDropdownToggle.classList.add('active');
+                            parentDropdown.style.maxHeight = parentDropdown.scrollHeight + "px";
+                        }
+                    }
+
+                    let panelToShowId = 'dashboard-panel';
+                    let title = 'Dashboard';
+                    welcomeMessage.style.display = 'block';
+
+                    if (targetId.startsWith('users-')) {
+                        panelToShowId = 'users-panel';
+                        const role = targetId.split('-')[1];
+                        title = `${role.charAt(0).toUpperCase() + role.slice(1)} Management`;
+                        welcomeMessage.style.display = 'none';
+                        fetchUsers(role);
+                    } else if (targetId.startsWith('inventory-')) {
+                        panelToShowId = targetId + '-panel';
+                        title = this.innerText;
+                        welcomeMessage.style.display = 'none';
+                        const inventoryType = targetId.split('-')[1];
+                        if (inventoryType === 'blood') fetchBloodInventory();
+                        else if (inventoryType === 'medicine') fetchMedicineInventory();
+                        else if (inventoryType === 'wards') fetchWards();
+                        else if (inventoryType === 'beds') fetchWardsAndBeds();
+                        else if (inventoryType === 'rooms') fetchRooms();
+                    }
+                    else if (document.getElementById(targetId + '-panel')) {
+                        panelToShowId = targetId + '-panel';
+                        title = this.innerText;
+                        welcomeMessage.style.display = (targetId === 'dashboard') ? 'block' : 'none';
+                        if (targetId === 'settings') fetchMyProfile();
+                        if (targetId === 'reports') generateReport();
+                        if (targetId === 'activity') fetchActivityLogs();
+                    }
+
+                    document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
+                    document.getElementById(panelToShowId).classList.add('active');
+                    panelTitle.textContent = title;
+
+                    if (targetId === 'schedules' && doctorSelect.options.length <= 1) {
+    fetchDoctorsForScheduling();
+}
+
+                    if (window.innerWidth <= 992 && sidebar.classList.contains('active')) toggleMenu();
+                });
                 
-                let roleSpecificTabs = '';
-                let roleSpecificContent = '';
+            });
 
-                if (user.role === 'doctor') {
-                    roleSpecificTabs = `<button class="detail-tab-button" data-tab="patients">Assigned Patients</button>`;
-                    roleSpecificContent = `<div id="patients-tab" class="detail-tab-content">
+            // --- CHART.JS & DASHBOARD STATS ---
+            const updateChartAppearance = () => {
+                if (!userRolesChart) return;
+                const isDarkMode = document.body.classList.contains('dark-mode');
+                const textColor = isDarkMode ? '#F9FAFB' : '#1F2937';
+                const borderColor = isDarkMode ? '#111827' : '#FFFFFF';
+
+                userRolesChart.options.plugins.legend.labels.color = textColor;
+                userRolesChart.data.datasets[0].borderColor = borderColor;
+                userRolesChart.update();
+            };
+
+            const updateDashboardStats = async () => {
+                try {
+                    const response = await fetch('?fetch=dashboard_stats');
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
+
+                    const stats = result.data;
+                    document.getElementById('total-users-stat').textContent = stats.total_users;
+                    document.getElementById('active-doctors-stat').textContent = stats.active_doctors;
+
+                    const lowMedicineStat = document.getElementById('low-medicine-stat');
+                    const lowBloodStat = document.getElementById('low-blood-stat');
+
+                    // FIX: Reset visibility before updating
+                    lowMedicineStat.style.display = 'none';
+                    lowBloodStat.style.display = 'none';
+
+                    if (stats.low_medicines_count > 0) {
+                        document.getElementById('low-medicine-count').textContent = stats.low_medicines_count;
+                        lowMedicineStat.style.display = 'flex';
+                    }
+
+                    if (stats.low_blood_count > 0) {
+                        document.getElementById('low-blood-count').textContent = stats.low_blood_count;
+                        lowBloodStat.style.display = 'flex';
+                    }
+
+                    const chartData = [
+                        stats.role_counts.user || 0,
+                        stats.role_counts.doctor || 0,
+                        stats.role_counts.staff || 0,
+                        stats.role_counts.admin || 0
+                    ];
+
+                    const ctx = document.getElementById('userRolesChart').getContext('2d');
+                    if (userRolesChart) {
+                        userRolesChart.data.datasets[0].data = chartData;
+                        userRolesChart.update();
+                    } else {
+                        userRolesChart = new Chart(ctx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: ['Users', 'Doctors', 'Staff', 'Admins'],
+                                datasets: [{
+                                    label: 'User Roles',
+                                    data: chartData,
+                                    backgroundColor: ['#3B82F6', '#22C55E', '#F97316', '#8B5CF6'],
+                                    borderWidth: 4
+                                }]
+                            },
+                            options: {
+                                responsive: true, maintainAspectRatio: true,
+                                plugins: { legend: { position: 'bottom' } },
+                                cutout: '70%'
+                            }
+                        });
+                    }
+                    updateChartAppearance();
+                } catch (error) {
+                    console.error('Failed to update dashboard stats:', error);
+                    showNotification('Could not refresh dashboard data.', 'error');
+                }
+            };
+
+            // --- USER MANAGEMENT (CRUD & Detail View) ---
+            const userModal = document.getElementById('user-modal');
+            const userForm = document.getElementById('user-form');
+            const userDetailModal = document.getElementById('user-detail-modal');
+            const addUserBtn = document.getElementById('add-user-btn');
+            const quickAddUserBtn = document.getElementById('quick-add-user-btn');
+            const modalTitle = document.getElementById('modal-title');
+            const passwordGroup = document.getElementById('password-group');
+            const activeGroup = document.getElementById('active-group');
+            const roleSelect = document.getElementById('role');
+            const doctorFields = document.getElementById('doctor-fields');
+            const staffFields = document.getElementById('staff-fields');
+
+            const openDetailedProfileModal = async (userId) => {
+                const contentDiv = document.getElementById('user-detail-content');
+                contentDiv.innerHTML = '<p>Loading profile...</p>';
+                userDetailModal.classList.add('show');
+                try {
+                    const response = await fetch(`?fetch=user_details&id=${userId}`);
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
+
+                    const { user, activity, assigned_patients } = result.data;
+                    const pfpPath = `uploads/profile_pictures/${user.profile_picture || 'default.png'}`;
+
+                    let roleSpecificTabs = '';
+                    let roleSpecificContent = '';
+
+                    if (user.role === 'doctor') {
+                        roleSpecificTabs = `<button class="detail-tab-button" data-tab="patients">Assigned Patients</button>`;
+                        roleSpecificContent = `<div id="patients-tab" class="detail-tab-content">
                         <h3>Assigned Patients</h3>
                         ${assigned_patients.length > 0 ? assigned_patients.map(p => `<p>${p.name} (${p.display_user_id}) - Last Appointment: ${new Date(p.appointment_date).toLocaleDateString()}</p>`).join('') : '<p>No patients assigned.</p>'}
                     </div>`;
-                }
+                    }
 
-                contentDiv.innerHTML = `
+                    contentDiv.innerHTML = `
                     <div class="user-detail-header">
                         <img src="${pfpPath}" alt="Profile Picture" class="user-detail-pfp" onerror="this.src='uploads/profile_pictures/default.png'">
                         <div class="user-detail-info">
@@ -2272,132 +3439,136 @@ $pending_appointments = 0;
                         <h3>Recent Activity</h3>
                         <div id="user-detail-activity-log">
                         ${activity.length > 0 ? activity.map(log => {
-                            let iconClass = 'fa-plus';
-                            if (log.action.includes('update')) iconClass = 'fa-pencil-alt';
-                            if (log.action.includes('delete') || log.action.includes('deactivate')) iconClass = 'fa-trash-alt';
-                            return `<div class="log-item">
+                        let iconClass = 'fa-plus';
+                        if (log.action.includes('update')) iconClass = 'fa-pencil-alt';
+                        if (log.action.includes('delete') || log.action.includes('deactivate')) iconClass = 'fa-trash-alt';
+                        return `<div class="log-item">
                                 <div class="log-icon"><i class="fas ${iconClass}"></i></div>
                                 <div class="log-details">
                                     <p>${log.details}</p>
                                     <div class="log-meta">${new Date(log.created_at).toLocaleString()}</div>
                                 </div>
                             </div>`
-                        }).join('') : '<p>No activity recorded for this user.</p>'}
+                    }).join('') : '<p>No activity recorded for this user.</p>'}
                         </div>
                     </div>
                     ${roleSpecificContent}
                 `;
 
-                // Add event listeners for the new tabs
-                 contentDiv.querySelectorAll('.detail-tab-button').forEach(button => {
-                    button.addEventListener('click', () => {
-                        const tabId = button.dataset.tab;
-                        contentDiv.querySelectorAll('.detail-tab-button').forEach(btn => btn.classList.remove('active'));
-                        contentDiv.querySelectorAll('.detail-tab-content').forEach(content => content.classList.remove('active'));
-                        button.classList.add('active');
-                        document.getElementById(`${tabId}-tab`).classList.add('active');
+                    // Add event listeners for the new tabs
+                    contentDiv.querySelectorAll('.detail-tab-button').forEach(button => {
+                        button.addEventListener('click', () => {
+                            const tabId = button.dataset.tab;
+                            contentDiv.querySelectorAll('.detail-tab-button').forEach(btn => btn.classList.remove('active'));
+                            contentDiv.querySelectorAll('.detail-tab-content').forEach(content => content.classList.remove('active'));
+                            button.classList.add('active');
+                            document.getElementById(`${tabId}-tab`).classList.add('active');
+                        });
                     });
-                });
-            } catch (error) {
-                contentDiv.innerHTML = `<p style="color:var(--danger-color);">Failed to load profile: ${error.message}</p>`;
-            }
-        };
-
-        const toggleRoleFields = () => {
-            const selectedRole = roleSelect.value;
-            doctorFields.style.display = selectedRole === 'doctor' ? 'block' : 'none';
-            staffFields.style.display = selectedRole === 'staff' ? 'block' : 'none';
-        };
-
-        roleSelect.addEventListener('change', toggleRoleFields);
-        
-        const fetchDepartments = async () => {
-            try {
-                const response = await fetch('?fetch=departments');
-                const result = await response.json();
-                if (result.success) {
-                    const departmentSelect = document.getElementById('department_id');
-                    const staffDepartmentSelect = document.getElementById('assigned_department');
-                    departmentSelect.innerHTML = '<option value="">Select Department</option>'; // Reset
-                    staffDepartmentSelect.innerHTML = '<option value="">Select Department</option>'; // Reset
-                    result.data.forEach(dept => {
-                        const option = `<option value="${dept.id}">${dept.name}</option>`;
-                        departmentSelect.innerHTML += option;
-                        staffDepartmentSelect.innerHTML += `<option value="${dept.name}">${dept.name}</option>`;
-                    });
+                } catch (error) {
+                    contentDiv.innerHTML = `<p style="color:var(--danger-color);">Failed to load profile: ${error.message}</p>`;
                 }
-            } catch (error) {
-                console.error('Failed to fetch departments:', error);
-            }
-        };
+            };
 
-        const openUserModal = (mode, user = {}) => {
-            userForm.reset();
-            roleSelect.value = currentRole;
-            roleSelect.disabled = (mode === 'edit');
-            
-            if (mode === 'add') {
-                modalTitle.textContent = `Add New ${currentRole.charAt(0).toUpperCase() + currentRole.slice(1)}`;
-                document.getElementById('form-action').value = 'addUser';
-                document.getElementById('password').required = true;
-                passwordGroup.style.display = 'block';
-                activeGroup.style.display = 'none';
-            } else { // edit mode
-                modalTitle.textContent = `Edit ${user.username}`;
-                document.getElementById('form-action').value = 'updateUser';
-                document.getElementById('user-id').value = user.id;
-                document.getElementById('name').value = user.name || '';
-                document.getElementById('username').value = user.username;
-                document.getElementById('email').value = user.email;
-                document.getElementById('phone').value = user.phone || '';
-                document.getElementById('date_of_birth').value = user.date_of_birth || '';
-                document.getElementById('gender').value = user.gender || '';
-                document.getElementById('password').required = false;
-                passwordGroup.style.display = 'block';
-                activeGroup.style.display = 'block';
-                document.getElementById('active').value = user.active;
+            const toggleRoleFields = () => {
+                const selectedRole = roleSelect.value;
+                doctorFields.style.display = selectedRole === 'doctor' ? 'block' : 'none';
+                staffFields.style.display = selectedRole === 'staff' ? 'block' : 'none';
+            };
 
-                if (user.role === 'doctor') {
-                    document.getElementById('specialty').value = user.specialty || '';
-                    document.getElementById('qualifications').value = user.qualifications || '';
-                    document.getElementById('department_id').value = user.department_id || '';
-                    document.getElementById('availability').value = user.availability !== null ? user.availability : 1;
-                } else if (user.role === 'staff') {
-                    document.getElementById('shift').value = user.shift || 'day';
-                    document.getElementById('assigned_department').value = user.assigned_department || '';
+            roleSelect.addEventListener('change', toggleRoleFields);
+
+            const fetchDepartments = async () => {
+                try {
+                    const response = await fetch('?fetch=departments');
+                    const result = await response.json();
+                    if (result.success) {
+                        const departmentSelect = document.getElementById('department_id');
+                        const staffDepartmentSelect = document.getElementById('assigned_department');
+                        departmentSelect.innerHTML = '<option value="">Select Department</option>'; // Reset
+                        staffDepartmentSelect.innerHTML = '<option value="">Select Department</option>'; // Reset
+                        result.data.forEach(dept => {
+                            const option = `<option value="${dept.id}">${dept.name}</option>`;
+                            departmentSelect.innerHTML += option;
+                            staffDepartmentSelect.innerHTML += `<option value="${dept.name}">${dept.name}</option>`;
+                        });
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch departments:', error);
                 }
-            }
-            toggleRoleFields();
-            userModal.classList.add('show');
-        };
+            };
 
-        const closeModal = (modalElement) => modalElement.classList.remove('show');
-        
-        addUserBtn.addEventListener('click', () => openUserModal('add'));
-        quickAddUserBtn.addEventListener('click', (e) => {
-             e.preventDefault();
-             document.querySelector('.nav-link[data-target="users-user"]').click();
-             setTimeout(() => openUserModal('add'), 100);
-        });
-        userModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(userModal));
-        userModal.addEventListener('click', (e) => { if (e.target === userModal) closeModal(userModal); });
-        userDetailModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(userDetailModal));
-        userDetailModal.addEventListener('click', (e) => { if (e.target === userDetailModal) closeModal(userDetailModal); });
+            const openUserModal = (mode, user = {}) => {
+                userForm.reset();
+                roleSelect.value = currentRole;
+                roleSelect.disabled = (mode === 'edit');
 
-        const fetchUsers = async (role) => {
-            currentRole = role;
-            document.getElementById('user-table-title').textContent = `${role.charAt(0).toUpperCase() + role.slice(1)}s`;
-            const tableBody = document.getElementById('user-table-body');
-            tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Loading...</td></tr>`;
+                if (mode === 'add') {
+                    modalTitle.textContent = `Add New ${currentRole.charAt(0).toUpperCase() + currentRole.slice(1)}`;
+                    document.getElementById('form-action').value = 'addUser';
+                    document.getElementById('password').required = true;
+                    passwordGroup.style.display = 'block';
+                    activeGroup.style.display = 'none';
+                } else { // edit mode
+                    modalTitle.textContent = `Edit ${user.username}`;
+                    document.getElementById('form-action').value = 'updateUser';
+                    document.getElementById('user-id').value = user.id;
+                    document.getElementById('name').value = user.name || '';
+                    document.getElementById('username').value = user.username;
+                    document.getElementById('email').value = user.email;
+                    document.getElementById('phone').value = user.phone || '';
+                    document.getElementById('date_of_birth').value = user.date_of_birth || '';
+                    document.getElementById('gender').value = user.gender || '';
+                    document.getElementById('password').required = false;
+                    passwordGroup.style.display = 'block';
+                    activeGroup.style.display = 'block';
+                    document.getElementById('active').value = user.active;
 
-            try {
-                const response = await fetch(`?fetch=users&role=${role}`);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const result = await response.json();
-                if (!result.success) throw new Error(result.message);
+                    if (user.role === 'doctor') {
+                        document.getElementById('specialty').value = user.specialty || '';
+                        document.getElementById('qualifications').value = user.qualifications || '';
+                        document.getElementById('department_id').value = user.department_id || '';
+                        document.getElementById('availability').value = user.availability !== null ? user.availability : 1;
+                    } else if (user.role === 'staff') {
+                        document.getElementById('shift').value = user.shift || 'day';
+                        document.getElementById('assigned_department').value = user.assigned_department || '';
+                    }
+                }
+                toggleRoleFields();
+                userModal.classList.add('show');
+            };
 
-                if (result.data.length > 0) {
-                    tableBody.innerHTML = result.data.map(user => `
+            const closeModal = (modalElement) => modalElement.classList.remove('show');
+
+            addUserBtn.addEventListener('click', () => openUserModal('add'));
+            quickAddUserBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                document.querySelector('.nav-link[data-target="users-user"]').click();
+                setTimeout(() => openUserModal('add'), 100);
+            });
+            userModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(userModal));
+            userModal.addEventListener('click', (e) => { if (e.target === userModal) closeModal(userModal); });
+            userDetailModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(userDetailModal));
+            userDetailModal.addEventListener('click', (e) => { if (e.target === userDetailModal) closeModal(userDetailModal); });
+
+            const fetchUsers = async (role, searchTerm = '') => {
+                currentRole = role;
+                document.getElementById('user-table-title').textContent = `${role.charAt(0).toUpperCase() + role.slice(1)}s`;
+                const tableBody = document.getElementById('user-table-body');
+                tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Loading...</td></tr>`;
+
+                try {
+                    let fetchUrl = `?fetch=users&role=${role}`;
+                    if (searchTerm) {
+                        fetchUrl += `&search=${encodeURIComponent(searchTerm)}`;
+                    }
+                    const response = await fetch(fetchUrl);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
+
+                    if (result.data.length > 0) {
+                        tableBody.innerHTML = result.data.map(user => `
                         <tr class="clickable-row" data-user-id="${user.id}">
                             <td>
                                 <div style="display: flex; align-items: center;">
@@ -2417,179 +3588,179 @@ $pending_appointments = 0;
                             </td>
                         </tr>
                     `).join('');
-                } else {
-                    tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">No users found for this role.</td></tr>`;
-                }
-            } catch (error) {
-                console.error('Fetch error:', error);
-                tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Failed to load users: ${error.message}</td></tr>`;
-                showNotification(error.message, 'error');
-            }
-        };
-        
-        document.getElementById('user-table-body').addEventListener('click', async (e) => {
-            const row = e.target.closest('tr');
-            if (!row) return;
-
-            const editBtn = e.target.closest('.btn-edit');
-            const deleteBtn = e.target.closest('.btn-delete');
-            
-            if (editBtn) {
-                e.stopPropagation(); // Prevent row click from triggering
-                const user = JSON.parse(editBtn.dataset.user);
-                openUserModal('edit', user);
-                return;
-            }
-            
-            if (deleteBtn) {
-                e.stopPropagation(); // Prevent row click from triggering
-                const user = JSON.parse(deleteBtn.dataset.user);
-                const confirmed = await showConfirmation('Deactivate User', `Are you sure you want to deactivate ${user.username}?`);
-                if (confirmed) {
-                    const formData = new FormData();
-                    formData.append('action', 'deleteUser');
-                    formData.append('id', user.id);
-                    formData.append('csrf_token', csrfToken);
-                    handleFormSubmit(formData, `users-${currentRole}`);
-                }
-                return;
-            }
-
-            // If no button was clicked, it's a row click
-            if (row.classList.contains('clickable-row')) {
-                const userId = row.dataset.userId;
-                openDetailedProfileModal(userId);
-            }
-        });
-
-        const handleFormSubmit = async (formData, refreshTarget = null) => {
-            try {
-                const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
-                const result = await response.json();
-                
-                if (result.success) {
-                    showNotification(result.message, 'success');
-                    if (formData.get('action') === 'addUser' || formData.get('action') === 'updateUser') closeModal(userModal);
-                    else if (formData.get('action').toLowerCase().includes('medicine')) closeModal(medicineModal);
-                    else if (formData.get('action').toLowerCase().includes('blood')) closeModal(bloodModal);
-                    else if (formData.get('action').toLowerCase().includes('ward')) closeModal(wardFormModal);
-                    else if (formData.get('action').toLowerCase().includes('bed')) closeModal(bedModal);
-                    else if (formData.get('action').toLowerCase().includes('room')) closeModal(document.getElementById('room-modal'));
-
-                    if (refreshTarget) {
-                        if (refreshTarget.startsWith('users-')) fetchUsers(refreshTarget.split('-')[1]);
-                        else if (refreshTarget === 'blood') fetchBloodInventory();
-                        else if (refreshTarget === 'medicine') fetchMedicineInventory();
-                        else if (refreshTarget === 'wards') { fetchWards(); }
-                        else if (refreshTarget === 'beds') fetchWardsAndBeds();
-                        else if (refreshTarget === 'rooms') fetchRooms();
+                    } else {
+                        tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">No users found for this role.</td></tr>`;
                     }
-                    updateDashboardStats();
-                } else {
-                    throw new Error(result.message || 'An unknown error occurred.');
+                } catch (error) {
+                    console.error('Fetch error:', error);
+                    tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Failed to load users: ${error.message}</td></tr>`;
+                    showNotification(error.message, 'error');
                 }
-            } catch (error) {
-                console.error('Submit error:', error);
-                showNotification(error.message, 'error');
-            }
-        };
+            };
 
-        userForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const formData = new FormData(userForm);
-            handleFormSubmit(formData, `users-${currentRole}`);
-        });
-        
-        // --- ADMIN PROFILE EDIT ---
-        const profileForm = document.getElementById('profile-form');
+            document.getElementById('user-table-body').addEventListener('click', async (e) => {
+                const row = e.target.closest('tr');
+                if (!row) return;
 
-        const fetchMyProfile = async () => {
-             try {
-                const response = await fetch(`?fetch=my_profile`);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const result = await response.json();
-                if (!result.success) throw new Error(result.message);
+                const editBtn = e.target.closest('.btn-edit');
+                const deleteBtn = e.target.closest('.btn-delete');
 
-                const profile = result.data;
-                document.getElementById('profile-name').value = profile.name || '';
-                document.getElementById('profile-email').value = profile.email || '';
-                document.getElementById('profile-phone').value = profile.phone || '';
-                document.getElementById('profile-username').value = profile.username || '';
-            } catch (error) {
-                showNotification('Could not load your profile data.', 'error');
-            }
-        };
-
-        profileForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(profileForm);
-            try {
-                const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
-                const result = await response.json();
-                
-                if (result.success) {
-                    showNotification(result.message, 'success');
-                    document.getElementById('welcome-message').textContent = `Hello, ${formData.get('name')}!`;
-                    document.querySelector('.user-profile-widget .user-info strong').textContent = formData.get('name');
-                } else {
-                    throw new Error(result.message || 'An unknown error occurred.');
+                if (editBtn) {
+                    e.stopPropagation(); // Prevent row click from triggering
+                    const user = JSON.parse(editBtn.dataset.user);
+                    openUserModal('edit', user);
+                    return;
                 }
-            } catch (error) {
-                console.error('Profile update error:', error);
-                showNotification(error.message, 'error');
-            }
-        });
-        
-        // --- INVENTORY MANAGEMENT ---
 
-        // Medicine Inventory
-        const medicineModal = document.getElementById('medicine-modal');
-        const medicineForm = document.getElementById('medicine-form');
-        const addMedicineBtn = document.getElementById('add-medicine-btn');
-        const medicineTableBody = document.getElementById('medicine-table-body');
+                if (deleteBtn) {
+                    e.stopPropagation(); // Prevent row click from triggering
+                    const user = JSON.parse(deleteBtn.dataset.user);
+                    const confirmed = await showConfirmation('Deactivate User', `Are you sure you want to deactivate ${user.username}?`);
+                    if (confirmed) {
+                        const formData = new FormData();
+                        formData.append('action', 'deleteUser');
+                        formData.append('id', user.id);
+                        formData.append('csrf_token', csrfToken);
+                        handleFormSubmit(formData, `users-${currentRole}`);
+                    }
+                    return;
+                }
 
-        const openMedicineModal = (mode, medicine = {}) => {
-            medicineForm.reset();
-            if (mode === 'add') {
-                document.getElementById('medicine-modal-title').textContent = 'Add New Medicine';
-                document.getElementById('medicine-form-action').value = 'addMedicine';
-                document.getElementById('medicine-low-stock-threshold').value = 10;
-            } else {
-                document.getElementById('medicine-modal-title').textContent = `Edit ${medicine.name}`;
-                document.getElementById('medicine-form-action').value = 'updateMedicine';
-                document.getElementById('medicine-id').value = medicine.id;
-                document.getElementById('medicine-name').value = medicine.name;
-                document.getElementById('medicine-description').value = medicine.description || '';
-                document.getElementById('medicine-quantity').value = medicine.quantity;
-                document.getElementById('medicine-unit-price').value = medicine.unit_price;
-                document.getElementById('medicine-low-stock-threshold').value = medicine.low_stock_threshold;
-            }
-            medicineModal.classList.add('show');
-        };
+                // If no button was clicked, it's a row click
+                if (row.classList.contains('clickable-row')) {
+                    const userId = row.dataset.userId;
+                    openDetailedProfileModal(userId);
+                }
+            });
 
-        addMedicineBtn.addEventListener('click', () => openMedicineModal('add'));
-        medicineModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(medicineModal));
-        medicineModal.addEventListener('click', (e) => { if (e.target === medicineModal) closeModal(medicineModal); });
+            const handleFormSubmit = async (formData, refreshTarget = null) => {
+                try {
+                    const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
+                    const result = await response.json();
 
-        medicineForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            handleFormSubmit(new FormData(medicineForm), 'medicine');
-        });
+                    if (result.success) {
+                        showNotification(result.message, 'success');
+                        if (formData.get('action') === 'addUser' || formData.get('action') === 'updateUser') closeModal(userModal);
+                        else if (formData.get('action').toLowerCase().includes('medicine')) closeModal(medicineModal);
+                        else if (formData.get('action').toLowerCase().includes('blood')) closeModal(bloodModal);
+                        else if (formData.get('action').toLowerCase().includes('ward')) closeModal(wardFormModal);
+                        else if (formData.get('action').toLowerCase().includes('bed')) closeModal(bedModal);
+                        else if (formData.get('action').toLowerCase().includes('room')) closeModal(document.getElementById('room-modal'));
 
-        const fetchMedicineInventory = async () => {
-            medicineTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Loading...</td></tr>`;
-            try {
-                const response = await fetch('?fetch=medicines');
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const result = await response.json();
-                if (!result.success) throw new Error(result.message);
+                        if (refreshTarget) {
+                            if (refreshTarget.startsWith('users-')) fetchUsers(refreshTarget.split('-')[1]);
+                            else if (refreshTarget === 'blood') fetchBloodInventory();
+                            else if (refreshTarget === 'medicine') fetchMedicineInventory();
+                            else if (refreshTarget === 'wards') { fetchWards(); }
+                            else if (refreshTarget === 'beds') fetchWardsAndBeds();
+                            else if (refreshTarget === 'rooms') fetchRooms();
+                        }
+                        updateDashboardStats();
+                    } else {
+                        throw new Error(result.message || 'An unknown error occurred.');
+                    }
+                } catch (error) {
+                    console.error('Submit error:', error);
+                    showNotification(error.message, 'error');
+                }
+            };
 
-                if (result.data.length > 0) {
-                    medicineTableBody.innerHTML = result.data.map(med => {
-                        const isLowStock = parseInt(med.quantity) <= parseInt(med.low_stock_threshold);
-                        const statusClass = isLowStock ? 'low-stock' : 'in-stock';
-                        const quantityClass = isLowStock ? 'quantity-low' : 'quantity-good';
-                        return `
+            userForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const formData = new FormData(userForm);
+                handleFormSubmit(formData, `users-${currentRole}`);
+            });
+
+            // --- ADMIN PROFILE EDIT ---
+            const profileForm = document.getElementById('profile-form');
+
+            const fetchMyProfile = async () => {
+                try {
+                    const response = await fetch(`?fetch=my_profile`);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
+
+                    const profile = result.data;
+                    document.getElementById('profile-name').value = profile.name || '';
+                    document.getElementById('profile-email').value = profile.email || '';
+                    document.getElementById('profile-phone').value = profile.phone || '';
+                    document.getElementById('profile-username').value = profile.username || '';
+                } catch (error) {
+                    showNotification('Could not load your profile data.', 'error');
+                }
+            };
+
+            profileForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(profileForm);
+                try {
+                    const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
+                    const result = await response.json();
+
+                    if (result.success) {
+                        showNotification(result.message, 'success');
+                        document.getElementById('welcome-message').textContent = `Hello, ${formData.get('name')}!`;
+                        document.querySelector('.user-profile-widget .user-info strong').textContent = formData.get('name');
+                    } else {
+                        throw new Error(result.message || 'An unknown error occurred.');
+                    }
+                } catch (error) {
+                    console.error('Profile update error:', error);
+                    showNotification(error.message, 'error');
+                }
+            });
+
+            // --- INVENTORY MANAGEMENT ---
+
+            // Medicine Inventory
+            const medicineModal = document.getElementById('medicine-modal');
+            const medicineForm = document.getElementById('medicine-form');
+            const addMedicineBtn = document.getElementById('add-medicine-btn');
+            const medicineTableBody = document.getElementById('medicine-table-body');
+
+            const openMedicineModal = (mode, medicine = {}) => {
+                medicineForm.reset();
+                if (mode === 'add') {
+                    document.getElementById('medicine-modal-title').textContent = 'Add New Medicine';
+                    document.getElementById('medicine-form-action').value = 'addMedicine';
+                    document.getElementById('medicine-low-stock-threshold').value = 10;
+                } else {
+                    document.getElementById('medicine-modal-title').textContent = `Edit ${medicine.name}`;
+                    document.getElementById('medicine-form-action').value = 'updateMedicine';
+                    document.getElementById('medicine-id').value = medicine.id;
+                    document.getElementById('medicine-name').value = medicine.name;
+                    document.getElementById('medicine-description').value = medicine.description || '';
+                    document.getElementById('medicine-quantity').value = medicine.quantity;
+                    document.getElementById('medicine-unit-price').value = medicine.unit_price;
+                    document.getElementById('medicine-low-stock-threshold').value = medicine.low_stock_threshold;
+                }
+                medicineModal.classList.add('show');
+            };
+
+            addMedicineBtn.addEventListener('click', () => openMedicineModal('add'));
+            medicineModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(medicineModal));
+            medicineModal.addEventListener('click', (e) => { if (e.target === medicineModal) closeModal(medicineModal); });
+
+            medicineForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                handleFormSubmit(new FormData(medicineForm), 'medicine');
+            });
+
+            const fetchMedicineInventory = async () => {
+                medicineTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Loading...</td></tr>`;
+                try {
+                    const response = await fetch('?fetch=medicines');
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
+
+                    if (result.data.length > 0) {
+                        medicineTableBody.innerHTML = result.data.map(med => {
+                            const isLowStock = parseInt(med.quantity) <= parseInt(med.low_stock_threshold);
+                            const statusClass = isLowStock ? 'low-stock' : 'in-stock';
+                            const quantityClass = isLowStock ? 'quantity-low' : 'quantity-good';
+                            return `
                         <tr data-medicine='${JSON.stringify(med)}'>
                             <td>${med.name}</td>
                             <td>${med.description || 'N/A'}</td>
@@ -2604,74 +3775,74 @@ $pending_appointments = 0;
                             </td>
                         </tr>
                     `}).join('');
-                } else {
-                    medicineTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">No medicines found.</td></tr>`;
+                    } else {
+                        medicineTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">No medicines found.</td></tr>`;
+                    }
+                } catch (error) {
+                    medicineTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Failed to load medicines: ${error.message}</td></tr>`;
                 }
-            } catch (error) {
-                medicineTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Failed to load medicines: ${error.message}</td></tr>`;
-            }
-        };
+            };
 
-        medicineTableBody.addEventListener('click', async (e) => {
-            const row = e.target.closest('tr');
-            if (!row) return;
-            const medicine = JSON.parse(row.dataset.medicine);
-            if (e.target.closest('.btn-edit-medicine')) {
-                openMedicineModal('edit', medicine);
-            }
-            if (e.target.closest('.btn-delete-medicine')) {
-                const confirmed = await showConfirmation('Delete Medicine', `Are you sure you want to delete ${medicine.name}?`);
-                if (confirmed) {
-                    const formData = new FormData();
-                    formData.append('action', 'deleteMedicine');
-                    formData.append('id', medicine.id);
-                    formData.append('csrf_token', csrfToken);
-                    handleFormSubmit(formData, 'medicine');
+            medicineTableBody.addEventListener('click', async (e) => {
+                const row = e.target.closest('tr');
+                if (!row) return;
+                const medicine = JSON.parse(row.dataset.medicine);
+                if (e.target.closest('.btn-edit-medicine')) {
+                    openMedicineModal('edit', medicine);
                 }
-            }
-        });
+                if (e.target.closest('.btn-delete-medicine')) {
+                    const confirmed = await showConfirmation('Delete Medicine', `Are you sure you want to delete ${medicine.name}?`);
+                    if (confirmed) {
+                        const formData = new FormData();
+                        formData.append('action', 'deleteMedicine');
+                        formData.append('id', medicine.id);
+                        formData.append('csrf_token', csrfToken);
+                        handleFormSubmit(formData, 'medicine');
+                    }
+                }
+            });
 
-        // Blood Inventory
-        const bloodModal = document.getElementById('blood-modal');
-        const bloodForm = document.getElementById('blood-form');
-        const addBloodBtn = document.getElementById('add-blood-btn');
-        const bloodTableBody = document.getElementById('blood-table-body');
+            // Blood Inventory
+            const bloodModal = document.getElementById('blood-modal');
+            const bloodForm = document.getElementById('blood-form');
+            const addBloodBtn = document.getElementById('add-blood-btn');
+            const bloodTableBody = document.getElementById('blood-table-body');
 
-        const openBloodModal = (blood = {}) => {
-            bloodForm.reset();
-            document.getElementById('blood-modal-title').textContent = `Update Blood Unit`;
-            document.getElementById('blood-group').value = blood.blood_group || 'A+';
-            document.getElementById('blood-group').disabled = !!blood.blood_group;
-            document.getElementById('blood-quantity-ml').value = blood.quantity_ml || 0;
-            document.getElementById('blood-low-stock-threshold-ml').value = blood.low_stock_threshold_ml || 5000;
-            bloodModal.classList.add('show');
-        };
+            const openBloodModal = (blood = {}) => {
+                bloodForm.reset();
+                document.getElementById('blood-modal-title').textContent = `Update Blood Unit`;
+                document.getElementById('blood-group').value = blood.blood_group || 'A+';
+                document.getElementById('blood-group').disabled = !!blood.blood_group;
+                document.getElementById('blood-quantity-ml').value = blood.quantity_ml || 0;
+                document.getElementById('blood-low-stock-threshold-ml').value = blood.low_stock_threshold_ml || 5000;
+                bloodModal.classList.add('show');
+            };
 
-        addBloodBtn.addEventListener('click', () => openBloodModal());
-        bloodModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(bloodModal));
-        bloodModal.addEventListener('click', (e) => { if (e.target === bloodModal) closeModal(bloodModal); });
+            addBloodBtn.addEventListener('click', () => openBloodModal());
+            bloodModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(bloodModal));
+            bloodModal.addEventListener('click', (e) => { if (e.target === bloodModal) closeModal(bloodModal); });
 
-        bloodForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const formData = new FormData(bloodForm);
-            if (document.getElementById('blood-group').disabled) {
-                formData.set('blood_group', document.getElementById('blood-group').value);
-            }
-            handleFormSubmit(formData, 'blood');
-        });
+            bloodForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const formData = new FormData(bloodForm);
+                if (document.getElementById('blood-group').disabled) {
+                    formData.set('blood_group', document.getElementById('blood-group').value);
+                }
+                handleFormSubmit(formData, 'blood');
+            });
 
-        const fetchBloodInventory = async () => {
-            bloodTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Loading...</td></tr>`;
-            try {
-                const response = await fetch('?fetch=blood_inventory');
-                const result = await response.json();
-                if (!result.success) throw new Error(result.message);
-                if (result.data.length > 0) {
-                    bloodTableBody.innerHTML = result.data.map(blood => {
-                        const isLowStock = parseInt(blood.quantity_ml) < parseInt(blood.low_stock_threshold_ml);
-                        const statusClass = isLowStock ? 'low-stock' : 'in-stock';
-                        const quantityClass = isLowStock ? 'quantity-low' : 'quantity-good';
-                        return `
+            const fetchBloodInventory = async () => {
+                bloodTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Loading...</td></tr>`;
+                try {
+                    const response = await fetch('?fetch=blood_inventory');
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
+                    if (result.data.length > 0) {
+                        bloodTableBody.innerHTML = result.data.map(blood => {
+                            const isLowStock = parseInt(blood.quantity_ml) < parseInt(blood.low_stock_threshold_ml);
+                            const statusClass = isLowStock ? 'low-stock' : 'in-stock';
+                            const quantityClass = isLowStock ? 'quantity-low' : 'quantity-good';
+                            return `
                         <tr data-blood='${JSON.stringify(blood)}'>
                             <td>${blood.blood_group}</td>
                             <td><span class="${quantityClass}">${blood.quantity_ml}</span> ml</td>
@@ -2683,62 +3854,62 @@ $pending_appointments = 0;
                             </td>
                         </tr>
                     `}).join('');
-                } else {
-                    bloodTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No blood inventory records found.</td></tr>`;
+                    } else {
+                        bloodTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No blood inventory records found.</td></tr>`;
+                    }
+                } catch (error) {
+                    bloodTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Failed to load blood inventory.</td></tr>`;
                 }
-            } catch (error) {
-                bloodTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Failed to load blood inventory.</td></tr>`;
-            }
-        };
+            };
 
-        bloodTableBody.addEventListener('click', async (e) => {
-            if (e.target.closest('.btn-edit-blood')) {
-                const blood = JSON.parse(e.target.closest('tr').dataset.blood);
-                openBloodModal(blood);
-            }
-        });
+            bloodTableBody.addEventListener('click', async (e) => {
+                if (e.target.closest('.btn-edit-blood')) {
+                    const blood = JSON.parse(e.target.closest('tr').dataset.blood);
+                    openBloodModal(blood);
+                }
+            });
 
-        // --- Ward Management ---
-        const addWardBtn = document.getElementById('add-ward-btn');
-        const wardFormModal = document.getElementById('ward-form-modal');
-        const wardForm = document.getElementById('ward-form');
-        const wardTableBody = document.getElementById('ward-table-body');
-        
-        const openWardForm = (mode, ward = {}) => {
-            wardForm.reset();
-            wardFormModal.querySelector('#ward-form-modal-title').textContent = mode === 'add' ? 'Add New Ward' : `Edit ${ward.name}`;
-            wardForm.querySelector('#ward-form-action').value = mode === 'add' ? 'addWard' : 'updateWard';
-            const activeGroup = wardForm.querySelector('#ward-active-group');
-            
-            if (mode === 'edit') {
-                wardForm.querySelector('#ward-id-input').value = ward.id;
-                wardForm.querySelector('#ward-name-input').value = ward.name;
-                wardForm.querySelector('#ward-capacity-input').value = ward.capacity;
-                wardForm.querySelector('#ward-description-input').value = ward.description || '';
-                wardForm.querySelector('#ward-is-active-input').value = ward.is_active;
-                activeGroup.style.display = 'block';
-            } else {
-                activeGroup.style.display = 'none';
-            }
-            wardFormModal.classList.add('show');
-        };
+            // --- Ward Management ---
+            const addWardBtn = document.getElementById('add-ward-btn');
+            const wardFormModal = document.getElementById('ward-form-modal');
+            const wardForm = document.getElementById('ward-form');
+            const wardTableBody = document.getElementById('ward-table-body');
 
-        addWardBtn.addEventListener('click', () => openWardForm('add'));
-        wardFormModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(wardFormModal));
-        
-        wardForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            handleFormSubmit(new FormData(wardForm), 'wards');
-        });
+            const openWardForm = (mode, ward = {}) => {
+                wardForm.reset();
+                wardFormModal.querySelector('#ward-form-modal-title').textContent = mode === 'add' ? 'Add New Ward' : `Edit ${ward.name}`;
+                wardForm.querySelector('#ward-form-action').value = mode === 'add' ? 'addWard' : 'updateWard';
+                const activeGroup = wardForm.querySelector('#ward-active-group');
 
-        const fetchWards = async () => {
-            wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading...</td></tr>`;
-            try {
-                const response = await fetch('?fetch=wards');
-                const result = await response.json();
-                if (!result.success) throw new Error(result.message);
-                if (result.data.length > 0) {
-                    wardTableBody.innerHTML = result.data.map(ward => `
+                if (mode === 'edit') {
+                    wardForm.querySelector('#ward-id-input').value = ward.id;
+                    wardForm.querySelector('#ward-name-input').value = ward.name;
+                    wardForm.querySelector('#ward-capacity-input').value = ward.capacity;
+                    wardForm.querySelector('#ward-description-input').value = ward.description || '';
+                    wardForm.querySelector('#ward-is-active-input').value = ward.is_active;
+                    activeGroup.style.display = 'block';
+                } else {
+                    activeGroup.style.display = 'none';
+                }
+                wardFormModal.classList.add('show');
+            };
+
+            addWardBtn.addEventListener('click', () => openWardForm('add'));
+            wardFormModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(wardFormModal));
+
+            wardForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                handleFormSubmit(new FormData(wardForm), 'wards');
+            });
+
+            const fetchWards = async () => {
+                wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading...</td></tr>`;
+                try {
+                    const response = await fetch('?fetch=wards');
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
+                    if (result.data.length > 0) {
+                        wardTableBody.innerHTML = result.data.map(ward => `
                         <tr data-ward='${JSON.stringify(ward)}'>
                             <td>${ward.name}</td>
                             <td>${ward.capacity}</td>
@@ -2750,133 +3921,133 @@ $pending_appointments = 0;
                             </td>
                         </tr>
                     `).join('');
-                } else {
-                    wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No wards found.</td></tr>`;
-                }
-            } catch (error) {
-                wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Failed to load wards.</td></tr>`;
-            }
-        };
-
-        wardTableBody.addEventListener('click', async (e) => {
-            const row = e.target.closest('tr');
-            if (!row) return;
-            const ward = JSON.parse(row.dataset.ward);
-            if (e.target.closest('.btn-edit-ward')) {
-                openWardForm('edit', ward);
-            }
-            if (e.target.closest('.btn-delete-ward')) {
-                const confirmed = await showConfirmation('Delete Ward', `Are you sure you want to delete ward "${ward.name}"?`);
-                if (confirmed) {
-                    const formData = new FormData();
-                    formData.append('action', 'deleteWard');
-                    formData.append('id', ward.id);
-                    formData.append('csrf_token', csrfToken);
-                    handleFormSubmit(formData, 'wards');
-                }
-            }
-        });
-
-        // --- Bed Management ---
-        const bedModal = document.getElementById('bed-modal');
-        const bedForm = document.getElementById('bed-form');
-        const addBedBtn = document.getElementById('add-bed-btn');
-        const bedsContainer = document.getElementById('beds-container');
-        const bedPatientGroup = document.getElementById('bed-patient-group');
-        const bedStatusSelect = document.getElementById('bed-status');
-        const bedPatientSelect = document.getElementById('bed-patient-id');
-
-        const populateBedDropdowns = async () => {
-            try {
-                const [wardsRes, patientsRes] = await Promise.all([fetch('?fetch=wards'), fetch('?fetch=patients_for_beds')]);
-                const wardsResult = await wardsRes.json();
-                const patientsResult = await patientsRes.json();
-                const wardSelect = document.getElementById('bed-ward-id');
-                
-                wardSelect.innerHTML = '<option value="">Select Ward</option>';
-                if(wardsResult.success) {
-                    wardsResult.data.forEach(ward => wardSelect.innerHTML += `<option value="${ward.id}">${ward.name}</option>`);
-                }
-
-                bedPatientSelect.innerHTML = '<option value="">Select Patient</option>';
-                if(patientsResult.success) {
-                    patientsResult.data.forEach(patient => bedPatientSelect.innerHTML += `<option value="${patient.id}">${patient.name} (${patient.display_user_id})</option>`);
-                }
-            } catch (error) {
-                console.error('Failed to populate dropdowns:', error);
-            }
-        };
-
-        bedStatusSelect.addEventListener('change', () => {
-            const showPatient = bedStatusSelect.value === 'occupied' || bedStatusSelect.value === 'reserved';
-            bedPatientGroup.style.display = showPatient ? 'block' : 'none';
-            bedPatientSelect.required = showPatient;
-        });
-
-        const openBedModal = async (mode, bed = {}) => {
-            bedForm.reset();
-            await populateBedDropdowns();
-            document.getElementById('bed-modal-title').textContent = mode === 'add' ? 'Add New Bed' : `Edit Bed ${bed.bed_number}`;
-            document.getElementById('bed-form-action').value = mode === 'add' ? 'addBed' : 'updateBed';
-            bedPatientGroup.style.display = 'none';
-            bedPatientSelect.required = false;
-
-            document.getElementById('bed-number').readOnly = false;
-            document.getElementById('bed-ward-id').disabled = false;
-
-            if (mode === 'edit') {
-                document.getElementById('bed-id').value = bed.id;
-                setTimeout(() => { 
-                    document.getElementById('bed-ward-id').value = bed.ward_id;
-                    document.getElementById('bed-number').value = bed.bed_number;
-                    document.getElementById('bed-status').value = bed.status;
-                    const showPatient = bed.status === 'occupied' || bed.status === 'reserved';
-                    if (showPatient) {
-                        bedPatientGroup.style.display = 'block';
-                        bedPatientSelect.required = true;
-                        document.getElementById('bed-patient-id').value = bed.patient_id || '';
+                    } else {
+                        wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No wards found.</td></tr>`;
                     }
-                }, 100);
-            }
-            bedModal.classList.add('show');
-        };
+                } catch (error) {
+                    wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Failed to load wards.</td></tr>`;
+                }
+            };
 
-        addBedBtn.addEventListener('click', () => openBedModal('add'));
-        bedModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(bedModal));
-        bedModal.addEventListener('click', (e) => { if (e.target === bedModal) closeModal(bedModal); });
+            wardTableBody.addEventListener('click', async (e) => {
+                const row = e.target.closest('tr');
+                if (!row) return;
+                const ward = JSON.parse(row.dataset.ward);
+                if (e.target.closest('.btn-edit-ward')) {
+                    openWardForm('edit', ward);
+                }
+                if (e.target.closest('.btn-delete-ward')) {
+                    const confirmed = await showConfirmation('Delete Ward', `Are you sure you want to delete ward "${ward.name}"?`);
+                    if (confirmed) {
+                        const formData = new FormData();
+                        formData.append('action', 'deleteWard');
+                        formData.append('id', ward.id);
+                        formData.append('csrf_token', csrfToken);
+                        handleFormSubmit(formData, 'wards');
+                    }
+                }
+            });
 
-        bedForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            handleFormSubmit(new FormData(bedForm), 'beds');
-        });
+            // --- Bed Management ---
+            const bedModal = document.getElementById('bed-modal');
+            const bedForm = document.getElementById('bed-form');
+            const addBedBtn = document.getElementById('add-bed-btn');
+            const bedsContainer = document.getElementById('beds-container');
+            const bedPatientGroup = document.getElementById('bed-patient-group');
+            const bedStatusSelect = document.getElementById('bed-status');
+            const bedPatientSelect = document.getElementById('bed-patient-id');
 
-        const fetchWardsAndBeds = async () => {
-            bedsContainer.innerHTML = `<p style="text-align:center;">Loading beds...</p>`;
-            try {
-                const response = await fetch('?fetch=beds');
-                const result = await response.json();
-                if (!result.success) throw new Error(result.message);
+            const populateBedDropdowns = async () => {
+                try {
+                    const [wardsRes, patientsRes] = await Promise.all([fetch('?fetch=wards'), fetch('?fetch=patients_for_beds')]);
+                    const wardsResult = await wardsRes.json();
+                    const patientsResult = await patientsRes.json();
+                    const wardSelect = document.getElementById('bed-ward-id');
 
-                const bedsByWard = result.data.reduce((acc, bed) => {
-                    (acc[bed.ward_name] = acc[bed.ward_name] || []).push(bed);
-                    return acc;
-                }, {});
+                    wardSelect.innerHTML = '<option value="">Select Ward</option>';
+                    if (wardsResult.success) {
+                        wardsResult.data.forEach(ward => wardSelect.innerHTML += `<option value="${ward.id}">${ward.name}</option>`);
+                    }
 
-                if (Object.keys(bedsByWard).length > 0) {
-                    bedsContainer.innerHTML = Object.entries(bedsByWard).map(([wardName, beds]) => `
+                    bedPatientSelect.innerHTML = '<option value="">Select Patient</option>';
+                    if (patientsResult.success) {
+                        patientsResult.data.forEach(patient => bedPatientSelect.innerHTML += `<option value="${patient.id}">${patient.name} (${patient.display_user_id})</option>`);
+                    }
+                } catch (error) {
+                    console.error('Failed to populate dropdowns:', error);
+                }
+            };
+
+            bedStatusSelect.addEventListener('change', () => {
+                const showPatient = bedStatusSelect.value === 'occupied' || bedStatusSelect.value === 'reserved';
+                bedPatientGroup.style.display = showPatient ? 'block' : 'none';
+                bedPatientSelect.required = showPatient;
+            });
+
+            const openBedModal = async (mode, bed = {}) => {
+                bedForm.reset();
+                await populateBedDropdowns();
+                document.getElementById('bed-modal-title').textContent = mode === 'add' ? 'Add New Bed' : `Edit Bed ${bed.bed_number}`;
+                document.getElementById('bed-form-action').value = mode === 'add' ? 'addBed' : 'updateBed';
+                bedPatientGroup.style.display = 'none';
+                bedPatientSelect.required = false;
+
+                document.getElementById('bed-number').readOnly = false;
+                document.getElementById('bed-ward-id').disabled = false;
+
+                if (mode === 'edit') {
+                    document.getElementById('bed-id').value = bed.id;
+                    setTimeout(() => {
+                        document.getElementById('bed-ward-id').value = bed.ward_id;
+                        document.getElementById('bed-number').value = bed.bed_number;
+                        document.getElementById('bed-status').value = bed.status;
+                        const showPatient = bed.status === 'occupied' || bed.status === 'reserved';
+                        if (showPatient) {
+                            bedPatientGroup.style.display = 'block';
+                            bedPatientSelect.required = true;
+                            document.getElementById('bed-patient-id').value = bed.patient_id || '';
+                        }
+                    }, 100);
+                }
+                bedModal.classList.add('show');
+            };
+
+            addBedBtn.addEventListener('click', () => openBedModal('add'));
+            bedModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(bedModal));
+            bedModal.addEventListener('click', (e) => { if (e.target === bedModal) closeModal(bedModal); });
+
+            bedForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                handleFormSubmit(new FormData(bedForm), 'beds');
+            });
+
+            const fetchWardsAndBeds = async () => {
+                bedsContainer.innerHTML = `<p style="text-align:center;">Loading beds...</p>`;
+                try {
+                    const response = await fetch('?fetch=beds');
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
+
+                    const bedsByWard = result.data.reduce((acc, bed) => {
+                        (acc[bed.ward_name] = acc[bed.ward_name] || []).push(bed);
+                        return acc;
+                    }, {});
+
+                    if (Object.keys(bedsByWard).length > 0) {
+                        bedsContainer.innerHTML = Object.entries(bedsByWard).map(([wardName, beds]) => `
                         <div class="ward-section">
                             <div class="ward-header">
                                 <h3>${wardName}</h3>
                             </div>
                             <div class="ward-beds-container">
                                 ${beds.map(bed => {
-                                    let patientInfo = '';
-                                    if (bed.status === 'occupied' && bed.patient_name) {
-                                        patientInfo = `<div class="patient-info">Occupied by: ${bed.patient_name}<br><small>Since: ${new Date(bed.occupied_since).toLocaleDateString()}</small></div>`;
-                                    } else if (bed.status === 'reserved' && bed.patient_name) {
-                                        patientInfo = `<div class="patient-info">Reserved for: ${bed.patient_name}<br><small>Since: ${new Date(bed.reserved_since).toLocaleDateString()}</small></div>`;
-                                    }
-                                    return `
+                            let patientInfo = '';
+                            if (bed.status === 'occupied' && bed.patient_name) {
+                                patientInfo = `<div class="patient-info">Occupied by: ${bed.patient_name}<br><small>Since: ${new Date(bed.occupied_since).toLocaleDateString()}</small></div>`;
+                            } else if (bed.status === 'reserved' && bed.patient_name) {
+                                patientInfo = `<div class="patient-info">Reserved for: ${bed.patient_name}<br><small>Since: ${new Date(bed.reserved_since).toLocaleDateString()}</small></div>`;
+                            }
+                            return `
                                     <div class="bed-card ${bed.status}" data-bed='${JSON.stringify(bed)}'>
                                         <div class="bed-icon"><i class="fas fa-bed"></i></div>
                                         <div class="bed-number">Bed ${bed.bed_number}</div>
@@ -2891,115 +4062,115 @@ $pending_appointments = 0;
                             </div>
                         </div>
                     `).join('');
+                    } else {
+                        bedsContainer.innerHTML = `<p style="text-align:center;">No beds found. Add wards and beds to get started.</p>`;
+                    }
+                } catch (error) {
+                    bedsContainer.innerHTML = `<p style="text-align:center;">Failed to load beds: ${error.message}</p>`;
+                }
+            };
+
+            bedsContainer.addEventListener('click', async (e) => {
+                const bedCard = e.target.closest('.bed-card');
+                if (!bedCard) return;
+
+                const bed = JSON.parse(bedCard.dataset.bed);
+                if (e.target.closest('.btn-edit-bed')) {
+                    openBedModal('edit', bed);
+                }
+                if (e.target.closest('.btn-delete-bed')) {
+                    const confirmed = await showConfirmation('Delete Bed', `Are you sure you want to delete Bed ${bed.bed_number} in ${bed.ward_name}?`);
+                    if (confirmed) {
+                        const formData = new FormData();
+                        formData.append('action', 'deleteBed');
+                        formData.append('id', bed.id);
+                        formData.append('csrf_token', csrfToken);
+                        handleFormSubmit(formData, 'beds');
+                    }
+                }
+            });
+
+            // --- Room Management ---
+            const roomModal = document.getElementById('room-modal');
+            const roomForm = document.getElementById('room-form');
+            const addRoomBtn = document.getElementById('add-room-btn');
+            const roomsContainer = document.getElementById('rooms-container');
+            const roomPatientGroup = document.getElementById('room-patient-group');
+            const roomStatusSelect = document.getElementById('room-status');
+            const roomPatientSelect = document.getElementById('room-patient-id');
+
+            const populateRoomDropdowns = async () => {
+                try {
+                    const response = await fetch('?fetch=patients_for_beds'); // Reusing the same patient fetcher
+                    const result = await response.json();
+
+                    roomPatientSelect.innerHTML = '<option value="">Select Patient</option>';
+                    if (result.success) {
+                        result.data.forEach(patient => roomPatientSelect.innerHTML += `<option value="${patient.id}">${patient.name} (${patient.display_user_id})</option>`);
+                    }
+                } catch (error) {
+                    console.error('Failed to populate patient dropdown for rooms:', error);
+                }
+            };
+
+            roomStatusSelect.addEventListener('change', () => {
+                const showPatient = roomStatusSelect.value === 'occupied' || roomStatusSelect.value === 'reserved';
+                roomPatientGroup.style.display = showPatient ? 'block' : 'none';
+                roomPatientSelect.required = showPatient;
+            });
+
+            const openRoomModal = async (mode, room = {}) => {
+                roomForm.reset();
+                await populateRoomDropdowns();
+                document.getElementById('room-modal-title').textContent = mode === 'add' ? 'Add New Room' : `Edit Room ${room.room_number}`;
+                document.getElementById('room-form-action').value = mode === 'add' ? 'addRoom' : 'updateRoom';
+                roomPatientGroup.style.display = 'none';
+                roomPatientSelect.required = false;
+
+                document.getElementById('room-number').readOnly = false;
+
+                if (mode === 'edit') {
+                    document.getElementById('room-id').value = room.id;
+                    document.getElementById('room-number').value = room.room_number;
+                    document.getElementById('room-price-per-day').value = room.price_per_day;
+                    document.getElementById('room-status').value = room.status;
+                    const showPatient = room.status === 'occupied' || room.status === 'reserved';
+                    if (showPatient) {
+                        roomPatientGroup.style.display = 'block';
+                        roomPatientSelect.required = true;
+                        document.getElementById('room-patient-id').value = room.patient_id || '';
+                    }
                 } else {
-                    bedsContainer.innerHTML = `<p style="text-align:center;">No beds found. Add wards and beds to get started.</p>`;
+                    document.getElementById('room-price-per-day').value = '0.00';
                 }
-            } catch (error) {
-                bedsContainer.innerHTML = `<p style="text-align:center;">Failed to load beds: ${error.message}</p>`;
-            }
-        };
+                roomModal.classList.add('show');
+            };
 
-        bedsContainer.addEventListener('click', async (e) => {
-            const bedCard = e.target.closest('.bed-card');
-            if (!bedCard) return;
+            addRoomBtn.addEventListener('click', () => openRoomModal('add'));
+            roomModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(roomModal));
+            roomModal.addEventListener('click', (e) => { if (e.target === roomModal) closeModal(roomModal); });
 
-            const bed = JSON.parse(bedCard.dataset.bed);
-            if (e.target.closest('.btn-edit-bed')) {
-                openBedModal('edit', bed);
-            }
-            if (e.target.closest('.btn-delete-bed')) {
-                const confirmed = await showConfirmation('Delete Bed', `Are you sure you want to delete Bed ${bed.bed_number} in ${bed.ward_name}?`);
-                if (confirmed) {
-                    const formData = new FormData();
-                    formData.append('action', 'deleteBed');
-                    formData.append('id', bed.id);
-                    formData.append('csrf_token', csrfToken);
-                    handleFormSubmit(formData, 'beds');
-                }
-            }
-        });
+            roomForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                handleFormSubmit(new FormData(roomForm), 'rooms');
+            });
 
-        // --- Room Management ---
-        const roomModal = document.getElementById('room-modal');
-        const roomForm = document.getElementById('room-form');
-        const addRoomBtn = document.getElementById('add-room-btn');
-        const roomsContainer = document.getElementById('rooms-container');
-        const roomPatientGroup = document.getElementById('room-patient-group');
-        const roomStatusSelect = document.getElementById('room-status');
-        const roomPatientSelect = document.getElementById('room-patient-id');
+            const fetchRooms = async () => {
+                roomsContainer.innerHTML = `<p style="text-align:center;">Loading rooms...</p>`;
+                try {
+                    const response = await fetch('?fetch=rooms');
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
 
-        const populateRoomDropdowns = async () => {
-             try {
-                const response = await fetch('?fetch=patients_for_beds'); // Reusing the same patient fetcher
-                const result = await response.json();
-                
-                roomPatientSelect.innerHTML = '<option value="">Select Patient</option>';
-                if(result.success) {
-                    result.data.forEach(patient => roomPatientSelect.innerHTML += `<option value="${patient.id}">${patient.name} (${patient.display_user_id})</option>`);
-                }
-            } catch (error) {
-                console.error('Failed to populate patient dropdown for rooms:', error);
-            }
-        };
-
-        roomStatusSelect.addEventListener('change', () => {
-            const showPatient = roomStatusSelect.value === 'occupied' || roomStatusSelect.value === 'reserved';
-            roomPatientGroup.style.display = showPatient ? 'block' : 'none';
-            roomPatientSelect.required = showPatient;
-        });
-
-        const openRoomModal = async (mode, room = {}) => {
-            roomForm.reset();
-            await populateRoomDropdowns();
-            document.getElementById('room-modal-title').textContent = mode === 'add' ? 'Add New Room' : `Edit Room ${room.room_number}`;
-            document.getElementById('room-form-action').value = mode === 'add' ? 'addRoom' : 'updateRoom';
-            roomPatientGroup.style.display = 'none';
-            roomPatientSelect.required = false;
-            
-            document.getElementById('room-number').readOnly = false;
-
-            if (mode === 'edit') {
-                document.getElementById('room-id').value = room.id;
-                document.getElementById('room-number').value = room.room_number;
-                document.getElementById('room-price-per-day').value = room.price_per_day;
-                document.getElementById('room-status').value = room.status;
-                const showPatient = room.status === 'occupied' || room.status === 'reserved';
-                if (showPatient) {
-                    roomPatientGroup.style.display = 'block';
-                    roomPatientSelect.required = true;
-                    document.getElementById('room-patient-id').value = room.patient_id || '';
-                }
-            } else {
-                 document.getElementById('room-price-per-day').value = '0.00';
-            }
-            roomModal.classList.add('show');
-        };
-
-        addRoomBtn.addEventListener('click', () => openRoomModal('add'));
-        roomModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(roomModal));
-        roomModal.addEventListener('click', (e) => { if (e.target === roomModal) closeModal(roomModal); });
-
-        roomForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            handleFormSubmit(new FormData(roomForm), 'rooms');
-        });
-
-        const fetchRooms = async () => {
-            roomsContainer.innerHTML = `<p style="text-align:center;">Loading rooms...</p>`;
-            try {
-                const response = await fetch('?fetch=rooms');
-                const result = await response.json();
-                if (!result.success) throw new Error(result.message);
-
-                if (result.data.length > 0) {
-                    roomsContainer.innerHTML = result.data.map(room => {
-                        let patientInfo = '';
-                        if (room.status === 'occupied' && room.patient_name) {
-                            patientInfo = `<div class="patient-info">Occupied by: ${room.patient_name}<br><small>Since: ${new Date(room.occupied_since).toLocaleDateString()}</small></div>`;
-                        } else if (room.status === 'reserved' && room.patient_name) {
-                            patientInfo = `<div class="patient-info">Reserved for: ${room.patient_name}<br><small>Since: ${new Date(room.reserved_since).toLocaleDateString()}</small></div>`;
-                        }
-                        return `
+                    if (result.data.length > 0) {
+                        roomsContainer.innerHTML = result.data.map(room => {
+                            let patientInfo = '';
+                            if (room.status === 'occupied' && room.patient_name) {
+                                patientInfo = `<div class="patient-info">Occupied by: ${room.patient_name}<br><small>Since: ${new Date(room.occupied_since).toLocaleDateString()}</small></div>`;
+                            } else if (room.status === 'reserved' && room.patient_name) {
+                                patientInfo = `<div class="patient-info">Reserved for: ${room.patient_name}<br><small>Since: ${new Date(room.reserved_since).toLocaleDateString()}</small></div>`;
+                            }
+                            return `
                         <div class="room-card ${room.status}" data-room='${JSON.stringify(room)}'>
                             <div class="room-icon"><i class="fas fa-door-closed"></i></div>
                             <div class="room-number">Room ${room.room_number}</div>
@@ -3011,144 +4182,144 @@ $pending_appointments = 0;
                             </div>
                         </div>
                     `}).join('');
-                } else {
-                    roomsContainer.innerHTML = `<p style="text-align:center;">No rooms found. Add some to get started.</p>`;
+                    } else {
+                        roomsContainer.innerHTML = `<p style="text-align:center;">No rooms found. Add some to get started.</p>`;
+                    }
+                } catch (error) {
+                    roomsContainer.innerHTML = `<p style="text-align:center;">Failed to load rooms: ${error.message}</p>`;
                 }
-            } catch (error) {
-                roomsContainer.innerHTML = `<p style="text-align:center;">Failed to load rooms: ${error.message}</p>`;
-            }
-        };
+            };
 
-        roomsContainer.addEventListener('click', async (e) => {
-            const roomCard = e.target.closest('.room-card');
-            if (!roomCard) return;
+            roomsContainer.addEventListener('click', async (e) => {
+                const roomCard = e.target.closest('.room-card');
+                if (!roomCard) return;
 
-            const room = JSON.parse(roomCard.dataset.room);
-            if (e.target.closest('.btn-edit-room')) {
-                openRoomModal('edit', room);
-            }
-            if (e.target.closest('.btn-delete-room')) {
-                const confirmed = await showConfirmation('Delete Room', `Are you sure you want to delete Room ${room.room_number}?`);
-                if (confirmed) {
-                    const formData = new FormData();
-                    formData.append('action', 'deleteRoom');
-                    formData.append('id', room.id);
-                    formData.append('csrf_token', csrfToken);
-                    handleFormSubmit(formData, 'rooms');
+                const room = JSON.parse(roomCard.dataset.room);
+                if (e.target.closest('.btn-edit-room')) {
+                    openRoomModal('edit', room);
                 }
-            }
-        });
-        
-         // --- REPORTING ---
-        const generateReportBtn = document.getElementById('generate-report-btn');
-        const downloadPdfForm = document.getElementById('download-pdf-form');
-        const summaryCardsContainer = document.getElementById('report-summary-cards');
+                if (e.target.closest('.btn-delete-room')) {
+                    const confirmed = await showConfirmation('Delete Room', `Are you sure you want to delete Room ${room.room_number}?`);
+                    if (confirmed) {
+                        const formData = new FormData();
+                        formData.append('action', 'deleteRoom');
+                        formData.append('id', room.id);
+                        formData.append('csrf_token', csrfToken);
+                        handleFormSubmit(formData, 'rooms');
+                    }
+                }
+            });
 
-        const generateReport = async () => {
-            const reportType = document.getElementById('report-type').value;
-            const period = document.getElementById('report-period').value;
+            // --- REPORTING ---
+            const generateReportBtn = document.getElementById('generate-report-btn');
+            const downloadPdfForm = document.getElementById('download-pdf-form');
+            const summaryCardsContainer = document.getElementById('report-summary-cards');
 
-            // Update PDF download form
-            document.getElementById('pdf-report-type').value = reportType;
-            document.getElementById('pdf-period').value = period;
-            summaryCardsContainer.innerHTML = '<p>Loading summary...</p>';
+            const generateReport = async () => {
+                const reportType = document.getElementById('report-type').value;
+                const period = document.getElementById('report-period').value;
 
-            try {
-                const response = await fetch(`?fetch=report&type=${reportType}&period=${period}`);
-                const result = await response.json();
-                if (!result.success) throw new Error(result.message);
-                
-                const { summary, chartData } = result.data;
+                // Update PDF download form
+                document.getElementById('pdf-report-type').value = reportType;
+                document.getElementById('pdf-period').value = period;
+                summaryCardsContainer.innerHTML = '<p>Loading summary...</p>';
 
-                // Update Summary Cards
-                summaryCardsContainer.innerHTML = ''; // Clear previous cards
-                if (reportType === 'financial') {
-                    summaryCardsContainer.innerHTML = `
+                try {
+                    const response = await fetch(`?fetch=report&type=${reportType}&period=${period}`);
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
+
+                    const { summary, chartData } = result.data;
+
+                    // Update Summary Cards
+                    summaryCardsContainer.innerHTML = ''; // Clear previous cards
+                    if (reportType === 'financial') {
+                        summaryCardsContainer.innerHTML = `
                         <div class="summary-card"><span class="label">Total Revenue</span><span class="value">₹${parseFloat(summary.total_revenue || 0).toLocaleString('en-IN')}</span></div>
                         <div class="summary-card"><span class="label">Total Refunds</span><span class="value">₹${parseFloat(summary.total_refunds || 0).toLocaleString('en-IN')}</span></div>
                         <div class="summary-card"><span class="label">Net Revenue</span><span class="value">₹${(parseFloat(summary.total_revenue || 0) - parseFloat(summary.total_refunds || 0)).toLocaleString('en-IN')}</span></div>
                         <div class="summary-card"><span class="label">Transactions</span><span class="value">${summary.total_transactions || 0}</span></div>
                     `;
-                } else if (reportType === 'patient') {
-                     summaryCardsContainer.innerHTML = `
+                    } else if (reportType === 'patient') {
+                        summaryCardsContainer.innerHTML = `
                         <div class="summary-card"><span class="label">Total Appointments</span><span class="value">${summary.total_appointments || 0}</span></div>
                         <div class="summary-card"><span class="label">Completed</span><span class="value">${summary.completed || 0}</span></div>
                         <div class="summary-card"><span class="label">Cancelled</span><span class="value">${summary.cancelled || 0}</span></div>
                     `;
-                } else if (reportType === 'resource') {
-                    const occupancy_rate = summary.total_beds > 0 ? ((summary.occupied_beds / summary.total_beds) * 100).toFixed(1) : 0;
-                     summaryCardsContainer.innerHTML = `
+                    } else if (reportType === 'resource') {
+                        const occupancy_rate = summary.total_beds > 0 ? ((summary.occupied_beds / summary.total_beds) * 100).toFixed(1) : 0;
+                        summaryCardsContainer.innerHTML = `
                         <div class="summary-card"><span class="label">Occupied Beds</span><span class="value">${summary.occupied_beds || 0} / ${summary.total_beds || 0}</span></div>
                         <div class="summary-card"><span class="label">Bed Occupancy Rate</span><span class="value">${occupancy_rate}%</span></div>
                         <div class="summary-card"><span class="label">Occupied Rooms</span><span class="value">${summary.occupied_rooms || 0} / ${summary.total_rooms || 0}</span></div>
                     `;
-                }
-                
-                const chartCtx = document.getElementById('report-chart').getContext('2d');
-                if (reportChart) {
-                    reportChart.destroy();
-                }
-                
-                const labels = chartData.map(item => item.label);
-                const data = chartData.map(item => item.value);
-                const chartLabel = reportType.charAt(0).toUpperCase() + reportType.slice(1) + ' Trend';
-
-                reportChart = new Chart(chartCtx, {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: chartLabel,
-                            data: data,
-                            borderColor: 'var(--primary-color)',
-                            backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                            fill: true,
-                            tension: 0.4
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        scales: {
-                            y: { beginAtZero: true },
-                        }
                     }
-                });
 
-            } catch (error) {
-                showNotification('Failed to generate report: ' + error.message, 'error');
-                summaryCardsContainer.innerHTML = `<p style="color: var(--danger-color);">Could not load report summary.</p>`;
-            }
-        };
+                    const chartCtx = document.getElementById('report-chart').getContext('2d');
+                    if (reportChart) {
+                        reportChart.destroy();
+                    }
 
-        generateReportBtn.addEventListener('click', generateReport);
+                    const labels = chartData.map(item => item.label);
+                    const data = chartData.map(item => item.value);
+                    const chartLabel = reportType.charAt(0).toUpperCase() + reportType.slice(1) + ' Trend';
 
-        // --- ACTIVITY LOG (AUDIT TRAIL) ---
-        const activityLogContainer = document.getElementById('activity-log-container');
-        const refreshLogsBtn = document.getElementById('refresh-logs-btn');
-
-        const fetchActivityLogs = async () => {
-            activityLogContainer.innerHTML = '<p style="text-align: center;">Loading logs...</p>';
-            try {
-                const response = await fetch(`?fetch=activity&limit=50`);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const result = await response.json();
-                if (!result.success) throw new Error(result.message);
-
-                if (result.data.length > 0) {
-                    activityLogContainer.innerHTML = result.data.map(log => {
-                        let iconClass = 'fa-plus';
-                        let iconBgClass = 'create';
-                        if (log.action.includes('update')) {
-                            iconClass = 'fa-pencil-alt';
-                            iconBgClass = 'update';
-                        } else if (log.action.includes('delete') || log.action.includes('deactivate')) {
-                            iconClass = 'fa-trash-alt';
-                            iconBgClass = 'delete';
+                    reportChart = new Chart(chartCtx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: chartLabel,
+                                data: data,
+                                borderColor: 'var(--primary-color)',
+                                backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                                fill: true,
+                                tension: 0.4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                y: { beginAtZero: true },
+                            }
                         }
-                        
-                        const time = new Date(log.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+                    });
 
-                        return `
+                } catch (error) {
+                    showNotification('Failed to generate report: ' + error.message, 'error');
+                    summaryCardsContainer.innerHTML = `<p style="color: var(--danger-color);">Could not load report summary.</p>`;
+                }
+            };
+
+            generateReportBtn.addEventListener('click', generateReport);
+
+            // --- ACTIVITY LOG (AUDIT TRAIL) ---
+            const activityLogContainer = document.getElementById('activity-log-container');
+            const refreshLogsBtn = document.getElementById('refresh-logs-btn');
+
+            const fetchActivityLogs = async () => {
+                activityLogContainer.innerHTML = '<p style="text-align: center;">Loading logs...</p>';
+                try {
+                    const response = await fetch(`?fetch=activity&limit=50`);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
+
+                    if (result.data.length > 0) {
+                        activityLogContainer.innerHTML = result.data.map(log => {
+                            let iconClass = 'fa-plus';
+                            let iconBgClass = 'create';
+                            if (log.action.includes('update')) {
+                                iconClass = 'fa-pencil-alt';
+                                iconBgClass = 'update';
+                            } else if (log.action.includes('delete') || log.action.includes('deactivate')) {
+                                iconClass = 'fa-trash-alt';
+                                iconBgClass = 'delete';
+                            }
+
+                            const time = new Date(log.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+
+                            return `
                         <div class="log-item">
                             <div class="log-icon ${iconBgClass}"><i class="fas ${iconClass}"></i></div>
                             <div class="log-details">
@@ -3159,24 +4330,233 @@ $pending_appointments = 0;
                             </div>
                         </div>
                         `;
-                    }).join('');
-                } else {
-                    activityLogContainer.innerHTML = `<p style="text-align: center;">No recent activity found.</p>`;
+                        }).join('');
+                    } else {
+                        activityLogContainer.innerHTML = `<p style="text-align: center;">No recent activity found.</p>`;
+                    }
+                } catch (error) {
+                    console.error('Fetch error:', error);
+                    activityLogContainer.innerHTML = `<p style="text-align: center; color: var(--danger-color);">Failed to load activity logs.</p>`;
                 }
-            } catch (error) {
-                console.error('Fetch error:', error);
-                activityLogContainer.innerHTML = `<p style="text-align: center; color: var(--danger-color);">Failed to load activity logs.</p>`;
+            };
+
+            refreshLogsBtn.addEventListener('click', fetchActivityLogs);
+
+// --- SCHEDULES PANEL LOGIC ---
+const schedulesPanel = document.getElementById('schedules-panel');
+const doctorSelect = document.getElementById('doctor-select');
+const scheduleEditorContainer = document.getElementById('doctor-schedule-editor');
+const saveScheduleBtn = document.getElementById('save-schedule-btn');
+
+const fetchDoctorsForScheduling = async () => {
+    try {
+        const response = await fetch('?fetch=doctors_for_scheduling');
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message);
+        
+        doctorSelect.innerHTML = '<option value="">Select a Doctor...</option>';
+        result.data.forEach(doctor => {
+            doctorSelect.innerHTML += `<option value="${doctor.id}">${doctor.name} (${doctor.display_user_id})</option>`;
+        });
+    } catch (error) {
+        console.error("Failed to fetch doctors:", error);
+        doctorSelect.innerHTML = '<option value="">Could not load doctors</option>';
+    }
+};
+
+const renderScheduleEditor = (slots) => {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+scheduleEditorContainer.innerHTML = days.map(day => `
+    <div class="day-schedule-card" data-day="${day}">
+        <h4>${day}</h4>
+        <div class="time-slots-grid">
+            ${(slots[day] || []).map(slot => `
+                <div class="time-slot">
+                    <label>From:</label>
+                    <input type="time" class="slot-from" value="${slot.from}" />
+                    <label>To:</label>
+                    <input type="time" class="slot-to" value="${slot.to}" />
+                    <button class="remove-slot-btn" title="Remove slot"><i class="fas fa-times"></i></button>
+                </div>
+            `).join('')}
+        </div>
+        <button class="add-slot-btn"><i class="fas fa-plus"></i> Add Slot</button>
+    </div>
+`).join('');
+    document.querySelector('.schedule-actions').style.display = 'block';
+};
+
+const fetchDoctorSchedule = async (doctorId) => {
+    if (!doctorId) {
+        scheduleEditorContainer.innerHTML = '<p class="placeholder-text">Please select a doctor to view or edit their schedule.</p>';
+        document.querySelector('.schedule-actions').style.display = 'none';
+        return;
+    }
+    scheduleEditorContainer.innerHTML = '<p class="placeholder-text">Loading schedule...</p>';
+    try {
+        const response = await fetch(`?fetch=fetch_doctor_schedule&doctor_id=${doctorId}`);
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message);
+        renderScheduleEditor(result.data);
+    } catch (error) {
+        scheduleEditorContainer.innerHTML = `<p class="placeholder-text" style="color:var(--danger-color)">Failed to load schedule: ${error.message}</p>`;
+    }
+};
+
+doctorSelect.addEventListener('change', () => {
+    fetchDoctorSchedule(doctorSelect.value);
+});
+
+scheduleEditorContainer.addEventListener('click', (e) => {
+if (e.target.closest('.add-slot-btn')) {
+    const grid = e.target.closest('.day-schedule-card').querySelector('.time-slots-grid');
+    const slotDiv = document.createElement('div');
+    slotDiv.className = 'time-slot';
+    slotDiv.innerHTML = `
+        <label>From:</label>
+        <input type="time" class="slot-from" value="09:00" />
+        <label>To:</label>
+        <input type="time" class="slot-to" value="13:00" />
+        <button class="remove-slot-btn" title="Remove slot"><i class="fas fa-times"></i></button>
+    `;
+    grid.appendChild(slotDiv);
+}
+    if (e.target.closest('.remove-slot-btn')) {
+        e.target.closest('.time-slot').remove();
+    }
+});
+
+saveScheduleBtn.addEventListener('click', async () => {
+    const doctorId = doctorSelect.value;
+    if (!doctorId) {
+        showNotification('Please select a doctor first.', 'error');
+        return;
+    }
+
+const scheduleData = {};
+let isValid = true;
+document.querySelectorAll('.day-schedule-card').forEach(dayCard => {
+    const day = dayCard.dataset.day;
+    const slots = [];
+    dayCard.querySelectorAll('.time-slot').forEach(slotElement => {
+        const from = slotElement.querySelector('.slot-from').value;
+        const to = slotElement.querySelector('.slot-to').value;
+        if (from && to) {
+            if (to <= from) {
+                showNotification(`'To' time must be after 'From' time for a slot on ${day}.`, 'error');
+                isValid = false;
             }
-        };
-
-        refreshLogsBtn.addEventListener('click', fetchActivityLogs);
-
-
-        // --- INITIAL LOAD ---
-        updateDashboardStats();
-        fetchDepartments();
-        generateReport(); // Generate default report on load
+            slots.push({ from, to });
+        }
     });
+    scheduleData[day] = slots;
+});
+
+if (!isValid) return; // Stop if there's a time validation error
+
+    const formData = new FormData();
+    formData.append('action', 'update_doctor_schedule');
+    formData.append('doctor_id', doctorId);
+    formData.append('slots', JSON.stringify(scheduleData));
+    formData.append('csrf_token', csrfToken);
+
+    try {
+        const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
+        const result = await response.json();
+        if (result.success) {
+            showNotification(result.message, 'success');
+        } else {
+            throw new Error(result.message);
+        }
+    } catch (error) {
+        showNotification(`Error saving schedule: ${error.message}`, 'error');
+    }
+});
+
+    const fetchStaffShifts = async () => {
+        const staffTableBody = document.getElementById('staff-shifts-table-body');
+        staffTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading staff shifts...</td></tr>';
+        try {
+            const response = await fetch('?fetch=staff_for_shifting');
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+
+            if(result.data.length > 0) {
+                staffTableBody.innerHTML = result.data.map(staff => `
+                    <tr data-staff-id="${staff.id}">
+                        <td>${staff.name}</td>
+                        <td>${staff.display_user_id}</td>
+                        <td id="shift-status-${staff.id}">${staff.shift}</td>
+                        <td>
+                            <select class="shift-select" data-id="${staff.id}">
+                                <option value="day" ${staff.shift === 'day' ? 'selected' : ''}>Day</option>
+                                <option value="night" ${staff.shift === 'night' ? 'selected' : ''}>Night</option>
+                                <option value="off" ${staff.shift === 'off' ? 'selected' : ''}>Off</option>
+                            </select>
+                        </td>
+                    </tr>
+                `).join('');
+            } else {
+                staffTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No active staff found.</td></tr>';
+            }
+        } catch (error) {
+            staffTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--danger-color);">Failed to load shifts: ${error.message}</td></tr>`;
+        }
+    };
+
+// Tab switching logic for the Schedules panel
+schedulesPanel.querySelectorAll('.schedule-tab-button').forEach(button => {
+    button.addEventListener('click', function() {
+        const tabId = this.dataset.tab;
+        
+        schedulesPanel.querySelectorAll('.schedule-tab-button').forEach(btn => btn.classList.remove('active'));
+        this.classList.add('active');
+        
+        schedulesPanel.querySelectorAll('.schedule-tab-content').forEach(content => content.classList.remove('active'));
+        document.getElementById(`${tabId}-content`).classList.add('active');
+        
+        // Fetch data if the tab is being opened for the first time or needs refresh
+        if (tabId === 'doctor-availability' && doctorSelect.options.length <= 1) {
+            fetchDoctorsForScheduling();
+        } else if (tabId === 'staff-shifts') {
+            // Future implementation: fetchStaffShifts();
+fetchStaffShifts();
+        }
+    });
+});
+
+document.getElementById('staff-shifts-table-body').addEventListener('change', async (e) => {
+    if (e.target.classList.contains('shift-select')) {
+        const staffId = e.target.dataset.id;
+        const newShift = e.target.value;
+
+        const formData = new FormData();
+        formData.append('action', 'update_staff_shift');
+        formData.append('staff_id', staffId);
+        formData.append('shift', newShift);
+        formData.append('csrf_token', csrfToken);
+        
+        try {
+            const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
+            const result = await response.json();
+            if (result.success) {
+                showNotification(result.message, 'success');
+                document.getElementById(`shift-status-${staffId}`).textContent = newShift;
+            } else {
+                throw new Error(result.message);
+            }
+        } catch (error) {
+            showNotification(`Error: ${error.message}`, 'error');
+            fetchStaffShifts(); 
+        }
+    }
+});
+            // --- INITIAL LOAD ---
+            updateDashboardStats();
+            fetchDepartments();
+            generateReport(); // Generate default report on load
+        });
     </script>
 </body>
+
 </html>
