@@ -738,7 +738,45 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         throw new Exception('Failed to update doctor schedule.');
                     }
                     break;
+case 'sendIndividualNotification':
+                    if (empty($_POST['recipient_user_id']) || empty($_POST['message'])) {
+                        throw new Exception('Recipient and message are required.');
+                    }
+                    $recipient_user_id = (int)$_POST['recipient_user_id'];
+                    $message = $_POST['message'];
+                    $admin_user_id = $_SESSION['user_id'];
 
+                    $sql = "INSERT INTO notifications (sender_id, message, recipient_user_id) VALUES (?, ?, ?)";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("isi", $admin_user_id, $message, $recipient_user_id);
+
+                    if ($stmt->execute()) {
+                        log_activity($conn, $admin_user_id_for_log, 'send_notification', $recipient_user_id, "Sent an individual message.");
+                        $response = ['success' => true, 'message' => 'Message sent successfully.'];
+                    } else {
+                        throw new Exception('Failed to send message.');
+                    }
+                    break;
+
+                case 'sendNotification':
+                    if (empty($_POST['role']) || empty($_POST['message'])) {
+                        throw new Exception('Role and message are required.');
+                    }
+                    $role = $_POST['role'];
+                    $message = $_POST['message'];
+                    $admin_user_id = $_SESSION['user_id'];
+
+                    $sql = "INSERT INTO notifications (sender_id, message, recipient_role) VALUES (?, ?, ?)";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("iss", $admin_user_id, $message, $role);
+
+                    if ($stmt->execute()) {
+                        log_activity($conn, $admin_user_id_for_log, 'send_notification', null, "Sent a broadcast message to '{$role}'.");
+                        $response = ['success' => true, 'message' => 'Notification sent successfully.'];
+                    } else {
+                        throw new Exception('Failed to send notification.');
+                    }
+                    break;
 
                 case 'update_staff_shift':
                     if (empty($_POST['staff_id']) || empty($_POST['shift'])) {
@@ -760,15 +798,69 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     break;
 
+                    case 'mark_notifications_read':
+                    $admin_id = $_SESSION['user_id'];
+                    // This query updates the is_read flag to 1 for all unread (is_read = 0) notifications for this admin.
+                    $sql = "UPDATE notifications SET is_read = 1 WHERE (recipient_user_id = ? OR recipient_role = 'admin' OR recipient_role = 'all') AND is_read = 0";
+                    $stmt = $conn->prepare($sql);
+                    
+                    if ($stmt) {
+                        $stmt->bind_param("i", $admin_id);
+                        if ($stmt->execute()) {
+                            $response = ['success' => true, 'message' => 'Notifications marked as read.'];
+                        } else {
+                            $response = ['success' => false, 'message' => 'Database update failed during execution.'];
+                        }
+                        $stmt->close();
+                    } else {
+                        $response = ['success' => false, 'message' => 'Database statement could not be prepared.'];
+                    }
+                    break;
+
+                    case 'dismiss_all_notifications':
+                    $admin_user_id = $_SESSION['user_id'];
+                    
+                    // First, find all notification IDs that are currently unread/undismissed for this admin
+                    $sql_get_ids = "SELECT n.id 
+                                    FROM notifications n
+                                    LEFT JOIN notification_dismissals nd ON n.id = nd.notification_id AND nd.user_id = ?
+                                    WHERE (n.recipient_user_id = ? OR n.recipient_role = 'admin' OR n.recipient_role = 'all')
+                                    AND nd.user_id IS NULL";
+                    $stmt_get_ids = $conn->prepare($sql_get_ids);
+                    $stmt_get_ids->bind_param("ii", $admin_user_id, $admin_user_id);
+                    $stmt_get_ids->execute();
+                    $result = $stmt_get_ids->get_result();
+                    $notification_ids = [];
+                    while($row = $result->fetch_assoc()) {
+                        $notification_ids[] = $row['id'];
+                    }
+                    $stmt_get_ids->close();
+
+                    if (!empty($notification_ids)) {
+                        // Now, insert a dismissal record for each of these notifications
+                        $sql_dismiss = "INSERT INTO notification_dismissals (user_id, notification_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE user_id=user_id";
+                        $stmt_dismiss = $conn->prepare($sql_dismiss);
+                        foreach ($notification_ids as $notif_id) {
+                            $stmt_dismiss->bind_param("ii", $admin_user_id, $notif_id);
+                            $stmt_dismiss->execute();
+                        }
+                        $stmt_dismiss->close();
+                    }
+                    
+                    log_activity($conn, $admin_user_id_for_log, 'dismiss_notifications', null, "Dismissed all unread notifications.");
+                    $response = ['success' => true, 'message' => 'Notifications dismissed.'];
+                    break;
+
             }
         } elseif (isset($_GET['fetch'])) {
             $fetch_target = $_GET['fetch'];
             switch ($fetch_target) {
-                case 'users':
-                    if (!isset($_GET['role']))
+ case 'users':
+                    if (!isset($_GET['role'])) {
                         throw new Exception('User role not specified.');
+                    }
                     $role = $_GET['role'];
-                    $search = $_GET['search'] ?? ''; // Get the search term from the request
+                    $search = $_GET['search'] ?? '';
 
                     $sql = "SELECT u.id, u.display_user_id, u.name, u.username, u.email, u.phone, u.role, u.active, u.created_at, u.date_of_birth, u.gender, u.profile_picture";
                     $params = [];
@@ -784,19 +876,27 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     $sql .= $base_from;
 
-                    $where_clauses = ["u.role = ?"];
-                    $params[] = $role;
-                    $types .= "s";
+                    $where_clauses = [];
+                    // If the role is 'all_users', don't filter by role
+                    if ($role !== 'all_users') {
+                        $where_clauses[] = "u.role = ?";
+                        $params[] = $role;
+                        $types .= "s";
+                    }
 
-                    if (!empty($search)) {
+if (!empty($search)) {
                         // Add conditions to search across multiple fields
                         $where_clauses[] = "(u.name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR u.display_user_id LIKE ?)";
                         $search_term = "%{$search}%";
                         array_push($params, $search_term, $search_term, $search_term, $search_term);
                         $types .= "ssss";
                     }
+                    
+                    if (!empty($where_clauses)) {
+                        $sql .= " WHERE " . implode(' AND ', $where_clauses);
+                    }
 
-                    $sql .= " WHERE " . implode(' AND ', $where_clauses) . " ORDER BY u.created_at DESC";
+                    $sql .= " ORDER BY u.created_at DESC";
 
                     $stmt = $conn->prepare($sql);
                     // Bind parameters dynamically
@@ -1020,6 +1120,78 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
 
                     $response = ['success' => true, 'data' => $data];
                     break;
+
+                   
+                
+                case 'search_users':
+                    $term = $_GET['term'] ?? '';
+                    if (empty($term)) {
+                        $response = ['success' => true, 'data' => []];
+                        break;
+                    }
+                    $searchTerm = "%{$term}%";
+                    $sql = "SELECT id, name, display_user_id, role FROM users WHERE name LIKE ? OR username LIKE ? OR email LIKE ? OR display_user_id LIKE ? LIMIT 10";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("ssss", $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
+case 'all_notifications':
+                    $admin_id = $_SESSION['user_id'];
+                    // CORRECTED: Fetches ALL notifications for the admin, regardless of read status.
+                    $sql = "SELECT n.id, n.message, n.created_at, n.is_read, u.name as sender_name 
+                            FROM notifications n
+                            JOIN users u ON n.sender_id = u.id
+                            WHERE (n.recipient_user_id = ? OR n.recipient_role = 'admin' OR n.recipient_role = 'all')
+                            ORDER BY n.created_at DESC";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("i", $admin_id);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
+                case 'unread_notification_count':
+                    $admin_id = $_SESSION['user_id'];
+                    // CORRECTED: Counts only rows where is_read = 0 (unread).
+                    $sql = "SELECT COUNT(*) as unread_count 
+                            FROM notifications
+                            WHERE 
+                                (recipient_user_id = ? OR recipient_role = 'admin' OR recipient_role = 'all') 
+                                AND is_read = 0";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("i", $admin_id);
+                    $stmt->execute();
+                    $result = $stmt->get_result()->fetch_assoc();
+                    $response = ['success' => true, 'count' => $result['unread_count']];
+                    break;
+                    
+             case 'mark_notifications_read':
+                    $admin_id = $_SESSION['user_id'];
+                    $sql = "UPDATE notifications SET is_read = 1 WHERE (recipient_user_id = ? OR recipient_role = 'admin' OR recipient_role = 'all') AND is_read = 0";
+                    $stmt = $conn->prepare($sql);
+                    
+                    if ($stmt) {
+                        $stmt->bind_param("i", $admin_id);
+                        if ($stmt->execute()) {
+                            $response = ['success' => true, 'message' => 'Notifications marked as read.'];
+                        } else {
+                            // If execution fails, send a specific error
+                            $response = ['success' => false, 'message' => 'Database update failed.'];
+                        }
+                        $stmt->close();
+                    } else {
+                        // If preparing the statement fails
+                        $response = ['success' => false, 'message' => 'Database statement could not be prepared.'];
+                    }
+                    break;
+
+
+                    
                 case 'activity':
                     $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 50;
                     $sql = "SELECT a.id, a.action, a.details, a.created_at, u.username as admin_username, t.username as target_username
@@ -2493,6 +2665,22 @@ $pending_appointments = 0;
         .detail-tab-content.active {
             display: block;
         }
+
+        .search-result-item {
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border-light);
+        }
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+        .search-result-item:hover {
+            background-color: var(--bg-grey);
+        }
+        .search-result-item.none {
+            cursor: default;
+            color: var(--text-muted);
+        }
     </style>
 </head>
 
@@ -2557,7 +2745,7 @@ $pending_appointments = 0;
         </aside>
 
         <main class="main-content">
-            <header class="main-header">
+        <header class="main-header">
                 <button class="hamburger-btn" id="hamburger-btn" aria-label="Open Menu">
                     <i class="fas fa-bars"></i>
                 </button>
@@ -2566,6 +2754,12 @@ $pending_appointments = 0;
                     <h2 id="welcome-message">Hello, <?php echo $admin_name; ?>!</h2>
                 </div>
                 <div class="header-actions">
+                    
+                    <div class="notification-bell-wrapper nav-link" id="notification-bell-wrapper" data-target="all-notifications" style="position: relative; cursor: pointer; padding: 0.5rem;">
+                        <i class="fas fa-bell" style="font-size: 1.2rem;"></i>
+                        <span id="notification-count" style="position: absolute; top: -5px; right: -8px; background-color: var(--danger-color); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: none; place-items: center;"></span>
+                    </div>
+
                     <div class="theme-switch-wrapper">
                         <i class="fas fa-sun"></i>
                         <label class="theme-switch" for="theme-toggle">
@@ -2574,6 +2768,7 @@ $pending_appointments = 0;
                         </label>
                         <i class="fas fa-moon"></i>
                     </div>
+
                     <div class="user-profile-widget">
                         <i class="fas fa-user-crown"></i>
                         <div class="user-info">
@@ -2582,9 +2777,9 @@ $pending_appointments = 0;
                                 <?php echo $display_user_id; ?></span>
                         </div>
                     </div>
+
                 </div>
             </header>
-
             <div id="dashboard-panel" class="content-panel active">
                 <div class="stat-cards-container">
                     <div class="stat-card blue">
@@ -2895,8 +3090,57 @@ $pending_appointments = 0;
             <div id="backup-panel" class="content-panel">
                 <p>Database Backup utility coming soon.</p>
             </div>
-            <div id="notifications-panel" class="content-panel">
-                <p>Notification management coming soon.</p>
+            <div id="all-notifications-panel" class="content-panel">
+                </div>
+<div id="notifications-panel" class="content-panel">
+                <div class="schedule-tabs">
+                    <button class="schedule-tab-button active" data-tab="broadcast">Broadcast</button>
+                    <button class="schedule-tab-button" data-tab="individual">Individual</button>
+                </div>
+
+                <div id="broadcast-content" class="schedule-tab-content active">
+                    <h3>Send Broadcast Notification</h3>
+                    <form id="notification-form">
+                        <input type="hidden" name="action" value="sendNotification">
+                        <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                        <div class="form-group">
+                            <label for="notification-role">Select Role</label>
+                            <select id="notification-role" name="role" required>
+                                <option value="all">All Users</option>
+                                <option value="user">Regular Users</option>
+                                <option value="doctor">Doctors</option>
+                                <option value="staff">Staff</option>
+                                <option value="admin">Admins</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="notification-message">Message</label>
+                            <textarea id="notification-message" name="message" rows="5" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Send Broadcast</button>
+                    </form>
+                </div>
+
+               <div id="individual-content" class="schedule-tab-content">
+                    <h3>Send Individual Notification</h3>
+                    <form id="individual-notification-form">
+                        <input type="hidden" name="action" value="sendIndividualNotification">
+                        <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                        <input type="hidden" id="recipient-user-id" name="recipient_user_id" required>
+                        
+                        <div class="form-group">
+                            <label for="user-search">Search for User (Recipient)</label>
+                            <input type="text" id="user-search" autocomplete="off" placeholder="Search by name, username, email, or ID..." class="form-control">
+                            <div id="user-search-results" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-light); border-radius: 8px; margin-top: 5px; display: none;"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="individual-notification-message">Message</label>
+                            <textarea id="individual-notification-message" name="message" rows="5" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Send Message</button>
+                    </form>
+                </div>
             </div>
         </main>
     </div>
@@ -3333,65 +3577,80 @@ $pending_appointments = 0;
                 });
             });
 
-            // --- PANEL SWITCHING LOGIC ---
-            navLinks.forEach(link => {
-                link.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    const targetId = this.dataset.target;
+       // --- PANEL SWITCHING LOGIC ---
+            const handlePanelSwitch = (clickedLink) => {
+                if (!clickedLink) return;
 
-                    document.querySelectorAll('.sidebar-nav a.active, .sidebar-nav .nav-dropdown-toggle.active').forEach(a => a.classList.remove('active'));
-                    this.classList.add('active');
+                const targetId = clickedLink.dataset.target;
+                if (!targetId) return;
 
-                    let parentDropdown = this.closest('.nav-dropdown');
+                // Update active link styling in the sidebar
+                document.querySelectorAll('.sidebar-nav a.active, .sidebar-nav .nav-dropdown-toggle.active').forEach(a => a.classList.remove('active'));
+                
+                // Find the corresponding sidebar link and activate it
+                const sidebarLink = document.querySelector(`.sidebar .nav-link[data-target="${targetId}"]`);
+                if(sidebarLink) {
+                    sidebarLink.classList.add('active');
+                    let parentDropdown = sidebarLink.closest('.nav-dropdown');
                     if (parentDropdown) {
                         let parentDropdownToggle = parentDropdown.previousElementSibling;
                         if (parentDropdownToggle) {
                             parentDropdownToggle.classList.add('active');
-                            parentDropdown.style.maxHeight = parentDropdown.scrollHeight + "px";
                         }
                     }
+                }
 
-                    let panelToShowId = 'dashboard-panel';
-                    let title = 'Dashboard';
-                    welcomeMessage.style.display = 'block';
 
-                    if (targetId.startsWith('users-')) {
-                        panelToShowId = 'users-panel';
-                        const role = targetId.split('-')[1];
-                        title = `${role.charAt(0).toUpperCase() + role.slice(1)} Management`;
-                        welcomeMessage.style.display = 'none';
-                        fetchUsers(role);
-                    } else if (targetId.startsWith('inventory-')) {
-                        panelToShowId = targetId + '-panel';
-                        title = this.innerText;
-                        welcomeMessage.style.display = 'none';
-                        const inventoryType = targetId.split('-')[1];
-                        if (inventoryType === 'blood') fetchBloodInventory();
-                        else if (inventoryType === 'medicine') fetchMedicineInventory();
-                        else if (inventoryType === 'wards') fetchWards();
-                        else if (inventoryType === 'beds') fetchWardsAndBeds();
-                        else if (inventoryType === 'rooms') fetchRooms();
+                let panelToShowId = 'dashboard-panel';
+                let title = 'Dashboard';
+                welcomeMessage.style.display = 'block';
+
+                if (targetId.startsWith('users-')) {
+                    panelToShowId = 'users-panel';
+                    const role = targetId.split('-')[1];
+                    title = `${role.charAt(0).toUpperCase() + role.slice(1)} Management`;
+                    welcomeMessage.style.display = 'none';
+                    fetchUsers(role);
+                } else if (targetId.startsWith('inventory-')) {
+                    panelToShowId = targetId + '-panel';
+                    title = sidebarLink ? sidebarLink.innerText : 'Inventory';
+                    welcomeMessage.style.display = 'none';
+                    const inventoryType = targetId.split('-')[1];
+                    if (inventoryType === 'blood') fetchBloodInventory();
+                    else if (inventoryType === 'medicine') fetchMedicineInventory();
+                    else if (inventoryType === 'wards') fetchWards();
+                    else if (inventoryType === 'beds') fetchWardsAndBeds();
+                    else if (inventoryType === 'rooms') fetchRooms();
+                } else if (document.getElementById(targetId + '-panel')) {
+                    panelToShowId = targetId + '-panel';
+                    title = sidebarLink ? sidebarLink.innerText : 'Admin Panel';
+                    welcomeMessage.style.display = (targetId === 'dashboard') ? 'block' : 'none';
+
+                    if (targetId === 'settings') fetchMyProfile();
+                    if (targetId === 'reports') generateReport();
+                    if (targetId === 'activity') fetchActivityLogs();
+                    if (targetId === 'schedules' && doctorSelect.options.length <= 1) fetchDoctorsForScheduling();
+                }
+
+                document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
+                document.getElementById(panelToShowId).classList.add('active');
+                panelTitle.textContent = title;
+
+                if (window.innerWidth <= 992 && sidebar.classList.contains('active')) toggleMenu();
+            };
+
+            // Use event delegation on the body to handle all clicks on '.nav-link'
+            document.body.addEventListener('click', function(e) {
+                const link = e.target.closest('.nav-link');
+                if (link) {
+                    e.preventDefault(); // Prevent default link behavior for all nav-links
+                    
+                    // The special logic for the bell is handled by its own listener now,
+                    // so we just need to call the generic panel switcher.
+                    if (link.id !== 'notification-bell-wrapper') {
+                         handlePanelSwitch(link);
                     }
-                    else if (document.getElementById(targetId + '-panel')) {
-                        panelToShowId = targetId + '-panel';
-                        title = this.innerText;
-                        welcomeMessage.style.display = (targetId === 'dashboard') ? 'block' : 'none';
-                        if (targetId === 'settings') fetchMyProfile();
-                        if (targetId === 'reports') generateReport();
-                        if (targetId === 'activity') fetchActivityLogs();
-                    }
-
-                    document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
-                    document.getElementById(panelToShowId).classList.add('active');
-                    panelTitle.textContent = title;
-
-                    if (targetId === 'schedules' && doctorSelect.options.length <= 1) {
-                        fetchDoctorsForScheduling();
-                    }
-
-                    if (window.innerWidth <= 992 && sidebar.classList.contains('active')) toggleMenu();
-                });
-
+                }
             });
 
             // --- CHART.JS & DASHBOARD STATS ---
@@ -3477,6 +3736,13 @@ $pending_appointments = 0;
             const userDetailModal = document.getElementById('user-detail-modal');
             const addUserBtn = document.getElementById('add-user-btn');
             const quickAddUserBtn = document.getElementById('quick-add-user-btn');
+           const quickSendNotificationBtn = document.querySelector('.quick-actions .action-btn[href="#"] i.fa-bullhorn').parentElement;
+
+            quickSendNotificationBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                // Find and click the sidebar link for notifications
+                document.querySelector('.nav-link[data-target="notifications"]').click();
+            }); 
             const modalTitle = document.getElementById('modal-title');
             const passwordGroup = document.getElementById('password-group');
             const activeGroup = document.getElementById('active-group');
@@ -3738,13 +4004,20 @@ $pending_appointments = 0;
                 }
             });
 
-            const handleFormSubmit = async (formData, refreshTarget = null) => {
+       const handleFormSubmit = async (formData, refreshTarget = null) => {
                 try {
                     const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
                     const result = await response.json();
 
                     if (result.success) {
                         showNotification(result.message, 'success');
+                        
+                        // Check if a notification was sent and update the count immediately
+                        const action = formData.get('action');
+                        if (action === 'sendNotification' || action === 'sendIndividualNotification') {
+                            updateNotificationCount();
+                        }
+
                         if (formData.get('action') === 'addUser' || formData.get('action') === 'updateUser') closeModal(userModal);
                         else if (formData.get('action').toLowerCase().includes('medicine')) closeModal(medicineModal);
                         else if (formData.get('action').toLowerCase().includes('blood')) closeModal(bloodModal);
@@ -4656,8 +4929,248 @@ $pending_appointments = 0;
                     }
                 }
             });
+
+
+           // --- NOTIFICATIONS PANEL LOGIC ---
+            const notificationsPanel = document.getElementById('notifications-panel');
+            const notificationForm = document.getElementById('notification-form');
+            const individualNotificationForm = document.getElementById('individual-notification-form');
+            const recipientSelect = document.getElementById('recipient-user-id');
+
+            const fetchAllUsersForNotifications = async () => {
+                try {
+                    const response = await fetch(`?fetch=users&role=all_users`);
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
+                    
+                    recipientSelect.innerHTML = '<option value="">Select a user...</option>';
+                    result.data.forEach(user => {
+                        recipientSelect.innerHTML += `<option value="${user.id}">${user.name} (${user.display_user_id}) - ${user.role}</option>`;
+                    });
+
+                } catch (error) {
+                    recipientSelect.innerHTML = '<option value="">Failed to load users</option>';
+                    console.error("Failed to fetch users for notifications:", error);
+                }
+            };
+            
+            notificationsPanel.querySelectorAll('.schedule-tab-button').forEach(button => {
+                button.addEventListener('click', function() {
+                    const tabId = this.dataset.tab;
+
+                    notificationsPanel.querySelectorAll('.schedule-tab-button').forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
+
+                    notificationsPanel.querySelectorAll('.schedule-tab-content').forEach(content => content.classList.remove('active'));
+                    document.getElementById(`${tabId}-content`).classList.add('active');
+
+                    if (tabId === 'individual' && recipientSelect.options.length <= 1) {
+                       fetchAllUsersForNotifications();
+                    }
+                });
+            });
+
+            notificationForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(notificationForm);
+                const role = formData.get('role');
+                const confirmed = await showConfirmation('Send Notification', `Are you sure you want to send this broadcast message to all ${role}s?`);
+                if (confirmed) {
+                    handleFormSubmit(formData);
+                    notificationForm.reset();
+                }
+            });
+
+     individualNotificationForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(individualNotificationForm);
+                const recipientName = document.getElementById('user-search').value;
+                if (!formData.get('recipient_user_id')) {
+                    showNotification('Please select a valid user from the search results.', 'error');
+                    return;
+                }
+                const confirmed = await showConfirmation('Send Message', `Are you sure you want to send this message to ${recipientName}?`);
+                if (confirmed) {
+                    handleFormSubmit(formData);
+                    individualNotificationForm.reset();
+                }
+            });
+           // --- NOTIFICATION CENTER LOGIC ---
+            const notificationBell = document.getElementById('notification-bell-wrapper');
+            const notificationCountBadge = document.getElementById('notification-count');
+            const allNotificationsPanel = document.getElementById('all-notifications-panel');
+
+            const updateNotificationCount = async () => {
+                try {
+                    const response = await fetch('?fetch=unread_notification_count');
+                    const result = await response.json();
+                    if (result.success && result.count > 0) {
+                        notificationCountBadge.textContent = result.count;
+                        notificationCountBadge.style.display = 'grid';
+                    } else {
+                        notificationCountBadge.style.display = 'none';
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch notification count:', error);
+                }
+            };
+
+   const loadAllNotifications = async () => {
+                allNotificationsPanel.innerHTML = '<p style="text-align: center; padding: 2rem;">Loading messages...</p>';
+                try {
+                    const response = await fetch('?fetch=all_notifications');
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
+
+                    let content = `
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding-bottom: 1rem; margin-bottom: 1rem;">
+                            <h2 style="margin: 0;">All Notifications</h2>
+                        </div>
+                    `;
+
+                    if (result.data.length > 0) {
+                        result.data.forEach(notif => {
+                            const isUnread = notif.is_read == 0;
+                            const itemStyle = isUnread ? 'background-color: var(--bg-grey);' : '';
+                            
+                            content += `
+                                <div class="notification-item" style="display: flex; gap: 1rem; padding: 1.5rem; border-bottom: 1px solid var(--border-light); ${itemStyle}">
+                                    <div style="font-size: 1.5rem; color: var(--primary-color); padding-top: 5px;"><i class="fas fa-envelope-open-text"></i></div>
+                                    <div style="flex-grow: 1;">
+                                        <p style="margin: 0 0 0.25rem 0; font-weight: ${isUnread ? '600' : '500'};">${notif.message}</p>
+                                        <small style="color: var(--text-muted);">From: ${notif.sender_name} on ${new Date(notif.created_at).toLocaleString()}</small>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        content += '<p style="text-align: center; padding: 2rem;">You have no notifications.</p>';
+                    }
+                    allNotificationsPanel.innerHTML = content;
+                } catch (error) {
+                    allNotificationsPanel.innerHTML = '<p style="text-align: center; color: var(--danger-color);">Could not load notifications.</p>';
+                }
+            };
+
+             notificationBell.addEventListener('click', async (e) => {
+                e.stopPropagation();
+
+                // Send the request to mark notifications as READ in the background
+                try {
+                    const formData = new FormData();
+                    formData.append('action', 'mark_notifications_read');
+                    formData.append('csrf_token', csrfToken);
+                    
+                    const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
+                    const result = await response.json();
+
+                    if (result.success) {
+                        // If the database is successfully updated, THEN update the UI
+                        notificationCountBadge.textContent = '0';
+                        notificationCountBadge.style.display = 'none';
+                        
+                        // Switch to the panel and reload the list to show the new "read" styles
+                        handlePanelSwitch(notificationBell);
+                        loadAllNotifications();
+                    } else {
+                       showNotification(result.message || 'Could not mark notifications as read.', 'error');
+                       console.error('Server failed to mark notifications as read:', result.message);
+                    }
+                } catch (error) {
+                    showNotification('A network error occurred. Please try again.', 'error');
+                    console.error('Error marking notifications as read:', error);
+                }
+            });
+
+            // Add this event listener to handle dismissing individual notifications
+            allNotificationsPanel.addEventListener('click', async (e) => {
+                const deleteButton = e.target.closest('.btn-delete-notification');
+                if (deleteButton) {
+                    const notificationId = deleteButton.dataset.id;
+                    const confirmed = await showConfirmation('Dismiss Notification', 'Are you sure you want to permanently dismiss this message?');
+                    if (confirmed) {
+                        const formData = new FormData();
+                        formData.append('action', 'delete_notification');
+                        formData.append('notification_id', notificationId);
+                        formData.append('csrf_token', csrfToken);
+                        
+                        // Optimistically remove from UI
+                        deleteButton.closest('.notification-item').remove();
+                        showNotification('Notification dismissed.', 'success');
+
+                        // Send request to server
+                        fetch('admin_dashboard.php', { method: 'POST', body: formData })
+                            .then(res => res.json())
+                            .then(result => {
+                                if (!result.success) {
+                                    showNotification('Failed to dismiss on server.', 'error');
+                                    // If server fails, reload the list to be accurate
+                                    loadAllNotifications();
+                                }
+                            });
+                    }
+                }
+            });
+            // --- INDIVIDUAL NOTIFICATION SEARCH LOGIC ---
+            const userSearch = document.getElementById('user-search');
+            const userSearchResults = document.getElementById('user-search-results');
+            const recipientUserIdInput = document.getElementById('recipient-user-id');
+
+            let searchTimeout;
+            userSearch.addEventListener('keyup', () => {
+                clearTimeout(searchTimeout);
+                const searchTerm = userSearch.value.trim();
+
+                if (searchTerm.length < 2) {
+                    userSearchResults.style.display = 'none';
+                    return;
+                }
+
+                searchTimeout = setTimeout(async () => {
+                    try {
+                        const response = await fetch(`?fetch=search_users&term=${encodeURIComponent(searchTerm)}`);
+                        const result = await response.json();
+                        if (!result.success) throw new Error(result.message);
+                        
+                        if(result.data.length > 0) {
+                            userSearchResults.innerHTML = result.data.map(user => `
+                                <div class="search-result-item" data-id="${user.id}" data-name="${user.name} (${user.display_user_id})">
+                                    <strong>${user.name}</strong> (${user.display_user_id}) - <small>${user.role}</small>
+                                </div>
+                            `).join('');
+                            userSearchResults.style.display = 'block';
+                        } else {
+                            userSearchResults.innerHTML = '<div class="search-result-item none">No users found.</div>';
+                            userSearchResults.style.display = 'block';
+                        }
+                    } catch (error) {
+                        console.error('User search failed:', error);
+                        userSearchResults.innerHTML = '<div class="search-result-item none">Search error.</div>';
+                        userSearchResults.style.display = 'block';
+                    }
+                }, 300);
+            });
+
+            userSearchResults.addEventListener('click', (e) => {
+                const item = e.target.closest('.search-result-item');
+                if (item && item.dataset.id) {
+                    recipientUserIdInput.value = item.dataset.id;
+                    userSearch.value = item.dataset.name;
+                    userSearchResults.style.display = 'none';
+                }
+            });
+
+            // Hide search results if clicking elsewhere
+            document.addEventListener('click', (e) => {
+                if (!userSearch.contains(e.target) && !userSearchResults.contains(e.target)) {
+                    userSearchResults.style.display = 'none';
+                }
+            });
+            
+
             // --- INITIAL LOAD ---
             updateDashboardStats();
+             updateNotificationCount();
             fetchDepartments();
             generateReport(); // Generate default report on load
         });

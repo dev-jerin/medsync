@@ -1,10 +1,33 @@
 -- This is the complete and updated database schema for MedSync.
 -- It includes all tables and columns required for the latest features,
--- including the new 'rooms' table, 'activity_logs' for audit trails,
--- and the 'profile_picture' column in the users table.
+-- including the 'is_read' column for notifications.
 
 CREATE DATABASE IF NOT EXISTS `medsync` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE `medsync`;
+
+--
+-- Table structure for table `users`
+--
+CREATE TABLE `users` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `display_user_id` varchar(20) NOT NULL,
+  `username` varchar(50) NOT NULL,
+  `email` varchar(100) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `role` enum('user','doctor','staff','admin') NOT NULL DEFAULT 'user',
+  `name` varchar(100) DEFAULT NULL,
+  `gender` enum('Male','Female','Other') DEFAULT NULL,
+  `profile_picture` VARCHAR(255) NULL DEFAULT 'default.png',
+  `phone` varchar(25) NULL DEFAULT NULL,
+  `date_of_birth` date DEFAULT NULL,
+  `active` tinyint(1) NOT NULL DEFAULT 1,
+  `session_token` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `username` (`username`),
+  UNIQUE KEY `email` (`email`),
+  UNIQUE KEY `display_user_id` (`display_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Table structure for table `activity_logs`
@@ -32,30 +55,6 @@ CREATE TABLE `departments` (
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Table structure for table `users`
---
-CREATE TABLE `users` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `display_user_id` varchar(20) NOT NULL,
-  `username` varchar(50) NOT NULL,
-  `email` varchar(100) NOT NULL,
-  `password` varchar(255) NOT NULL,
-  `role` enum('user','doctor','staff','admin') NOT NULL DEFAULT 'user',
-  `name` varchar(100) DEFAULT NULL,
-  `gender` enum('Male','Female','Other') DEFAULT NULL,
-  `profile_picture` VARCHAR(255) NULL DEFAULT 'default.png',
-  `phone` varchar(25) NULL DEFAULT NULL,
-  `date_of_birth` date DEFAULT NULL,
-  `active` tinyint(1) NOT NULL DEFAULT 1,
-  `session_token` varchar(255) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `username` (`username`),
-  UNIQUE KEY `email` (`email`),
-  UNIQUE KEY `display_user_id` (`display_user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -99,8 +98,6 @@ CREATE TABLE `staff` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
-
---
 -- Table structure for table `callback_requests`
 --
 CREATE TABLE `callback_requests` (
@@ -112,9 +109,9 @@ CREATE TABLE `callback_requests` (
    PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Inventory Management Tables
-
+--
 -- Table structure for table `medicines`
+--
 CREATE TABLE `medicines` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(255) NOT NULL UNIQUE,
@@ -127,7 +124,9 @@ CREATE TABLE `medicines` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
 -- Table structure for table `blood_inventory`
+--
 CREATE TABLE `blood_inventory` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
   `blood_group` ENUM('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-') NOT NULL UNIQUE,
@@ -137,7 +136,9 @@ CREATE TABLE `blood_inventory` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
 -- Table structure for table `wards`
+--
 CREATE TABLE `wards` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(100) NOT NULL UNIQUE COMMENT 'e.g., General Ward, ICU, Pediatric Ward',
@@ -147,7 +148,9 @@ CREATE TABLE `wards` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
 -- Table structure for table `beds`
+--
 CREATE TABLE `beds` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
   `ward_id` INT(11) NOT NULL,
@@ -164,7 +167,9 @@ CREATE TABLE `beds` (
   CONSTRAINT `fk_beds_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
 -- Table structure for table `rooms`
+--
 CREATE TABLE `rooms` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `room_number` varchar(50) NOT NULL,
@@ -210,4 +215,22 @@ CREATE TABLE `transactions` (
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
   CONSTRAINT `fk_transactions_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Table structure for table `notifications`
+--
+CREATE TABLE `notifications` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `sender_id` int(11) NOT NULL,
+  `recipient_role` varchar(50) DEFAULT NULL,
+  `recipient_user_id` int(11) DEFAULT NULL,
+  `message` text NOT NULL,
+  `is_read` tinyint(1) NOT NULL DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `sender_id` (`sender_id`),
+  KEY `recipient_user_id` (`recipient_user_id`),
+  CONSTRAINT `notifications_ibfk_1` FOREIGN KEY (`sender_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_notifications_recipient` FOREIGN KEY (`recipient_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
