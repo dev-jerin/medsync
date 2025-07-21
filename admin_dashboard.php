@@ -487,53 +487,53 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     break;
 
-                                case 'addDepartment':
-                if (empty($_POST['name'])) {
-                    throw new Exception('Department name is required.');
-                }
-                $name = $_POST['name'];
-                $stmt = $conn->prepare("INSERT INTO departments (name) VALUES (?)");
-                $stmt->bind_param("s", $name);
-                if ($stmt->execute()) {
-                    log_activity($conn, $admin_user_id_for_log, 'create_department', null, "Created new department '{$name}'.");
-                    $response = ['success' => true, 'message' => 'Department added successfully.'];
-                } else {
-                    throw new Exception('Failed to add department. It might already exist.');
-                }
-                break;
+                case 'addDepartment':
+                    if (empty($_POST['name'])) {
+                        throw new Exception('Department name is required.');
+                    }
+                    $name = $_POST['name'];
+                    $stmt = $conn->prepare("INSERT INTO departments (name) VALUES (?)");
+                    $stmt->bind_param("s", $name);
+                    if ($stmt->execute()) {
+                        log_activity($conn, $admin_user_id_for_log, 'create_department', null, "Created new department '{$name}'.");
+                        $response = ['success' => true, 'message' => 'Department added successfully.'];
+                    } else {
+                        throw new Exception('Failed to add department. It might already exist.');
+                    }
+                    break;
 
-            case 'updateDepartment':
-                if (empty($_POST['id']) || empty($_POST['name'])) {
-                    throw new Exception('Department ID and name are required.');
-                }
-                $id = (int)$_POST['id'];
-                $name = $_POST['name'];
-                $is_active = isset($_POST['is_active']) ? (int)$_POST['is_active'] : 1;
+                case 'updateDepartment':
+                    if (empty($_POST['id']) || empty($_POST['name'])) {
+                        throw new Exception('Department ID and name are required.');
+                    }
+                    $id = (int) $_POST['id'];
+                    $name = $_POST['name'];
+                    $is_active = isset($_POST['is_active']) ? (int) $_POST['is_active'] : 1;
 
-                $stmt = $conn->prepare("UPDATE departments SET name = ?, is_active = ? WHERE id = ?");
-                $stmt->bind_param("sii", $name, $is_active, $id);
-                if ($stmt->execute()) {
-                     log_activity($conn, $admin_user_id_for_log, 'update_department', null, "Updated department ID {$id} to name '{$name}' and status " . ($is_active ? 'Active' : 'Inactive'));
-                    $response = ['success' => true, 'message' => 'Department updated successfully.'];
-                } else {
-                    throw new Exception('Failed to update department.');
-                }
-                break;
+                    $stmt = $conn->prepare("UPDATE departments SET name = ?, is_active = ? WHERE id = ?");
+                    $stmt->bind_param("sii", $name, $is_active, $id);
+                    if ($stmt->execute()) {
+                        log_activity($conn, $admin_user_id_for_log, 'update_department', null, "Updated department ID {$id} to name '{$name}' and status " . ($is_active ? 'Active' : 'Inactive'));
+                        $response = ['success' => true, 'message' => 'Department updated successfully.'];
+                    } else {
+                        throw new Exception('Failed to update department.');
+                    }
+                    break;
 
-            case 'deleteDepartment': // This will be a soft delete by setting is_active to 0
-                if (empty($_POST['id'])) {
-                    throw new Exception('Department ID is required.');
-                }
-                $id = (int)$_POST['id'];
-                $stmt = $conn->prepare("UPDATE departments SET is_active = 0 WHERE id = ?");
-                $stmt->bind_param("i", $id);
-                if ($stmt->execute()) {
-                    log_activity($conn, $admin_user_id_for_log, 'deactivate_department', null, "Deactivated department ID {$id}.");
-                    $response = ['success' => true, 'message' => 'Department disabled successfully.'];
-                } else {
-                    throw new Exception('Failed to disable department.');
-                }
-                break;
+                case 'deleteDepartment': // This will be a soft delete by setting is_active to 0
+                    if (empty($_POST['id'])) {
+                        throw new Exception('Department ID is required.');
+                    }
+                    $id = (int) $_POST['id'];
+                    $stmt = $conn->prepare("UPDATE departments SET is_active = 0 WHERE id = ?");
+                    $stmt->bind_param("i", $id);
+                    if ($stmt->execute()) {
+                        log_activity($conn, $admin_user_id_for_log, 'deactivate_department', null, "Deactivated department ID {$id}.");
+                        $response = ['success' => true, 'message' => 'Department disabled successfully.'];
+                    } else {
+                        throw new Exception('Failed to disable department.');
+                    }
+                    break;
 
 
                 case 'updateBlood':
@@ -787,11 +787,11 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         throw new Exception('Failed to update doctor schedule.');
                     }
                     break;
-case 'sendIndividualNotification':
+                case 'sendIndividualNotification':
                     if (empty($_POST['recipient_user_id']) || empty($_POST['message'])) {
                         throw new Exception('Recipient and message are required.');
                     }
-                    $recipient_user_id = (int)$_POST['recipient_user_id'];
+                    $recipient_user_id = (int) $_POST['recipient_user_id'];
                     $message = $_POST['message'];
                     $admin_user_id = $_SESSION['user_id'];
 
@@ -847,12 +847,12 @@ case 'sendIndividualNotification':
                     }
                     break;
 
-                    case 'mark_notifications_read':
+                case 'mark_notifications_read':
                     $admin_id = $_SESSION['user_id'];
                     // This query updates the is_read flag to 1 for all unread (is_read = 0) notifications for this admin.
                     $sql = "UPDATE notifications SET is_read = 1 WHERE (recipient_user_id = ? OR recipient_role = 'admin' OR recipient_role = 'all') AND is_read = 0";
                     $stmt = $conn->prepare($sql);
-                    
+
                     if ($stmt) {
                         $stmt->bind_param("i", $admin_id);
                         if ($stmt->execute()) {
@@ -866,9 +866,9 @@ case 'sendIndividualNotification':
                     }
                     break;
 
-                    case 'dismiss_all_notifications':
+                case 'dismiss_all_notifications':
                     $admin_user_id = $_SESSION['user_id'];
-                    
+
                     // First, find all notification IDs that are currently unread/undismissed for this admin
                     $sql_get_ids = "SELECT n.id 
                                     FROM notifications n
@@ -880,7 +880,7 @@ case 'sendIndividualNotification':
                     $stmt_get_ids->execute();
                     $result = $stmt_get_ids->get_result();
                     $notification_ids = [];
-                    while($row = $result->fetch_assoc()) {
+                    while ($row = $result->fetch_assoc()) {
                         $notification_ids[] = $row['id'];
                     }
                     $stmt_get_ids->close();
@@ -895,7 +895,7 @@ case 'sendIndividualNotification':
                         }
                         $stmt_dismiss->close();
                     }
-                    
+
                     log_activity($conn, $admin_user_id_for_log, 'dismiss_notifications', null, "Dismissed all unread notifications.");
                     $response = ['success' => true, 'message' => 'Notifications dismissed.'];
                     break;
@@ -904,7 +904,37 @@ case 'sendIndividualNotification':
         } elseif (isset($_GET['fetch'])) {
             $fetch_target = $_GET['fetch'];
             switch ($fetch_target) {
- case 'users':
+
+                case 'appointments':
+                    $doctor_id_filter = $_GET['doctor_id'] ?? 'all';
+
+                    $sql = "SELECT a.id, p.name as patient_name, p.display_user_id as patient_display_id, d.name as doctor_name, a.appointment_date, a.status
+            FROM appointments a
+            JOIN users p ON a.user_id = p.id
+            JOIN users d ON a.doctor_id = d.id";
+
+                    $params = [];
+                    $types = "";
+
+                    if ($doctor_id_filter !== 'all') {
+                        $sql .= " WHERE a.doctor_id = ?";
+                        $params[] = (int) $doctor_id_filter;
+                        $types .= "i";
+                    }
+
+                    $sql .= " ORDER BY a.appointment_date DESC";
+
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
+                case 'users':
                     if (!isset($_GET['role'])) {
                         throw new Exception('User role not specified.');
                     }
@@ -933,14 +963,14 @@ case 'sendIndividualNotification':
                         $types .= "s";
                     }
 
-if (!empty($search)) {
+                    if (!empty($search)) {
                         // Add conditions to search across multiple fields
                         $where_clauses[] = "(u.name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR u.display_user_id LIKE ?)";
                         $search_term = "%{$search}%";
                         array_push($params, $search_term, $search_term, $search_term, $search_term);
                         $types .= "ssss";
                     }
-                    
+
                     if (!empty($where_clauses)) {
                         $sql .= " WHERE " . implode(' AND ', $where_clauses);
                     }
@@ -1039,6 +1069,9 @@ if (!empty($search)) {
                     $stats['total_users'] = $conn->query("SELECT COUNT(*) as c FROM users")->fetch_assoc()['c'];
                     $stats['active_doctors'] = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='doctor' AND active=1")->fetch_assoc()['c'];
 
+                    $stats['pending_appointments'] = $conn->query("SELECT COUNT(*) as c FROM appointments WHERE status='scheduled'")->fetch_assoc()['c'];
+
+
                     $role_counts_sql = "SELECT role, COUNT(*) as count FROM users GROUP BY role";
                     $result = $conn->query($role_counts_sql);
                     $counts = ['user' => 0, 'doctor' => 0, 'staff' => 0, 'admin' => 0];
@@ -1069,11 +1102,11 @@ if (!empty($search)) {
                     $response = ['success' => true, 'data' => $data];
                     break;
 
-                               case 'departments_management':
-                $result = $conn->query("SELECT * FROM departments ORDER BY name ASC");
-                $data = $result->fetch_all(MYSQLI_ASSOC);
-                $response = ['success' => true, 'data' => $data];
-                break;
+                case 'departments_management':
+                    $result = $conn->query("SELECT * FROM departments ORDER BY name ASC");
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
 
                 // --- INVENTORY FETCH ENDPOINTS ---
                 case 'medicines':
@@ -1121,7 +1154,7 @@ if (!empty($search)) {
                     $response = ['success' => true, 'data' => $data];
                     break;
 
-              case 'report':
+                case 'report':
                     if (empty($_GET['type']) || empty($_GET['period'])) {
                         throw new Exception('Report type and period are required.');
                     }
@@ -1142,14 +1175,14 @@ if (!empty($search)) {
                             $date_format_table = '%Y-%m-%d';
                             break;
                         case 'weekly':
-                             $interval = '3 MONTH';
-                             $date_format_chart = '%Y-W%U';
-                             $date_format_table = '%Y-W%U';
+                            $interval = '3 MONTH';
+                            $date_format_chart = '%Y-W%U';
+                            $date_format_table = '%Y-W%U';
                             break;
                         case 'monthly':
-                             $interval = '1 YEAR';
-                             $date_format_chart = '%Y-%m';
-                             $date_format_table = '%%Y-%%m';
+                            $interval = '1 YEAR';
+                            $date_format_chart = '%Y-%m';
+                            $date_format_table = '%%Y-%%m';
                             break;
                         case 'yearly':
                             $interval = '5 YEAR';
@@ -1190,8 +1223,8 @@ if (!empty($search)) {
                     $response = ['success' => true, 'data' => $data];
                     break;
 
-                   
-                
+
+
                 case 'search_users':
                     $term = $_GET['term'] ?? '';
                     if (empty($term)) {
@@ -1208,7 +1241,7 @@ if (!empty($search)) {
                     $response = ['success' => true, 'data' => $data];
                     break;
 
-case 'all_notifications':
+                case 'all_notifications':
                     $admin_id = $_SESSION['user_id'];
                     // CORRECTED: Fetches ALL notifications for the admin, regardless of read status.
                     $sql = "SELECT n.id, n.message, n.created_at, n.is_read, u.name as sender_name 
@@ -1238,12 +1271,12 @@ case 'all_notifications':
                     $result = $stmt->get_result()->fetch_assoc();
                     $response = ['success' => true, 'count' => $result['unread_count']];
                     break;
-                    
-             case 'mark_notifications_read':
+
+                case 'mark_notifications_read':
                     $admin_id = $_SESSION['user_id'];
                     $sql = "UPDATE notifications SET is_read = 1 WHERE (recipient_user_id = ? OR recipient_role = 'admin' OR recipient_role = 'all') AND is_read = 0";
                     $stmt = $conn->prepare($sql);
-                    
+
                     if ($stmt) {
                         $stmt->bind_param("i", $admin_id);
                         if ($stmt->execute()) {
@@ -1260,7 +1293,7 @@ case 'all_notifications':
                     break;
 
 
-                    
+
                 case 'activity':
                     $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 50;
                     $sql = "SELECT a.id, a.action, a.details, a.created_at, u.username as admin_username, t.username as target_username
@@ -1807,24 +1840,24 @@ $pending_appointments = 0;
             color: var(--text-muted);
             text-decoration: none;
             border-radius: 8px;
-            
+
             transition: background-color var(--transition-speed), color var(--transition-speed);
             font-weight: 500;
             cursor: pointer;
         }
 
         /* ADD THESE NEW RULES FOR CORRECT SPACING */
-.sidebar-nav > ul > li {
-    margin-bottom: 0.5rem;
-}
+        .sidebar-nav>ul>li {
+            margin-bottom: 0.5rem;
+        }
 
-.nav-dropdown li {
-    margin-bottom: 0.25rem;
-}
+        .nav-dropdown li {
+            margin-bottom: 0.25rem;
+        }
 
-.nav-dropdown li:last-child {
-    margin-bottom: 0;
-}
+        .nav-dropdown li:last-child {
+            margin-bottom: 0;
+        }
 
         .sidebar-nav a i,
         .nav-dropdown-toggle i {
@@ -1872,16 +1905,18 @@ $pending_appointments = 0;
             font-size: 0.95rem;
             padding: 0.7rem 1rem 0.7rem 0.5rem;
             background-color: rgba(100, 100, 100, 0.05);
-             padding-bottom: -3.5rem;        }
+            padding-bottom: -3.5rem;
+        }
 
         body.dark-mode .nav-dropdown a {
             background-color: rgba(255, 255, 255, 0.05);
         }
-/* ADD THIS RULE TO FIX THE SIDEBAR SPACING */
+
+        /* ADD THIS RULE TO FIX THE SIDEBAR SPACING */
         .nav-dropdown li:last-child a {
             margin-bottom: 0;
         }
-        
+
 
         .logout-btn {
             display: flex;
@@ -2165,6 +2200,14 @@ $pending_appointments = 0;
             background-color: #FEE2E2;
             color: #991B1B;
         }
+
+        .status-badge.scheduled { background-color: #FEF3C7; color: #92400E; }
+.status-badge.completed { background-color: #D1FAE5; color: #065F46; }
+.status-badge.cancelled { background-color: #FEE2E2; color: #991B1B; }
+
+body.dark-mode .status-badge.scheduled { background-color: #78350F; color: #FDE68A; }
+body.dark-mode .status-badge.completed { background-color: #064E3B; color: #A7F3D0; }
+body.dark-mode .status-badge.cancelled { background-color: #7F1D1D; color: #FECACA; }
 
         body.dark-mode .status-badge.active,
         body.dark-mode .status-badge.in-stock {
@@ -2849,12 +2892,15 @@ $pending_appointments = 0;
             cursor: pointer;
             border-bottom: 1px solid var(--border-light);
         }
+
         .search-result-item:last-child {
             border-bottom: none;
         }
+
         .search-result-item:hover {
             background-color: var(--bg-grey);
         }
+
         .search-result-item.none {
             cursor: default;
             color: var(--text-muted);
@@ -2897,7 +2943,8 @@ $pending_appointments = 0;
                                     Blood Inventory</a></li>
                             <li><a href="#" class="nav-link" data-target="inventory-medicine"><i
                                         class="fas fa-pills"></i> Medicine Inventory</a></li>
-                                        <li><a href="#" class="nav-link" data-target="inventory-departments"><i class="fas fa-building"></i> Departments</a></li>
+                            <li><a href="#" class="nav-link" data-target="inventory-departments"><i
+                                        class="fas fa-building"></i> Departments</a></li>
                             <li><a href="#" class="nav-link" data-target="inventory-wards"><i
                                         class="fas fa-hospital"></i> Wards</a></li>
                             <li><a href="#" class="nav-link" data-target="inventory-beds"><i class="fas fa-bed"></i>
@@ -2906,6 +2953,8 @@ $pending_appointments = 0;
                                         class="fas fa-door-closed"></i> Rooms</a></li><br>
                         </ul>
                     </li>
+                    <li><a href="#" class="nav-link" data-target="appointments"><i class="fas fa-calendar-check"></i>
+                            Appointments</a></li>
                     <li><a href="#" class="nav-link" data-target="schedules"><i class="fas fa-calendar-alt"></i>
                             Schedules</a></li>
                     <li><a href="#" class="nav-link" data-target="reports"><i class="fas fa-chart-line"></i> Reports</a>
@@ -2923,7 +2972,7 @@ $pending_appointments = 0;
         </aside>
 
         <main class="main-content">
-        <header class="main-header">
+            <header class="main-header">
                 <button class="hamburger-btn" id="hamburger-btn" aria-label="Open Menu">
                     <i class="fas fa-bars"></i>
                 </button>
@@ -2932,10 +2981,12 @@ $pending_appointments = 0;
                     <h2 id="welcome-message">Hello, <?php echo $admin_name; ?>!</h2>
                 </div>
                 <div class="header-actions">
-                    
-                    <div class="notification-bell-wrapper nav-link" id="notification-bell-wrapper" data-target="all-notifications" style="position: relative; cursor: pointer; padding: 0.5rem;">
+
+                    <div class="notification-bell-wrapper nav-link" id="notification-bell-wrapper"
+                        data-target="all-notifications" style="position: relative; cursor: pointer; padding: 0.5rem;">
                         <i class="fas fa-bell" style="font-size: 1.2rem;"></i>
-                        <span id="notification-count" style="position: absolute; top: -5px; right: -8px; background-color: var(--danger-color); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: none; place-items: center;"></span>
+                        <span id="notification-count"
+                            style="position: absolute; top: -5px; right: -8px; background-color: var(--danger-color); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: none; place-items: center;"></span>
                     </div>
 
                     <div class="theme-switch-wrapper">
@@ -2977,7 +3028,7 @@ $pending_appointments = 0;
                     <div class="stat-card orange">
                         <div class="icon"><i class="fas fa-calendar-check"></i></div>
                         <div class="info">
-                            <div class="value"><?php echo $pending_appointments; ?></div>
+                            <div class="value" id="pending-appointments-stat">0</div>
                             <div class="label">Pending Appointments</div>
                         </div>
                     </div>
@@ -3003,19 +3054,51 @@ $pending_appointments = 0;
                             <canvas id="userRolesChart"></canvas>
                         </div>
                     </div>
- <div class="grid-card quick-actions">
-    <h3>Quick Actions</h3>
-    <div class="actions-grid">
-        <a href="#" class="action-btn nav-link" data-target="users-user" id="quick-add-user-btn"><i class="fas fa-user-plus"></i> Add User</a>
-        <a href="#" class="action-btn nav-link" data-target="activity"><i class="fas fa-history"></i> Activity Log</a>
-        <a href="#" class="action-btn nav-link" data-target="inventory-departments"><i class="fas fa-building"></i> Departments</a>
-        <a href="#" class="action-btn nav-link" data-target="notifications"><i class="fas fa-bullhorn"></i> Send Notifications</a>
-        <a href="#" class="action-btn nav-link" data-target="settings"><i class="fas fa-cog"></i> System Settings</a>
-        <a href="#" class="action-btn nav-link" data-target="settings"><i class="fas fa-user-edit"></i> My Account</a>
+                    <div class="grid-card quick-actions">
+                        <h3>Quick Actions</h3>
+                        <div class="actions-grid">
+                            <a href="#" class="action-btn nav-link" data-target="users-user" id="quick-add-user-btn"><i
+                                    class="fas fa-user-plus"></i> Add User</a>
+                            <a href="#" class="action-btn nav-link" data-target="activity"><i
+                                    class="fas fa-history"></i> Activity Log</a>
+                            <a href="#" class="action-btn nav-link" data-target="inventory-departments"><i
+                                    class="fas fa-building"></i> Departments</a>
+                            <a href="#" class="action-btn nav-link" data-target="notifications"><i
+                                    class="fas fa-bullhorn"></i> Send Notifications</a>
+                            <a href="#" class="action-btn nav-link" data-target="settings"><i class="fas fa-cog"></i>
+                                System Settings</a>
+                            <a href="#" class="action-btn nav-link" data-target="settings"><i
+                                    class="fas fa-user-edit"></i> My Account</a>
+                        </div>
+                    </div>
+                </div>
+            
+            </div> <div id="appointments-panel" class="content-panel">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+        <h2 id="appointments-table-title">Patient Appointments</h2>
+        <div class="form-group" style="flex-grow: 1; max-width: 400px; margin-bottom: 0;">
+            <label for="appointment-doctor-filter" style="margin-bottom: 0.25rem; font-weight: 500;">Filter by Doctor</label>
+            <select id="appointment-doctor-filter">
+                <option value="all">All Doctors</option>
+            </select>
+        </div>
+    </div>
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Appt. ID</th>
+                    <th>Patient Details</th>
+                    <th>Doctor</th>
+                    <th>Date & Time</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="appointments-table-body">
+                </tbody>
+        </table>
     </div>
 </div>
-                </div>
-            </div>
 
             <div id="users-panel" class="content-panel">
                 <div
@@ -3100,24 +3183,26 @@ $pending_appointments = 0;
                 </div>
             </div>
             <div id="inventory-departments-panel" class="content-panel">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
-        <h2>Department Management</h2>
-        <button id="add-department-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Department</button>
-    </div>
-    <div class="table-container">
-        <table class="data-table" id="department-table">
-            <thead>
-                <tr>
-                    <th>Department Name</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="department-table-body">
-            </tbody>
-        </table>
-    </div>
-</div>
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+                    <h2>Department Management</h2>
+                    <button id="add-department-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New
+                        Department</button>
+                </div>
+                <div class="table-container">
+                    <table class="data-table" id="department-table">
+                        <thead>
+                            <tr>
+                                <th>Department Name</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="department-table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
             <div id="inventory-wards-panel" class="content-panel">
                 <div
@@ -3198,7 +3283,7 @@ $pending_appointments = 0;
                     <canvas id="report-chart"></canvas>
                 </div>
                 <div id="report-table-container" style="margin-top: 2rem;">
-                    </div>
+                </div>
             </div>
 
             <div id="activity-panel" class="content-panel">
@@ -3288,8 +3373,8 @@ $pending_appointments = 0;
             </div>
 
             <div id="all-notifications-panel" class="content-panel">
-                </div>
-<div id="notifications-panel" class="content-panel">
+            </div>
+            <div id="notifications-panel" class="content-panel">
                 <div class="schedule-tabs">
                     <button class="schedule-tab-button active" data-tab="broadcast">Broadcast</button>
                     <button class="schedule-tab-button" data-tab="individual">Individual</button>
@@ -3318,17 +3403,20 @@ $pending_appointments = 0;
                     </form>
                 </div>
 
-               <div id="individual-content" class="schedule-tab-content">
+                <div id="individual-content" class="schedule-tab-content">
                     <h3>Send Individual Notification</h3>
                     <form id="individual-notification-form">
                         <input type="hidden" name="action" value="sendIndividualNotification">
                         <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                         <input type="hidden" id="recipient-user-id" name="recipient_user_id" required>
-                        
+
                         <div class="form-group">
                             <label for="user-search">Search for User (Recipient)</label>
-                            <input type="text" id="user-search" autocomplete="off" placeholder="Search by name, username, email, or ID..." class="form-control">
-                            <div id="user-search-results" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-light); border-radius: 8px; margin-top: 5px; display: none;"></div>
+                            <input type="text" id="user-search" autocomplete="off"
+                                placeholder="Search by name, username, email, or ID..." class="form-control">
+                            <div id="user-search-results"
+                                style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-light); border-radius: 8px; margin-top: 5px; display: none;">
+                            </div>
                         </div>
 
                         <div class="form-group">
@@ -3475,32 +3563,32 @@ $pending_appointments = 0;
             </div>
         </div>
     </div>
-<div id="department-modal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3 id="department-modal-title">Add New Department</h3>
-            <button class="modal-close-btn">&times;</button>
-        </div>
-        <form id="department-form">
-            <input type="hidden" name="id" id="department-id">
-            <input type="hidden" name="action" id="department-form-action">
-            <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+    <div id="department-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="department-modal-title">Add New Department</h3>
+                <button class="modal-close-btn">&times;</button>
+            </div>
+            <form id="department-form">
+                <input type="hidden" name="id" id="department-id">
+                <input type="hidden" name="action" id="department-form-action">
+                <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
 
-            <div class="form-group">
-                <label for="department-name">Department Name</label>
-                <input type="text" id="department-name" name="name" required>
-            </div>
-            <div class="form-group" id="department-active-group" style="display: none;">
-                <label for="department-is-active">Status</label>
-                <select id="department-is-active" name="is_active">
-                    <option value="1">Active</option>
-                    <option value="0">Inactive</option>
-                </select>
-            </div>
-            <button type="submit" class="btn btn-primary" style="width: 100%;">Save Department</button>
-        </form>
+                <div class="form-group">
+                    <label for="department-name">Department Name</label>
+                    <input type="text" id="department-name" name="name" required>
+                </div>
+                <div class="form-group" id="department-active-group" style="display: none;">
+                    <label for="department-is-active">Status</label>
+                    <select id="department-is-active" name="is_active">
+                        <option value="1">Active</option>
+                        <option value="0">Inactive</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Save Department</button>
+            </form>
+        </div>
     </div>
-</div>
 
     <div id="medicine-modal" class="modal">
         <div class="modal-content">
@@ -3800,7 +3888,7 @@ $pending_appointments = 0;
                 });
             });
 
-       // --- PANEL SWITCHING LOGIC ---
+            // --- PANEL SWITCHING LOGIC ---
             const handlePanelSwitch = (clickedLink) => {
                 if (!clickedLink) return;
 
@@ -3809,10 +3897,10 @@ $pending_appointments = 0;
 
                 // Update active link styling in the sidebar
                 document.querySelectorAll('.sidebar-nav a.active, .sidebar-nav .nav-dropdown-toggle.active').forEach(a => a.classList.remove('active'));
-                
+
                 // Find the corresponding sidebar link and activate it
                 const sidebarLink = document.querySelector(`.sidebar .nav-link[data-target="${targetId}"]`);
-                if(sidebarLink) {
+                if (sidebarLink) {
                     sidebarLink.classList.add('active');
                     let parentDropdown = sidebarLink.closest('.nav-dropdown');
                     if (parentDropdown) {
@@ -3841,7 +3929,7 @@ $pending_appointments = 0;
                     const inventoryType = targetId.split('-')[1];
                     if (inventoryType === 'blood') fetchBloodInventory();
                     else if (inventoryType === 'medicine') fetchMedicineInventory();
-                     else if (inventoryType === 'departments') fetchDepartmentsManagement();
+                    else if (inventoryType === 'departments') fetchDepartmentsManagement();
                     else if (inventoryType === 'wards') fetchWards();
                     else if (inventoryType === 'beds') fetchWardsAndBeds();
                     else if (inventoryType === 'rooms') fetchRooms();
@@ -3851,6 +3939,11 @@ $pending_appointments = 0;
                     welcomeMessage.style.display = (targetId === 'dashboard') ? 'block' : 'none';
 
                     if (targetId === 'settings') fetchMyProfile();
+ 
+if (targetId === 'appointments') {
+    fetchDoctorsForAppointmentFilter();
+    fetchAppointments(); // Load all appointments initially
+}
                     if (targetId === 'reports') generateReport();
                     if (targetId === 'activity') fetchActivityLogs();
                     if (targetId === 'schedules' && doctorSelect.options.length <= 1) fetchDoctorsForScheduling();
@@ -3864,15 +3957,15 @@ $pending_appointments = 0;
             };
 
             // Use event delegation on the body to handle all clicks on '.nav-link'
-            document.body.addEventListener('click', function(e) {
+            document.body.addEventListener('click', function (e) {
                 const link = e.target.closest('.nav-link');
                 if (link) {
                     e.preventDefault(); // Prevent default link behavior for all nav-links
-                    
+
                     // The special logic for the bell is handled by its own listener now,
                     // so we just need to call the generic panel switcher.
                     if (link.id !== 'notification-bell-wrapper') {
-                         handlePanelSwitch(link);
+                        handlePanelSwitch(link);
                     }
                 }
             });
@@ -3899,6 +3992,7 @@ $pending_appointments = 0;
                     const stats = result.data;
                     document.getElementById('total-users-stat').textContent = stats.total_users;
                     document.getElementById('active-doctors-stat').textContent = stats.active_doctors;
+                    document.getElementById('pending-appointments-stat').textContent = stats.pending_appointments || 0;
 
                     const lowMedicineStat = document.getElementById('low-medicine-stat');
                     const lowBloodStat = document.getElementById('low-blood-stat');
@@ -3954,19 +4048,67 @@ $pending_appointments = 0;
                 }
             };
 
+            const fetchDoctorsForAppointmentFilter = async () => {
+    const doctorFilterSelect = document.getElementById('appointment-doctor-filter');
+    // Prevent re-populating if already filled
+    if (doctorFilterSelect.options.length > 1) return;
+
+    try {
+        const response = await fetch('?fetch=doctors_for_scheduling'); // Reusing existing API endpoint
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message);
+
+        result.data.forEach(doctor => {
+            doctorFilterSelect.innerHTML += `<option value="${doctor.id}">${doctor.name} (${doctor.display_user_id})</option>`;
+        });
+    } catch (error) {
+        console.error("Failed to fetch doctors for filter:", error);
+    }
+};
+
+const fetchAppointments = async (doctorId = 'all') => {
+    const tableBody = document.getElementById('appointments-table-body');
+    tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading appointments...</td></tr>`;
+    try {
+        const response = await fetch(`?fetch=appointments&doctor_id=${doctorId}`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message);
+
+        if (result.data.length > 0) {
+            tableBody.innerHTML = result.data.map(appt => {
+                const status = appt.status.charAt(0).toUpperCase() + appt.status.slice(1);
+                return `
+                <tr>
+                    <td>${appt.id}</td>
+                    <td>${appt.patient_name} (${appt.patient_display_id})</td>
+                    <td>${appt.doctor_name}</td>
+                    <td>${new Date(appt.appointment_date).toLocaleString()}</td>
+                    <td><span class="status-badge ${appt.status.toLowerCase()}">${status}</span></td>
+                </tr>
+            `}).join('');
+        } else {
+            tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No appointments found.</td></tr>`;
+        }
+    } catch (error) {
+        console.error('Fetch error:', error);
+        tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Failed to load appointments: ${error.message}</td></tr>`;
+    }
+};
+
             // --- USER MANAGEMENT (CRUD & Detail View) ---
             const userModal = document.getElementById('user-modal');
             const userForm = document.getElementById('user-form');
             const userDetailModal = document.getElementById('user-detail-modal');
             const addUserBtn = document.getElementById('add-user-btn');
             const quickAddUserBtn = document.getElementById('quick-add-user-btn');
-           const quickSendNotificationBtn = document.querySelector('.quick-actions .action-btn[href="#"] i.fa-bullhorn').parentElement;
+            const quickSendNotificationBtn = document.querySelector('.quick-actions .action-btn[href="#"] i.fa-bullhorn').parentElement;
 
             quickSendNotificationBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 // Find and click the sidebar link for notifications
                 document.querySelector('.nav-link[data-target="notifications"]').click();
-            }); 
+            });
             const modalTitle = document.getElementById('modal-title');
             const passwordGroup = document.getElementById('password-group');
             const activeGroup = document.getElementById('active-group');
@@ -4228,14 +4370,14 @@ $pending_appointments = 0;
                 }
             });
 
-       const handleFormSubmit = async (formData, refreshTarget = null) => {
+            const handleFormSubmit = async (formData, refreshTarget = null) => {
                 try {
                     const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
                     const result = await response.json();
 
                     if (result.success) {
                         showNotification(result.message, 'success');
-                        
+
                         // Check if a notification was sent and update the count immediately
                         const action = formData.get('action');
                         if (action === 'sendNotification' || action === 'sendIndividualNotification') {
@@ -4323,10 +4465,10 @@ $pending_appointments = 0;
             const medicineTableBody = document.getElementById('medicine-table-body');
 
 
-const departmentModal = document.getElementById('department-modal');
-const departmentForm = document.getElementById('department-form');
-const addDepartmentBtn = document.getElementById('add-department-btn');
-const departmentTableBody = document.getElementById('department-table-body');
+            const departmentModal = document.getElementById('department-modal');
+            const departmentForm = document.getElementById('department-form');
+            const addDepartmentBtn = document.getElementById('add-department-btn');
+            const departmentTableBody = document.getElementById('department-table-body');
 
             const openMedicineModal = (mode, medicine = {}) => {
                 medicineForm.reset();
@@ -4478,42 +4620,42 @@ const departmentTableBody = document.getElementById('department-table-body');
                 }
             });
 
-                    // --- Department Management ---
-        const openDepartmentModal = (mode, department = {}) => {
-            departmentForm.reset();
-            if (mode === 'add') {
-                document.getElementById('department-modal-title').textContent = 'Add New Department';
-                document.getElementById('department-form-action').value = 'addDepartment';
-                document.getElementById('department-active-group').style.display = 'none';
-            } else {
-                document.getElementById('department-modal-title').textContent = `Edit ${department.name}`;
-                document.getElementById('department-form-action').value = 'updateDepartment';
-                document.getElementById('department-id').value = department.id;
-                document.getElementById('department-name').value = department.name;
-                document.getElementById('department-is-active').value = department.is_active;
-                document.getElementById('department-active-group').style.display = 'block';
-            }
-            departmentModal.classList.add('show');
-        };
+            // --- Department Management ---
+            const openDepartmentModal = (mode, department = {}) => {
+                departmentForm.reset();
+                if (mode === 'add') {
+                    document.getElementById('department-modal-title').textContent = 'Add New Department';
+                    document.getElementById('department-form-action').value = 'addDepartment';
+                    document.getElementById('department-active-group').style.display = 'none';
+                } else {
+                    document.getElementById('department-modal-title').textContent = `Edit ${department.name}`;
+                    document.getElementById('department-form-action').value = 'updateDepartment';
+                    document.getElementById('department-id').value = department.id;
+                    document.getElementById('department-name').value = department.name;
+                    document.getElementById('department-is-active').value = department.is_active;
+                    document.getElementById('department-active-group').style.display = 'block';
+                }
+                departmentModal.classList.add('show');
+            };
 
-        addDepartmentBtn.addEventListener('click', () => openDepartmentModal('add'));
-        departmentModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(departmentModal));
-        departmentModal.addEventListener('click', (e) => { if (e.target === departmentModal) closeModal(departmentModal); });
+            addDepartmentBtn.addEventListener('click', () => openDepartmentModal('add'));
+            departmentModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(departmentModal));
+            departmentModal.addEventListener('click', (e) => { if (e.target === departmentModal) closeModal(departmentModal); });
 
-        departmentForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            handleFormSubmit(new FormData(departmentForm), 'departments_management');
-        });
+            departmentForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                handleFormSubmit(new FormData(departmentForm), 'departments_management');
+            });
 
-        const fetchDepartmentsManagement = async () => {
-            departmentTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center;">Loading...</td></tr>`;
-            try {
-                const response = await fetch('?fetch=departments_management');
-                const result = await response.json();
-                if (!result.success) throw new Error(result.message);
+            const fetchDepartmentsManagement = async () => {
+                departmentTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center;">Loading...</td></tr>`;
+                try {
+                    const response = await fetch('?fetch=departments_management');
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
 
-                if (result.data.length > 0) {
-                    departmentTableBody.innerHTML = result.data.map(dept => `
+                    if (result.data.length > 0) {
+                        departmentTableBody.innerHTML = result.data.map(dept => `
                         <tr data-department='${JSON.stringify(dept)}'>
                             <td>${dept.name}</td>
                             <td><span class="status-badge ${dept.is_active == 1 ? 'active' : 'inactive'}">${dept.is_active == 1 ? 'Active' : 'Inactive'}</span></td>
@@ -4523,32 +4665,32 @@ const departmentTableBody = document.getElementById('department-table-body');
                             </td>
                         </tr>
                     `).join('');
-                } else {
-                    departmentTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center;">No departments found.</td></tr>`;
+                    } else {
+                        departmentTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center;">No departments found.</td></tr>`;
+                    }
+                } catch (error) {
+                    departmentTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color: var(--danger-color);">Failed to load departments.</td></tr>`;
                 }
-            } catch (error) {
-                departmentTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color: var(--danger-color);">Failed to load departments.</td></tr>`;
-            }
-        };
+            };
 
-        departmentTableBody.addEventListener('click', async (e) => {
-            const row = e.target.closest('tr');
-            if (!row) return;
-            const department = JSON.parse(row.dataset.department);
-            if (e.target.closest('.btn-edit-department')) {
-                openDepartmentModal('edit', department);
-            }
-            if (e.target.closest('.btn-delete-department')) {
-                const confirmed = await showConfirmation('Disable Department', `Are you sure you want to disable the "${department.name}" department?`);
-                if (confirmed) {
-                    const formData = new FormData();
-                    formData.append('action', 'deleteDepartment');
-                    formData.append('id', department.id);
-                    formData.append('csrf_token', csrfToken);
-                    handleFormSubmit(formData, 'departments_management');
+            departmentTableBody.addEventListener('click', async (e) => {
+                const row = e.target.closest('tr');
+                if (!row) return;
+                const department = JSON.parse(row.dataset.department);
+                if (e.target.closest('.btn-edit-department')) {
+                    openDepartmentModal('edit', department);
                 }
-            }
-        });
+                if (e.target.closest('.btn-delete-department')) {
+                    const confirmed = await showConfirmation('Disable Department', `Are you sure you want to disable the "${department.name}" department?`);
+                    if (confirmed) {
+                        const formData = new FormData();
+                        formData.append('action', 'deleteDepartment');
+                        formData.append('id', department.id);
+                        formData.append('csrf_token', csrfToken);
+                        handleFormSubmit(formData, 'departments_management');
+                    }
+                }
+            });
 
             // --- Ward Management ---
             const addWardBtn = document.getElementById('add-ward-btn');
@@ -4896,7 +5038,7 @@ const departmentTableBody = document.getElementById('department-table-body');
             const downloadPdfForm = document.getElementById('download-pdf-form');
             const summaryCardsContainer = document.getElementById('report-summary-cards');
 
-const generateReport = async () => {
+            const generateReport = async () => {
                 const reportType = document.getElementById('report-type').value;
                 const period = document.getElementById('report-period').value;
 
@@ -4967,7 +5109,7 @@ const generateReport = async () => {
                             }
                         }
                     });
-                    
+
                     // Render Table
                     const tableContainer = document.getElementById('report-table-container');
                     if (tableData.length > 0) {
@@ -5262,7 +5404,7 @@ const generateReport = async () => {
             });
 
 
-           // --- NOTIFICATIONS PANEL LOGIC ---
+            // --- NOTIFICATIONS PANEL LOGIC ---
             const notificationsPanel = document.getElementById('notifications-panel');
             const notificationForm = document.getElementById('notification-form');
             const individualNotificationForm = document.getElementById('individual-notification-form');
@@ -5273,7 +5415,7 @@ const generateReport = async () => {
                     const response = await fetch(`?fetch=users&role=all_users`);
                     const result = await response.json();
                     if (!result.success) throw new Error(result.message);
-                    
+
                     recipientSelect.innerHTML = '<option value="">Select a user...</option>';
                     result.data.forEach(user => {
                         recipientSelect.innerHTML += `<option value="${user.id}">${user.name} (${user.display_user_id}) - ${user.role}</option>`;
@@ -5284,9 +5426,9 @@ const generateReport = async () => {
                     console.error("Failed to fetch users for notifications:", error);
                 }
             };
-            
+
             notificationsPanel.querySelectorAll('.schedule-tab-button').forEach(button => {
-                button.addEventListener('click', function() {
+                button.addEventListener('click', function () {
                     const tabId = this.dataset.tab;
 
                     notificationsPanel.querySelectorAll('.schedule-tab-button').forEach(btn => btn.classList.remove('active'));
@@ -5296,7 +5438,7 @@ const generateReport = async () => {
                     document.getElementById(`${tabId}-content`).classList.add('active');
 
                     if (tabId === 'individual' && recipientSelect.options.length <= 1) {
-                       fetchAllUsersForNotifications();
+                        fetchAllUsersForNotifications();
                     }
                 });
             });
@@ -5312,7 +5454,7 @@ const generateReport = async () => {
                 }
             });
 
-     individualNotificationForm.addEventListener('submit', async (e) => {
+            individualNotificationForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const formData = new FormData(individualNotificationForm);
                 const recipientName = document.getElementById('user-search').value;
@@ -5326,7 +5468,7 @@ const generateReport = async () => {
                     individualNotificationForm.reset();
                 }
             });
-           // --- NOTIFICATION CENTER LOGIC ---
+            // --- NOTIFICATION CENTER LOGIC ---
             const notificationBell = document.getElementById('notification-bell-wrapper');
             const notificationCountBadge = document.getElementById('notification-count');
             const allNotificationsPanel = document.getElementById('all-notifications-panel');
@@ -5346,7 +5488,7 @@ const generateReport = async () => {
                 }
             };
 
-   const loadAllNotifications = async () => {
+            const loadAllNotifications = async () => {
                 allNotificationsPanel.innerHTML = '<p style="text-align: center; padding: 2rem;">Loading messages...</p>';
                 try {
                     const response = await fetch('?fetch=all_notifications');
@@ -5363,7 +5505,7 @@ const generateReport = async () => {
                         result.data.forEach(notif => {
                             const isUnread = notif.is_read == 0;
                             const itemStyle = isUnread ? 'background-color: var(--bg-grey);' : '';
-                            
+
                             content += `
                                 <div class="notification-item" style="display: flex; gap: 1rem; padding: 1.5rem; border-bottom: 1px solid var(--border-light); ${itemStyle}">
                                     <div style="font-size: 1.5rem; color: var(--primary-color); padding-top: 5px;"><i class="fas fa-envelope-open-text"></i></div>
@@ -5383,7 +5525,7 @@ const generateReport = async () => {
                 }
             };
 
-             notificationBell.addEventListener('click', async (e) => {
+            notificationBell.addEventListener('click', async (e) => {
                 e.stopPropagation();
 
                 // Send the request to mark notifications as READ in the background
@@ -5391,7 +5533,7 @@ const generateReport = async () => {
                     const formData = new FormData();
                     formData.append('action', 'mark_notifications_read');
                     formData.append('csrf_token', csrfToken);
-                    
+
                     const response = await fetch('admin_dashboard.php', { method: 'POST', body: formData });
                     const result = await response.json();
 
@@ -5399,13 +5541,13 @@ const generateReport = async () => {
                         // If the database is successfully updated, THEN update the UI
                         notificationCountBadge.textContent = '0';
                         notificationCountBadge.style.display = 'none';
-                        
+
                         // Switch to the panel and reload the list to show the new "read" styles
                         handlePanelSwitch(notificationBell);
                         loadAllNotifications();
                     } else {
-                       showNotification(result.message || 'Could not mark notifications as read.', 'error');
-                       console.error('Server failed to mark notifications as read:', result.message);
+                        showNotification(result.message || 'Could not mark notifications as read.', 'error');
+                        console.error('Server failed to mark notifications as read:', result.message);
                     }
                 } catch (error) {
                     showNotification('A network error occurred. Please try again.', 'error');
@@ -5424,7 +5566,7 @@ const generateReport = async () => {
                         formData.append('action', 'delete_notification');
                         formData.append('notification_id', notificationId);
                         formData.append('csrf_token', csrfToken);
-                        
+
                         // Optimistically remove from UI
                         deleteButton.closest('.notification-item').remove();
                         showNotification('Notification dismissed.', 'success');
@@ -5462,8 +5604,8 @@ const generateReport = async () => {
                         const response = await fetch(`?fetch=search_users&term=${encodeURIComponent(searchTerm)}`);
                         const result = await response.json();
                         if (!result.success) throw new Error(result.message);
-                        
-                        if(result.data.length > 0) {
+
+                        if (result.data.length > 0) {
                             userSearchResults.innerHTML = result.data.map(user => `
                                 <div class="search-result-item" data-id="${user.id}" data-name="${user.name} (${user.display_user_id})">
                                     <strong>${user.name}</strong> (${user.display_user_id}) - <small>${user.role}</small>
@@ -5497,11 +5639,14 @@ const generateReport = async () => {
                     userSearchResults.style.display = 'none';
                 }
             });
-            
+
+document.getElementById('appointment-doctor-filter').addEventListener('change', (e) => {
+    fetchAppointments(e.target.value);
+});
 
             // --- INITIAL LOAD ---
             updateDashboardStats();
-             updateNotificationCount();
+            updateNotificationCount();
             fetchDepartments();
             generateReport(); // Generate default report on load
         });
