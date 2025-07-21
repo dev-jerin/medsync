@@ -487,6 +487,55 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     break;
 
+                                case 'addDepartment':
+                if (empty($_POST['name'])) {
+                    throw new Exception('Department name is required.');
+                }
+                $name = $_POST['name'];
+                $stmt = $conn->prepare("INSERT INTO departments (name) VALUES (?)");
+                $stmt->bind_param("s", $name);
+                if ($stmt->execute()) {
+                    log_activity($conn, $admin_user_id_for_log, 'create_department', null, "Created new department '{$name}'.");
+                    $response = ['success' => true, 'message' => 'Department added successfully.'];
+                } else {
+                    throw new Exception('Failed to add department. It might already exist.');
+                }
+                break;
+
+            case 'updateDepartment':
+                if (empty($_POST['id']) || empty($_POST['name'])) {
+                    throw new Exception('Department ID and name are required.');
+                }
+                $id = (int)$_POST['id'];
+                $name = $_POST['name'];
+                $is_active = isset($_POST['is_active']) ? (int)$_POST['is_active'] : 1;
+
+                $stmt = $conn->prepare("UPDATE departments SET name = ?, is_active = ? WHERE id = ?");
+                $stmt->bind_param("sii", $name, $is_active, $id);
+                if ($stmt->execute()) {
+                     log_activity($conn, $admin_user_id_for_log, 'update_department', null, "Updated department ID {$id} to name '{$name}' and status " . ($is_active ? 'Active' : 'Inactive'));
+                    $response = ['success' => true, 'message' => 'Department updated successfully.'];
+                } else {
+                    throw new Exception('Failed to update department.');
+                }
+                break;
+
+            case 'deleteDepartment': // This will be a soft delete by setting is_active to 0
+                if (empty($_POST['id'])) {
+                    throw new Exception('Department ID is required.');
+                }
+                $id = (int)$_POST['id'];
+                $stmt = $conn->prepare("UPDATE departments SET is_active = 0 WHERE id = ?");
+                $stmt->bind_param("i", $id);
+                if ($stmt->execute()) {
+                    log_activity($conn, $admin_user_id_for_log, 'deactivate_department', null, "Deactivated department ID {$id}.");
+                    $response = ['success' => true, 'message' => 'Department disabled successfully.'];
+                } else {
+                    throw new Exception('Failed to disable department.');
+                }
+                break;
+
+
                 case 'updateBlood':
                     if (empty($_POST['blood_group']) || !isset($_POST['quantity_ml'])) {
                         throw new Exception('Blood group and quantity are required.');
@@ -1020,6 +1069,12 @@ if (!empty($search)) {
                     $response = ['success' => true, 'data' => $data];
                     break;
 
+                               case 'departments_management':
+                $result = $conn->query("SELECT * FROM departments ORDER BY name ASC");
+                $data = $result->fetch_all(MYSQLI_ASSOC);
+                $response = ['success' => true, 'data' => $data];
+                break;
+
                 // --- INVENTORY FETCH ENDPOINTS ---
                 case 'medicines':
                     $result = $conn->query("SELECT * FROM medicines ORDER BY name ASC");
@@ -1066,50 +1121,60 @@ if (!empty($search)) {
                     $response = ['success' => true, 'data' => $data];
                     break;
 
-                case 'report':
+              case 'report':
                     if (empty($_GET['type']) || empty($_GET['period'])) {
                         throw new Exception('Report type and period are required.');
                     }
                     $reportType = $_GET['type'];
                     $period = $_GET['period'];
 
-                    $data = ['summary' => [], 'chartData' => []];
-                    $date_format = '%Y-%m-%d';
+                    $data = ['summary' => [], 'chartData' => [], 'tableData' => []];
+                    $date_format_chart = '%Y-%m-%d';
+                    $date_format_table = '%Y-%m-%d';
                     $interval = '1 YEAR';
+                    $group_by_chart = "DATE_FORMAT(created_at, '$date_format_chart')";
+                    $group_by_table = "DATE_FORMAT(t.created_at, '$date_format_table')";
 
                     switch ($period) {
                         case 'daily':
-                            $date_format = '%Y-%m-%d';
-                            $interval = '1 MONTH';
+                            $interval = '30 DAY';
+                            $date_format_chart = '%Y-%m-%d';
+                            $date_format_table = '%Y-%m-%d';
                             break;
                         case 'weekly':
-                            $date_format = '%Y-W%U';
-                            $interval = '3 MONTH';
+                             $interval = '3 MONTH';
+                             $date_format_chart = '%Y-W%U';
+                             $date_format_table = '%Y-W%U';
                             break;
                         case 'monthly':
-                            $date_format = '%Y-%m';
-                            $interval = '1 YEAR';
+                             $interval = '1 YEAR';
+                             $date_format_chart = '%Y-%m';
+                             $date_format_table = '%%Y-%%m';
                             break;
                         case 'yearly':
-                            $date_format = '%Y';
                             $interval = '5 YEAR';
+                            $date_format_chart = '%Y';
+                            $date_format_table = '%%Y';
                             break;
                     }
 
                     if ($reportType === 'financial') {
                         $summary_sql = "SELECT SUM(IF(type='payment', amount, 0)) as total_revenue, SUM(IF(type='refund', amount, 0)) as total_refunds, COUNT(*) as total_transactions FROM transactions WHERE created_at >= DATE_SUB(NOW(), INTERVAL $interval)";
-                        $chart_sql = "SELECT DATE_FORMAT(created_at, '$date_format') as label, SUM(IF(type='payment', amount, -amount)) as value FROM transactions WHERE created_at >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
+                        $chart_sql = "SELECT DATE_FORMAT(created_at, '$date_format_chart') as label, SUM(IF(type='payment', amount, -amount)) as value FROM transactions WHERE created_at >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
+                        $table_sql = "SELECT t.id, u.name as user_name, t.description, t.amount, t.type, DATE_FORMAT(t.created_at, '%Y-%m-%d %H:%i') as date FROM transactions t JOIN users u ON t.user_id = u.id WHERE t.created_at >= DATE_SUB(NOW(), INTERVAL $interval) ORDER BY t.created_at DESC";
                     } elseif ($reportType === 'patient') {
                         $summary_sql = "SELECT COUNT(*) as total_appointments, SUM(IF(status='completed', 1, 0)) as completed, SUM(IF(status='cancelled', 1, 0)) as cancelled FROM appointments WHERE appointment_date >= DATE_SUB(NOW(), INTERVAL $interval)";
-                        $chart_sql = "SELECT DATE_FORMAT(appointment_date, '$date_format') as label, COUNT(*) as value FROM appointments WHERE appointment_date >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
+                        $chart_sql = "SELECT DATE_FORMAT(appointment_date, '$date_format_chart') as label, COUNT(*) as value FROM appointments WHERE appointment_date >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
+                        $table_sql = "SELECT a.id, p.name as patient_name, d.name as doctor_name, a.status, DATE_FORMAT(a.appointment_date, '%Y-%m-%d %H:%i') as date FROM appointments a JOIN users p ON a.user_id = p.id JOIN users d ON a.doctor_id = d.id WHERE a.appointment_date >= DATE_SUB(NOW(), INTERVAL $interval) ORDER BY a.appointment_date DESC";
                     } else { // resource
                         $summary_sql = "SELECT 
                             (SELECT COUNT(*) FROM beds) as total_beds,
                             (SELECT COUNT(*) FROM rooms) as total_rooms,
                             (SELECT COUNT(*) FROM beds WHERE status = 'occupied') as occupied_beds,
                             (SELECT COUNT(*) FROM rooms WHERE status = 'occupied') as occupied_rooms";
-                        // Chart for resource utilization could be bed occupancy over time, for simplicity we return summary only for now
-                        $chart_sql = "SELECT DATE_FORMAT(occupied_since, '$date_format') as label, COUNT(*) as value FROM beds WHERE status = 'occupied' AND occupied_since >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
+                        $chart_sql = "SELECT DATE_FORMAT(occupied_since, '$date_format_chart') as label, COUNT(*) as value FROM beds WHERE status = 'occupied' AND occupied_since >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
+                        $table_sql = "SELECT b.id, w.name as ward_name, b.bed_number, b.status, u.name as patient_name, DATE_FORMAT(b.occupied_since, '%Y-%m-%d %H:%i') as occupied_date FROM beds b JOIN wards w ON b.ward_id = w.id LEFT JOIN users u ON b.patient_id = u.id WHERE b.status = 'occupied' AND b.occupied_since >= DATE_SUB(NOW(), INTERVAL $interval) ORDER BY b.occupied_since DESC";
+
                     }
 
                     $summary_result = $conn->query($summary_sql);
@@ -1117,6 +1182,10 @@ if (!empty($search)) {
 
                     $chart_result = $conn->query($chart_sql);
                     $data['chartData'] = $chart_result->fetch_all(MYSQLI_ASSOC);
+
+                    $table_result = $conn->query($table_sql);
+                    $data['tableData'] = $table_result->fetch_all(MYSQLI_ASSOC);
+
 
                     $response = ['success' => true, 'data' => $data];
                     break;
@@ -1219,24 +1288,116 @@ case 'all_notifications':
     echo json_encode($response);
     exit();
 }
-
 // ===================================================================================
 // --- PDF GENERATION LOGIC ---
 // ===================================================================================
 if (isset($_GET['action']) && $_GET['action'] === 'download_pdf') {
     $reportType = $_GET['report_type'] ?? 'Unknown';
     $period = $_GET['period'] ?? 'All Time';
+    $conn = getDbConnection();
 
-    // In a real application, you would fetch the data again here based on the report type and period
-    // For this example, we'll just create a simple PDF
+    // --- Data Fetching (same as the report API endpoint) ---
+    $table_sql = '';
+    $table_headers = [];
 
-    $html = '<h1>Report: ' . htmlspecialchars($reportType) . '</h1>';
-    $html .= '<h2>Period: ' . htmlspecialchars($period) . '</h2>';
-    $html .= '<p>This is a sample report generated on ' . date('Y-m-d H:i:s') . '.</p>';
-    // You would loop through your data and build a table here
+    $interval_map = ['daily' => '30 DAY', 'weekly' => '3 MONTH', 'monthly' => '1 YEAR', 'yearly' => '5 YEAR'];
+    $interval = $interval_map[$period] ?? '1 YEAR';
+
+    if ($reportType === 'financial') {
+        $table_headers = ['ID', 'User', 'Description', 'Amount', 'Type', 'Date'];
+        $table_sql = "SELECT t.id, u.name as user_name, t.description, t.amount, t.type, DATE_FORMAT(t.created_at, '%Y-%m-%d %H:%i') as date FROM transactions t JOIN users u ON t.user_id = u.id WHERE t.created_at >= DATE_SUB(NOW(), INTERVAL $interval) ORDER BY t.created_at DESC";
+    } elseif ($reportType === 'patient') {
+        $table_headers = ['ID', 'Patient', 'Doctor', 'Status', 'Date'];
+        $table_sql = "SELECT a.id, p.name as patient_name, d.name as doctor_name, a.status, DATE_FORMAT(a.appointment_date, '%Y-%m-%d %H:%i') as date FROM appointments a JOIN users p ON a.user_id = p.id JOIN users d ON a.doctor_id = d.id WHERE a.appointment_date >= DATE_SUB(NOW(), INTERVAL $interval) ORDER BY a.appointment_date DESC";
+    } elseif ($reportType === 'resource') {
+        $table_headers = ['Bed ID', 'Ward', 'Bed Number', 'Status', 'Patient', 'Occupied Since'];
+        $table_sql = "SELECT b.id, w.name as ward_name, b.bed_number, b.status, u.name as patient_name, DATE_FORMAT(b.occupied_since, '%Y-%m-%d %H:%i') as occupied_date FROM beds b JOIN wards w ON b.ward_id = w.id LEFT JOIN users u ON b.patient_id = u.id WHERE b.status = 'occupied' AND b.occupied_since >= DATE_SUB(NOW(), INTERVAL $interval) ORDER BY b.occupied_since DESC";
+    }
+
+    $result = $conn->query($table_sql);
+    $tableData = $result->fetch_all(MYSQLI_ASSOC);
+    $conn->close();
+
+    // --- HTML Template for PDF ---
+    $medsync_logo_path = 'images/logo.png';
+    $hospital_logo_path = 'images/hospital.png'; // Make sure you have this image
+    $medsync_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($medsync_logo_path));
+    $hospital_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($hospital_logo_path));
+
+    $html = '
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Report</title>
+        <style>
+            body { font-family: "Poppins", sans-serif; color: #333; }
+            .header { width: 100%; display: table; margin-bottom: 20px; }
+            .logo { display: table-cell; width: 50%; vertical-align: middle; }
+            .hospital-details { display: table-cell; width: 50%; text-align: right; vertical-align: middle; }
+            .logo img { width: 120px; }
+            .hospital-details img { width: 100px; }
+            .hospital-details h3 { margin: 0; color: #007BFF; }
+            .hospital-details p { margin: 0; font-size: 0.9em; }
+            .report-title { text-align: center; margin-bottom: 30px; }
+            .report-title h1 { margin: 0; font-size: 1.8em; }
+            .report-title p { margin: 5px 0 0 0; font-size: 1em; color: #666; }
+            .data-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+            .data-table th, .data-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+            .data-table th { background-color: #f2f2f2; font-weight: bold; }
+            .footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 0.8em; color: #aaa; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="logo">
+                <img src="' . $medsync_logo_base64 . '" alt="MedSync Logo">
+            </div>
+            <div class="hospital-details">
+                <img src="' . $hospital_logo_base64 . '" alt="Hospital Logo">
+                <h3>Calysta Health Institute</h3>
+                <p>Kerala, India</p>
+                <p>+91 45235 31245</p>
+            </div>
+        </div>
+        <hr>
+        <div class="report-title">
+            <h1>' . htmlspecialchars(ucfirst($reportType)) . ' Report</h1>
+            <p>Period: ' . htmlspecialchars(ucfirst($period)) . ' | Generated on: ' . date('Y-m-d H:i:s') . '</p>
+        </div>
+        <table class="data-table">
+            <thead>
+                <tr>';
+    foreach ($table_headers as $header) {
+        $html .= '<th>' . htmlspecialchars($header) . '</th>';
+    }
+    $html .= '
+                </tr>
+            </thead>
+            <tbody>';
+    if (count($tableData) > 0) {
+        foreach ($tableData as $row) {
+            $html .= '<tr>';
+            foreach ($row as $cell) {
+                $html .= '<td>' . htmlspecialchars($cell) . '</td>';
+            }
+            $html .= '</tr>';
+        }
+    } else {
+        $html .= '<tr><td colspan="' . count($table_headers) . '" style="text-align: center;">No data available for this period.</td></tr>';
+    }
+    $html .= '
+            </tbody>
+        </table>
+        <div class="footer">
+            MedSync Healthcare Platform | &copy; ' . date('Y') . ' Calysta Health Institute
+        </div>
+    </body>
+    </html>';
 
     $options = new Options();
     $options->set('isHtml5ParserEnabled', true);
+    $options->set('isRemoteEnabled', true);
     $dompdf = new Dompdf($options);
     $dompdf->loadHtml($html);
     $dompdf->setPaper('A4', 'portrait');
@@ -1244,7 +1405,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pdf') {
     $dompdf->stream(strtolower(str_replace(' ', '_', $reportType)) . '_report.pdf', ["Attachment" => 1]);
     exit();
 }
-
 
 // ===================================================================================
 // --- STANDARD PAGE LOAD LOGIC ---
@@ -1647,11 +1807,24 @@ $pending_appointments = 0;
             color: var(--text-muted);
             text-decoration: none;
             border-radius: 8px;
-            margin-bottom: 0.5rem;
+            
             transition: background-color var(--transition-speed), color var(--transition-speed);
             font-weight: 500;
             cursor: pointer;
         }
+
+        /* ADD THESE NEW RULES FOR CORRECT SPACING */
+.sidebar-nav > ul > li {
+    margin-bottom: 0.5rem;
+}
+
+.nav-dropdown li {
+    margin-bottom: 0.25rem;
+}
+
+.nav-dropdown li:last-child {
+    margin-bottom: 0;
+}
 
         .sidebar-nav a i,
         .nav-dropdown-toggle i {
@@ -1699,11 +1872,16 @@ $pending_appointments = 0;
             font-size: 0.95rem;
             padding: 0.7rem 1rem 0.7rem 0.5rem;
             background-color: rgba(100, 100, 100, 0.05);
-        }
+             padding-bottom: -3.5rem;        }
 
         body.dark-mode .nav-dropdown a {
             background-color: rgba(255, 255, 255, 0.05);
         }
+/* ADD THIS RULE TO FIX THE SIDEBAR SPACING */
+        .nav-dropdown li:last-child a {
+            margin-bottom: 0;
+        }
+        
 
         .logout-btn {
             display: flex;
@@ -2719,12 +2897,13 @@ $pending_appointments = 0;
                                     Blood Inventory</a></li>
                             <li><a href="#" class="nav-link" data-target="inventory-medicine"><i
                                         class="fas fa-pills"></i> Medicine Inventory</a></li>
+                                        <li><a href="#" class="nav-link" data-target="inventory-departments"><i class="fas fa-building"></i> Departments</a></li>
                             <li><a href="#" class="nav-link" data-target="inventory-wards"><i
                                         class="fas fa-hospital"></i> Wards</a></li>
                             <li><a href="#" class="nav-link" data-target="inventory-beds"><i class="fas fa-bed"></i>
                                     Beds</a></li>
                             <li><a href="#" class="nav-link" data-target="inventory-rooms"><i
-                                        class="fas fa-door-closed"></i> Rooms</a></li>
+                                        class="fas fa-door-closed"></i> Rooms</a></li><br>
                         </ul>
                     </li>
                     <li><a href="#" class="nav-link" data-target="schedules"><i class="fas fa-calendar-alt"></i>
@@ -2735,8 +2914,7 @@ $pending_appointments = 0;
                             Logs</a></li>
                     <li><a href="#" class="nav-link" data-target="settings"><i class="fas fa-user-edit"></i> My
                             Account</a></li>
-                    <li><a href="#" class="nav-link" data-target="backup"><i class="fas fa-database"></i> Backup</a>
-                    </li>
+
                     <li><a href="#" class="nav-link" data-target="notifications"><i class="fas fa-bullhorn"></i>
                             Notifications</a></li>
                 </ul>
@@ -2825,17 +3003,17 @@ $pending_appointments = 0;
                             <canvas id="userRolesChart"></canvas>
                         </div>
                     </div>
-                    <div class="grid-card quick-actions">
-                        <h3>Quick Actions</h3>
-                        <div class="actions-grid">
-                            <a href="#" class="action-btn" id="quick-add-user-btn"><i class="fas fa-user-plus"></i> Add
-                                User</a>
-                            <a href="#" class="action-btn nav-link" data-target="reports"><i
-                                    class="fas fa-file-alt"></i> Generate Report</a>
-                            <a href="#" class="action-btn"><i class="fas fa-database"></i> Backup Data</a>
-                            <a href="#" class="action-btn"><i class="fas fa-bullhorn"></i> Send Notification</a>
-                        </div>
-                    </div>
+ <div class="grid-card quick-actions">
+    <h3>Quick Actions</h3>
+    <div class="actions-grid">
+        <a href="#" class="action-btn nav-link" data-target="users-user" id="quick-add-user-btn"><i class="fas fa-user-plus"></i> Add User</a>
+        <a href="#" class="action-btn nav-link" data-target="activity"><i class="fas fa-history"></i> Activity Log</a>
+        <a href="#" class="action-btn nav-link" data-target="inventory-departments"><i class="fas fa-building"></i> Departments</a>
+        <a href="#" class="action-btn nav-link" data-target="notifications"><i class="fas fa-bullhorn"></i> Send Notifications</a>
+        <a href="#" class="action-btn nav-link" data-target="settings"><i class="fas fa-cog"></i> System Settings</a>
+        <a href="#" class="action-btn nav-link" data-target="settings"><i class="fas fa-user-edit"></i> My Account</a>
+    </div>
+</div>
                 </div>
             </div>
 
@@ -2921,6 +3099,25 @@ $pending_appointments = 0;
                     </table>
                 </div>
             </div>
+            <div id="inventory-departments-panel" class="content-panel">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+        <h2>Department Management</h2>
+        <button id="add-department-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Department</button>
+    </div>
+    <div class="table-container">
+        <table class="data-table" id="department-table">
+            <thead>
+                <tr>
+                    <th>Department Name</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="department-table-body">
+            </tbody>
+        </table>
+    </div>
+</div>
 
             <div id="inventory-wards-panel" class="content-panel">
                 <div
@@ -3000,6 +3197,8 @@ $pending_appointments = 0;
                 <div id="report-chart-container">
                     <canvas id="report-chart"></canvas>
                 </div>
+                <div id="report-table-container" style="margin-top: 2rem;">
+                    </div>
             </div>
 
             <div id="activity-panel" class="content-panel">
@@ -3087,9 +3286,7 @@ $pending_appointments = 0;
                     </div>
                 </div>
             </div>
-            <div id="backup-panel" class="content-panel">
-                <p>Database Backup utility coming soon.</p>
-            </div>
+
             <div id="all-notifications-panel" class="content-panel">
                 </div>
 <div id="notifications-panel" class="content-panel">
@@ -3278,6 +3475,32 @@ $pending_appointments = 0;
             </div>
         </div>
     </div>
+<div id="department-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="department-modal-title">Add New Department</h3>
+            <button class="modal-close-btn">&times;</button>
+        </div>
+        <form id="department-form">
+            <input type="hidden" name="id" id="department-id">
+            <input type="hidden" name="action" id="department-form-action">
+            <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+
+            <div class="form-group">
+                <label for="department-name">Department Name</label>
+                <input type="text" id="department-name" name="name" required>
+            </div>
+            <div class="form-group" id="department-active-group" style="display: none;">
+                <label for="department-is-active">Status</label>
+                <select id="department-is-active" name="is_active">
+                    <option value="1">Active</option>
+                    <option value="0">Inactive</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Save Department</button>
+        </form>
+    </div>
+</div>
 
     <div id="medicine-modal" class="modal">
         <div class="modal-content">
@@ -3618,6 +3841,7 @@ $pending_appointments = 0;
                     const inventoryType = targetId.split('-')[1];
                     if (inventoryType === 'blood') fetchBloodInventory();
                     else if (inventoryType === 'medicine') fetchMedicineInventory();
+                     else if (inventoryType === 'departments') fetchDepartmentsManagement();
                     else if (inventoryType === 'wards') fetchWards();
                     else if (inventoryType === 'beds') fetchWardsAndBeds();
                     else if (inventoryType === 'rooms') fetchRooms();
@@ -4028,6 +4252,7 @@ $pending_appointments = 0;
                         if (refreshTarget) {
                             if (refreshTarget.startsWith('users-')) fetchUsers(refreshTarget.split('-')[1]);
                             else if (refreshTarget === 'blood') fetchBloodInventory();
+                            else if (refreshTarget === 'departments_management') { closeModal(departmentModal); fetchDepartmentsManagement(); }
                             else if (refreshTarget === 'medicine') fetchMedicineInventory();
                             else if (refreshTarget === 'wards') { fetchWards(); }
                             else if (refreshTarget === 'beds') fetchWardsAndBeds();
@@ -4096,6 +4321,12 @@ $pending_appointments = 0;
             const medicineForm = document.getElementById('medicine-form');
             const addMedicineBtn = document.getElementById('add-medicine-btn');
             const medicineTableBody = document.getElementById('medicine-table-body');
+
+
+const departmentModal = document.getElementById('department-modal');
+const departmentForm = document.getElementById('department-form');
+const addDepartmentBtn = document.getElementById('add-department-btn');
+const departmentTableBody = document.getElementById('department-table-body');
 
             const openMedicineModal = (mode, medicine = {}) => {
                 medicineForm.reset();
@@ -4246,6 +4477,78 @@ $pending_appointments = 0;
                     openBloodModal(blood);
                 }
             });
+
+                    // --- Department Management ---
+        const openDepartmentModal = (mode, department = {}) => {
+            departmentForm.reset();
+            if (mode === 'add') {
+                document.getElementById('department-modal-title').textContent = 'Add New Department';
+                document.getElementById('department-form-action').value = 'addDepartment';
+                document.getElementById('department-active-group').style.display = 'none';
+            } else {
+                document.getElementById('department-modal-title').textContent = `Edit ${department.name}`;
+                document.getElementById('department-form-action').value = 'updateDepartment';
+                document.getElementById('department-id').value = department.id;
+                document.getElementById('department-name').value = department.name;
+                document.getElementById('department-is-active').value = department.is_active;
+                document.getElementById('department-active-group').style.display = 'block';
+            }
+            departmentModal.classList.add('show');
+        };
+
+        addDepartmentBtn.addEventListener('click', () => openDepartmentModal('add'));
+        departmentModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(departmentModal));
+        departmentModal.addEventListener('click', (e) => { if (e.target === departmentModal) closeModal(departmentModal); });
+
+        departmentForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            handleFormSubmit(new FormData(departmentForm), 'departments_management');
+        });
+
+        const fetchDepartmentsManagement = async () => {
+            departmentTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center;">Loading...</td></tr>`;
+            try {
+                const response = await fetch('?fetch=departments_management');
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message);
+
+                if (result.data.length > 0) {
+                    departmentTableBody.innerHTML = result.data.map(dept => `
+                        <tr data-department='${JSON.stringify(dept)}'>
+                            <td>${dept.name}</td>
+                            <td><span class="status-badge ${dept.is_active == 1 ? 'active' : 'inactive'}">${dept.is_active == 1 ? 'Active' : 'Inactive'}</span></td>
+                            <td class="action-buttons">
+                                <button class="btn-edit-department btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
+                                <button class="btn-delete-department btn-delete" title="Disable"><i class="fas fa-trash-alt"></i></button>
+                            </td>
+                        </tr>
+                    `).join('');
+                } else {
+                    departmentTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center;">No departments found.</td></tr>`;
+                }
+            } catch (error) {
+                departmentTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color: var(--danger-color);">Failed to load departments.</td></tr>`;
+            }
+        };
+
+        departmentTableBody.addEventListener('click', async (e) => {
+            const row = e.target.closest('tr');
+            if (!row) return;
+            const department = JSON.parse(row.dataset.department);
+            if (e.target.closest('.btn-edit-department')) {
+                openDepartmentModal('edit', department);
+            }
+            if (e.target.closest('.btn-delete-department')) {
+                const confirmed = await showConfirmation('Disable Department', `Are you sure you want to disable the "${department.name}" department?`);
+                if (confirmed) {
+                    const formData = new FormData();
+                    formData.append('action', 'deleteDepartment');
+                    formData.append('id', department.id);
+                    formData.append('csrf_token', csrfToken);
+                    handleFormSubmit(formData, 'departments_management');
+                }
+            }
+        });
 
             // --- Ward Management ---
             const addWardBtn = document.getElementById('add-ward-btn');
@@ -4593,7 +4896,7 @@ $pending_appointments = 0;
             const downloadPdfForm = document.getElementById('download-pdf-form');
             const summaryCardsContainer = document.getElementById('report-summary-cards');
 
-            const generateReport = async () => {
+const generateReport = async () => {
                 const reportType = document.getElementById('report-type').value;
                 const period = document.getElementById('report-period').value;
 
@@ -4601,13 +4904,14 @@ $pending_appointments = 0;
                 document.getElementById('pdf-report-type').value = reportType;
                 document.getElementById('pdf-period').value = period;
                 summaryCardsContainer.innerHTML = '<p>Loading summary...</p>';
+                document.getElementById('report-table-container').innerHTML = ''; // Clear old table
 
                 try {
                     const response = await fetch(`?fetch=report&type=${reportType}&period=${period}`);
                     const result = await response.json();
                     if (!result.success) throw new Error(result.message);
 
-                    const { summary, chartData } = result.data;
+                    const { summary, chartData, tableData } = result.data;
 
                     // Update Summary Cards
                     summaryCardsContainer.innerHTML = ''; // Clear previous cards
@@ -4633,6 +4937,7 @@ $pending_appointments = 0;
                     `;
                     }
 
+                    // Render Chart
                     const chartCtx = document.getElementById('report-chart').getContext('2d');
                     if (reportChart) {
                         reportChart.destroy();
@@ -4662,13 +4967,39 @@ $pending_appointments = 0;
                             }
                         }
                     });
+                    
+                    // Render Table
+                    const tableContainer = document.getElementById('report-table-container');
+                    if (tableData.length > 0) {
+                        const headers = Object.keys(tableData[0]);
+                        const tableHTML = `
+                            <h3 style="margin-top: 2.5rem; margin-bottom: 1.5rem;">Detailed Report Data</h3>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            ${headers.map(h => `<th>${h.replace(/_/g, ' ').toUpperCase()}</th>`).join('')}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${tableData.map(row => `
+                                            <tr>
+                                                ${headers.map(h => `<td>${row[h]}</td>`).join('')}
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                        tableContainer.innerHTML = tableHTML;
+                    }
+
 
                 } catch (error) {
                     showNotification('Failed to generate report: ' + error.message, 'error');
                     summaryCardsContainer.innerHTML = `<p style="color: var(--danger-color);">Could not load report summary.</p>`;
                 }
             };
-
             generateReportBtn.addEventListener('click', generateReport);
 
             // --- ACTIVITY LOG (AUDIT TRAIL) ---
