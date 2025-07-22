@@ -47,4 +47,25 @@ if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
+/**
+ * Fetches a specific setting value from the system_settings table.
+ * @param mysqli $conn The database connection object.
+ * @param string $setting_key The key of the setting to retrieve.
+ * @return string|null The value of the setting or null if not found.
+ */
+function get_system_setting($conn, $setting_key) {
+    $stmt = $conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = ?");
+    if (!$stmt) {
+        error_log("Failed to prepare statement for get_system_setting: " . $conn->error);
+        return null;
+    }
+    $stmt->bind_param("s", $setting_key);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($row = $result->fetch_assoc()) {
+        return $row['setting_value'];
+    }
+    return null;
+}
+
 ?>

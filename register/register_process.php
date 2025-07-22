@@ -174,7 +174,13 @@ try {
     $mail->Host       = 'smtp.gmail.com';
     $mail->SMTPAuth   = true;
     $mail->Username   = 'medsync.calysta@gmail.com';
-    $mail->Password   = 'sswyqzegdpyixbyw'; // Use a 16-digit App Password
+    $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
+if (empty($gmail_app_password)) {
+    $_SESSION['register_error'] = "Could not send OTP. The mail service is not configured by the administrator.";
+    header("Location: ../register.php");
+    exit();
+}
+$mail->Password   = $gmail_app_password;
     $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
     $mail->Port       = 587;
 

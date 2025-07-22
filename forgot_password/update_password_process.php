@@ -140,7 +140,15 @@ if ($stmt_update->execute()) {
         $mail->Host       = 'smtp.gmail.com';
         $mail->SMTPAuth   = true;
         $mail->Username   = 'medsync.calysta@gmail.com';
-        $mail->Password   = 'sswyqzegdpyixbyw'; // Your App Password
+$gmail_app_password = get_system_setting($conn, 'gmail_app_password');
+if (empty($gmail_app_password)) {
+    // For this file, we don't want to stop the user flow if the email fails.
+    // Just log the error and proceed.
+    error_log("Could not send password change confirmation. Gmail App Password is not set in system_settings.");
+    // Skip the rest of the mail sending logic
+    throw new Exception("Email could not be sent due to configuration issues.");
+}
+$mail->Password   = $gmail_app_password; // Your App Password
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = 587;
 

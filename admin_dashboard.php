@@ -202,6 +202,24 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     break;
 
+                    case 'updateSystemSettings':
+                    if (isset($_POST['gmail_app_password']) && !empty($_POST['gmail_app_password'])) {
+                        $new_password = $_POST['gmail_app_password'];
+                        $stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES ('gmail_app_password', ?) ON DUPLICATE KEY UPDATE setting_value = ?");
+                        $stmt->bind_param("ss", $new_password, $new_password);
+                        if ($stmt->execute()) {
+                            log_activity($conn, $admin_user_id_for_log, 'update_system_settings', null, 'Updated the Gmail App Password.');
+                            $response = ['success' => true, 'message' => 'System settings updated successfully.'];
+                        } else {
+                            throw new Exception('Failed to update system settings.');
+                        }
+                    } else {
+                        // If other settings are added in the future, handle them here.
+                        // For now, we just acknowledge without changing the password if it's empty.
+                        $response = ['success' => true, 'message' => 'No changes made. Password field was empty.'];
+                    }
+                    break;
+
                 case 'updateUser':
                     $conn->begin_transaction();
                     try {
@@ -3429,14 +3447,22 @@ body.dark-mode .status-badge.cancelled { background-color: #7F1D1D; color: #FECA
                 </form>
             </div>
 
-             <div id="system-settings-panel" class="content-panel">
-                <div style="text-align: center; padding: 4rem 2rem;">
-                    <i class="fas fa-cogs" style="font-size: 4rem; color: var(--text-muted); margin-bottom: 1.5rem;"></i>
-                    <h3 style="font-size: 2rem; font-weight: 600;">System Settings</h3>
-                    <p style="font-size: 1.2rem; color: var(--text-muted);">This feature is coming soon.</p>
-                </div>
-            </div>
+<div id="system-settings-panel" class="content-panel">
+    <h3>System Settings</h3>
+    <p>Configure system-wide settings here. Changes will take effect immediately.</p>
+    <form id="system-settings-form" style="margin-top: 2rem; max-width: 600px;">
+        <input type="hidden" name="action" value="updateSystemSettings">
+        <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
 
+        <div class="form-group">
+            <label for="gmail_app_password">Gmail App Password</label>
+            <input type="password" id="gmail_app_password" name="gmail_app_password">
+            <small style="color: var(--text-muted); font-size: 0.8rem;">This is used for sending system emails (e.g., OTPs, notifications). <a href="https://support.google.com/accounts/answer/185833" target="_blank">How to get an App Password</a>.</small>
+        </div>
+        
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+    </form>
+</div>
             <div id="schedules-panel" class="content-panel">
                 <div class="schedule-tabs">
                     <button class="schedule-tab-button active" data-tab="doctor-availability">Doctor
@@ -4561,6 +4587,20 @@ const fetchAppointments = async (doctorId = 'all') => {
                     showNotification(error.message, 'error');
                 }
             });
+
+            const systemSettingsForm = document.getElementById('system-settings-form');
+            if(systemSettingsForm) {
+                systemSettingsForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const confirmed = await showConfirmation('Update Settings', 'Are you sure you want to save these system settings? This may affect system functionality like sending emails.');
+                    if (confirmed) {
+                        const formData = new FormData(systemSettingsForm);
+                        handleFormSubmit(formData);
+                        // Clear the password field for security after submission
+                        document.getElementById('gmail_app_password').value = '';
+                    }
+                });
+            }
 
             // --- INVENTORY MANAGEMENT ---
 

@@ -141,7 +141,13 @@ try {
     $mail->Host       = 'smtp.gmail.com';
     $mail->SMTPAuth   = true;
     $mail->Username   = 'medsync.calysta@gmail.com';
-    $mail->Password   = 'sswyqzegdpyixbyw'; // Your App Password
+ $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
+if (empty($gmail_app_password)) {
+    $_SESSION['status'] = ['type' => 'error', 'text' => "The mail service is not configured. Please contact support."];
+    header("Location: ../forgot_password.php");
+    exit();
+}
+$mail->Password   = $gmail_app_password; // Your App Password
     $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
     $mail->Port       = 587;
 
