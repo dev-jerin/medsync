@@ -135,25 +135,26 @@ if ($stmt_update->execute()) {
     // --- Send Confirmation Email ---
     $mail = new PHPMailer(true);
     try {
+        // Fetch email settings from database
+        $system_email = get_system_setting($conn, 'system_email');
+        $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
+
+        if (empty($system_email) || empty($gmail_app_password)) {
+            error_log("Could not send password change confirmation. Email settings are not configured.");
+            throw new Exception("Email could not be sent due to configuration issues.");
+        }
+
         // Server settings
         $mail->isSMTP();
         $mail->Host       = 'smtp.gmail.com';
         $mail->SMTPAuth   = true;
-        $mail->Username   = 'medsync.calysta@gmail.com';
-$gmail_app_password = get_system_setting($conn, 'gmail_app_password');
-if (empty($gmail_app_password)) {
-    // For this file, we don't want to stop the user flow if the email fails.
-    // Just log the error and proceed.
-    error_log("Could not send password change confirmation. Gmail App Password is not set in system_settings.");
-    // Skip the rest of the mail sending logic
-    throw new Exception("Email could not be sent due to configuration issues.");
-}
-$mail->Password   = $gmail_app_password; // Your App Password
+        $mail->Username   = $system_email;
+        $mail->Password   = $gmail_app_password;
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = 587;
 
         // Recipients
-        $mail->setFrom('medsync.calysta@gmail.com', 'MedSync Security');
+        $mail->setFrom($system_email, 'MedSync Security');
         $mail->addAddress($email, $user_name);
 
         // Content

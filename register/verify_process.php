@@ -112,18 +112,27 @@ try {
     );
 
     if ($stmt_insert->execute()) {
-        // --- Send Welcome Email ---
+     // --- Send Welcome Email ---
         $mail = new PHPMailer(true);
         try {
+            // Fetch email settings from database
+            $system_email = get_system_setting($conn, 'system_email');
+            $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
+
+            // Proceed even if settings are missing, as this is not a critical email
+            if (empty($system_email) || empty($gmail_app_password)) {
+                throw new Exception("Email settings not configured, skipping welcome email.");
+            }
+
             $mail->isSMTP();
             $mail->Host       = 'smtp.gmail.com';
             $mail->SMTPAuth   = true;
-            $mail->Username   = 'medsync.calysta@gmail.com';
-            $mail->Password   = 'sswyqzegdpyixbyw';
+            $mail->Username   = $system_email;
+            $mail->Password   = $gmail_app_password;
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
             $mail->Port       = 587;
 
-            $mail->setFrom('medsync.calysta@gmail.com', 'MedSync');
+            $mail->setFrom($system_email, 'MedSync');
             $mail->addAddress($session_data['email'], $session_data['name']);
 
             $mail->isHTML(true);

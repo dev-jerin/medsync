@@ -136,25 +136,29 @@ $_SESSION['password_reset'] = [
 // --- Send Email with PHPMailer ---
 $mail = new PHPMailer(true);
 try {
+    // Fetch email settings from database
+    $system_email = get_system_setting($conn, 'system_email');
+    $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
+
+    if (empty($system_email) || empty($gmail_app_password)) {
+        $_SESSION['status'] = ['type' => 'error', 'text' => "The mail service is not configured. Please contact support."];
+        header("Location: ../forgot_password.php");
+        exit();
+    }
+
     // Server settings
     $mail->isSMTP();
     $mail->Host       = 'smtp.gmail.com';
     $mail->SMTPAuth   = true;
-    $mail->Username   = 'medsync.calysta@gmail.com';
- $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
-if (empty($gmail_app_password)) {
-    $_SESSION['status'] = ['type' => 'error', 'text' => "The mail service is not configured. Please contact support."];
-    header("Location: ../forgot_password.php");
-    exit();
-}
-$mail->Password   = $gmail_app_password; // Your App Password
+    $mail->Username   = $system_email;
+    $mail->Password   = $gmail_app_password;
     $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
     $mail->Port       = 587;
 
     // Recipients
-    $mail->setFrom('medsync.calysta@gmail.com', 'MedSync Support');
+    $mail->setFrom($system_email, 'MedSync Support');
     $mail->addAddress($email, $user_name);
-
+    
     // Content
     $mail->isHTML(true);
     $mail->Subject = 'Your Password Reset OTP for MedSync';

@@ -169,23 +169,27 @@ $_SESSION['registration_data'] = [
 $mail = new PHPMailer(true);
 
 try {
+    // Fetch email settings from database
+    $system_email = get_system_setting($conn, 'system_email');
+    $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
+
+    if (empty($system_email) || empty($gmail_app_password)) {
+        $_SESSION['register_error'] = "Could not send OTP. The mail service is not configured by the administrator.";
+        header("Location: ../register.php");
+        exit();
+    }
+
     // Server settings for Gmail
     $mail->isSMTP();
     $mail->Host       = 'smtp.gmail.com';
     $mail->SMTPAuth   = true;
-    $mail->Username   = 'medsync.calysta@gmail.com';
-    $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
-if (empty($gmail_app_password)) {
-    $_SESSION['register_error'] = "Could not send OTP. The mail service is not configured by the administrator.";
-    header("Location: ../register.php");
-    exit();
-}
-$mail->Password   = $gmail_app_password;
+    $mail->Username   = $system_email;
+    $mail->Password   = $gmail_app_password;
     $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
     $mail->Port       = 587;
 
     // Recipients
-    $mail->setFrom('medsync.calysta@gmail.com', 'MedSync');
+    $mail->setFrom($system_email, 'MedSync');
     $mail->addAddress($email, $name);
 
     // Content

@@ -202,24 +202,44 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     break;
 
-                    case 'updateSystemSettings':
-                    if (isset($_POST['gmail_app_password']) && !empty($_POST['gmail_app_password'])) {
-                        $new_password = $_POST['gmail_app_password'];
-                        $stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES ('gmail_app_password', ?) ON DUPLICATE KEY UPDATE setting_value = ?");
-                        $stmt->bind_param("ss", $new_password, $new_password);
-                        if ($stmt->execute()) {
-                            log_activity($conn, $admin_user_id_for_log, 'update_system_settings', null, 'Updated the Gmail App Password.');
-                            $response = ['success' => true, 'message' => 'System settings updated successfully.'];
-                        } else {
-                            throw new Exception('Failed to update system settings.');
-                        }
-                    } else {
-                        // If other settings are added in the future, handle them here.
-                        // For now, we just acknowledge without changing the password if it's empty.
-                        $response = ['success' => true, 'message' => 'No changes made. Password field was empty.'];
-                    }
-                    break;
+                 case 'updateSystemSettings':
+    $conn->begin_transaction();
+    try {
+        $changes_logged = [];
+        // Handle System Email
+        if (isset($_POST['system_email']) && !empty($_POST['system_email'])) {
+            $new_email = filter_var($_POST['system_email'], FILTER_VALIDATE_EMAIL);
+            if (!$new_email) {
+                throw new Exception('Invalid email format provided.');
+            }
+            $stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES ('system_email', ?) ON DUPLICATE KEY UPDATE setting_value = ?");
+            $stmt->bind_param("ss", $new_email, $new_email);
+            $stmt->execute();
+            $changes_logged[] = "System Email";
+        }
 
+        // Handle Gmail App Password
+        if (isset($_POST['gmail_app_password']) && !empty($_POST['gmail_app_password'])) {
+            $new_password = $_POST['gmail_app_password'];
+            $stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES ('gmail_app_password', ?) ON DUPLICATE KEY UPDATE setting_value = ?");
+            $stmt->bind_param("ss", $new_password, $new_password);
+            $stmt->execute();
+            $changes_logged[] = "Gmail App Password";
+        }
+
+        if (!empty($changes_logged)) {
+            log_activity($conn, $admin_user_id_for_log, 'update_system_settings', null, 'Updated system settings: ' . implode(', ', $changes_logged) . '.');
+            $response = ['success' => true, 'message' => 'System settings updated successfully.'];
+        } else {
+            $response = ['success' => true, 'message' => 'No changes were made.'];
+        }
+        $conn->commit();
+    } catch (Exception $e) {
+        $conn->rollback();
+        throw $e; // Rethrow the exception to be caught by the main handler
+    }
+    break;
+    
                 case 'updateUser':
                     $conn->begin_transaction();
                     try {
@@ -3453,6 +3473,12 @@ body.dark-mode .status-badge.cancelled { background-color: #7F1D1D; color: #FECA
     <form id="system-settings-form" style="margin-top: 2rem; max-width: 600px;">
         <input type="hidden" name="action" value="updateSystemSettings">
         <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+
+        <div class="form-group">
+    <label for="system_email">System Email Address</label>
+    <input type="email" id="system_email" name="system_email" placeholder="e.g., your_email@gmail.com">
+    <small style="color: var(--text-muted); font-size: 0.8rem;">This email will be used to send OTPs and all other system notifications.</small>
+</div>
 
         <div class="form-group">
             <label for="gmail_app_password">Gmail App Password</label>
