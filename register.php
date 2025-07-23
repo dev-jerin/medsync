@@ -188,6 +188,19 @@ require_once 'config.php';
             color: var(--error-color);
             border-color: rgba(220, 53, 69, 0.2);
         }
+        
+        .availability-message {
+            font-size: 0.85rem;
+            margin-top: 5px;
+        }
+        
+        .availability-message.error {
+            color: var(--error-color);
+        }
+        
+        .availability-message.success {
+            color: var(--success-color);
+        }
 
         /*logo */
         .logo {
@@ -240,11 +253,13 @@ require_once 'config.php';
                 <div class="form-group">
                     <label for="username">Username (no spaces, will be converted to lowercase)</label>
                     <input type="text" id="username" name="username" required>
+                    <div id="username-availability" class="availability-message"></div>
                 </div>
 
                 <div class="form-group">
                     <label for="email">Email Address</label>
                     <input type="email" id="email" name="email" required>
+                    <div id="email-availability" class="availability-message"></div>
                 </div>
 
                 <div class="form-group">
@@ -254,7 +269,7 @@ require_once 'config.php';
 
                 <div class="form-group">
                     <label for="date_of_birth">Date of Birth</label>
-                    <input type="date" id="date_of_birth" name="date_of_birth" required>
+                    <input type="date" id="date_of_birth" name="date_of_birth" max="<?php echo date('Y-m-d'); ?>" required>
                 </div>
                 
                 <div class="form-group">
@@ -363,6 +378,76 @@ require_once 'config.php';
             strengthBar.style.backgroundColor = color;
             strengthText.textContent = text;
         });
+
+        /**
+         * Real-time availability checking and DOB year validation
+         */
+        document.addEventListener('DOMContentLoaded', function() {
+            const usernameInput = document.getElementById('username');
+            const emailInput = document.getElementById('email');
+            const usernameAvailability = document.getElementById('username-availability');
+            const emailAvailability = document.getElementById('email-availability');
+            const dobInput = document.getElementById('date_of_birth');
+
+            usernameInput.addEventListener('blur', function() {
+                const username = this.value;
+                if(username.length < 3) {
+                    usernameAvailability.textContent = 'Username must be at least 3 characters long.';
+                    usernameAvailability.className = 'availability-message error';
+                    return;
+                }
+                
+                fetch('check_availability.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'username=' + encodeURIComponent(username)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    usernameAvailability.textContent = data.message;
+                    if(data.available) {
+                        usernameAvailability.className = 'availability-message success';
+                    } else {
+                        usernameAvailability.className = 'availability-message error';
+                    }
+                });
+            });
+            
+            emailInput.addEventListener('blur', function() {
+                const email = this.value;
+                if(email.length === 0) {
+                    emailAvailability.textContent = '';
+                    return;
+                }
+                
+                fetch('check_availability.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'email=' + encodeURIComponent(email)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    emailAvailability.textContent = data.message;
+                    if(data.available) {
+                        emailAvailability.className = 'availability-message success';
+                    } else {
+                        emailAvailability.className = 'availability-message error';
+                    }
+                });
+            });
+
+            // Restrict year in Date of Birth to 4 digits
+            dobInput.addEventListener('input', function() {
+                // The value is in 'YYYY-MM-DD' format. We check the year part.
+                if (this.value.length > 0) {
+                    const year = this.value.split('-')[0];
+                    if (year.length > 4) {
+                        this.value = year.slice(0, 4) + this.value.substring(year.length);
+                    }
+                }
+            });
+        });
+
     </script>
 </body>
 </html>

@@ -2416,22 +2416,30 @@ body.dark-mode .status-badge.cancelled { background-color: #7F1D1D; color: #FECA
         display: flex;
     }
 
-    .modal-content,
-    .confirm-content {
-        background-color: var(--bg-light);
-        padding: 2rem;
-        border-radius: var(--border-radius);
-        box-shadow: var(--shadow-lg);
-        width: 90%;
-        max-width: 500px;
-        animation: slideIn 0.3s ease-out;
-        max-height: 90vh;
-        overflow-y: auto;
-    }
+.modal-content,
+.confirm-content {
+    background-color: var(--bg-light);
+    padding: 2rem;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-lg);
+    width: 90%;
+    max-width: 500px;
+    animation: slideIn 0.3s ease-out;
+    max-height: 90vh;
+    /* overflow-y: auto; */ /*<-- REMOVE THIS LINE */
+}
 
-    #user-detail-modal .modal-content {
-        max-width: 800px;
-    }
+#user-detail-modal #user-detail-content {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding-right: 1rem; /* Adds some space for the scrollbar */
+    margin-right: -1rem; /* Compensates for the padding */
+}
+
+ #user-detail-modal .modal-content {
+    max-width: 800px;
+    overflow-y: auto; /* <-- ADD THIS LINE */
+}
 
     .modal-header {
         display: flex;
@@ -3629,7 +3637,7 @@ body.dark-mode .status-badge.cancelled { background-color: #7F1D1D; color: #FECA
                 </div>
                 <div class="form-group">
                     <label for="date_of_birth">Date of Birth</label>
-                    <input type="date" id="date_of_birth" name="date_of_birth">
+                  <input type="date" id="date_of_birth" name="date_of_birth" max="<?php echo date('Y-m-d'); ?>">
                 </div>
                 <div class="form-group">
                     <label for="gender">Gender</label>
@@ -4266,6 +4274,17 @@ const fetchAppointments = async (doctorId = 'all') => {
                 e.preventDefault();
                 // Find and click the sidebar link for notifications
                 document.querySelector('.nav-link[data-target="notifications"]').click();
+            });
+            // Restrict year in Date of Birth to 4 digits
+            const dobInput = document.getElementById('date_of_birth');
+            dobInput.addEventListener('input', function() {
+                // The value is in 'YYYY-MM-DD' format. We check the year part.
+                if (this.value.length > 0) {
+                    const year = this.value.split('-')[0];
+                    if (year.length > 4) {
+                        this.value = year.slice(0, 4) + this.value.substring(year.length);
+                    }
+                }
             });
             const modalTitle = document.getElementById('modal-title');
             const passwordGroup = document.getElementById('password-group');
