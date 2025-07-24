@@ -202,44 +202,44 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     break;
 
-                 case 'updateSystemSettings':
-    $conn->begin_transaction();
-    try {
-        $changes_logged = [];
-        // Handle System Email
-        if (isset($_POST['system_email']) && !empty($_POST['system_email'])) {
-            $new_email = filter_var($_POST['system_email'], FILTER_VALIDATE_EMAIL);
-            if (!$new_email) {
-                throw new Exception('Invalid email format provided.');
-            }
-            $stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES ('system_email', ?) ON DUPLICATE KEY UPDATE setting_value = ?");
-            $stmt->bind_param("ss", $new_email, $new_email);
-            $stmt->execute();
-            $changes_logged[] = "System Email";
-        }
+                case 'updateSystemSettings':
+                    $conn->begin_transaction();
+                    try {
+                        $changes_logged = [];
+                        // Handle System Email
+                        if (isset($_POST['system_email']) && !empty($_POST['system_email'])) {
+                            $new_email = filter_var($_POST['system_email'], FILTER_VALIDATE_EMAIL);
+                            if (!$new_email) {
+                                throw new Exception('Invalid email format provided.');
+                            }
+                            $stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES ('system_email', ?) ON DUPLICATE KEY UPDATE setting_value = ?");
+                            $stmt->bind_param("ss", $new_email, $new_email);
+                            $stmt->execute();
+                            $changes_logged[] = "System Email";
+                        }
 
-        // Handle Gmail App Password
-        if (isset($_POST['gmail_app_password']) && !empty($_POST['gmail_app_password'])) {
-            $new_password = $_POST['gmail_app_password'];
-            $stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES ('gmail_app_password', ?) ON DUPLICATE KEY UPDATE setting_value = ?");
-            $stmt->bind_param("ss", $new_password, $new_password);
-            $stmt->execute();
-            $changes_logged[] = "Gmail App Password";
-        }
+                        // Handle Gmail App Password
+                        if (isset($_POST['gmail_app_password']) && !empty($_POST['gmail_app_password'])) {
+                            $new_password = $_POST['gmail_app_password'];
+                            $stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES ('gmail_app_password', ?) ON DUPLICATE KEY UPDATE setting_value = ?");
+                            $stmt->bind_param("ss", $new_password, $new_password);
+                            $stmt->execute();
+                            $changes_logged[] = "Gmail App Password";
+                        }
 
-        if (!empty($changes_logged)) {
-            log_activity($conn, $admin_user_id_for_log, 'update_system_settings', null, 'Updated system settings: ' . implode(', ', $changes_logged) . '.');
-            $response = ['success' => true, 'message' => 'System settings updated successfully.'];
-        } else {
-            $response = ['success' => true, 'message' => 'No changes were made.'];
-        }
-        $conn->commit();
-    } catch (Exception $e) {
-        $conn->rollback();
-        throw $e; // Rethrow the exception to be caught by the main handler
-    }
-    break;
-    
+                        if (!empty($changes_logged)) {
+                            log_activity($conn, $admin_user_id_for_log, 'update_system_settings', null, 'Updated system settings: ' . implode(', ', $changes_logged) . '.');
+                            $response = ['success' => true, 'message' => 'System settings updated successfully.'];
+                        } else {
+                            $response = ['success' => true, 'message' => 'No changes were made.'];
+                        }
+                        $conn->commit();
+                    } catch (Exception $e) {
+                        $conn->rollback();
+                        throw $e; // Rethrow the exception to be caught by the main handler
+                    }
+                    break;
+
                 case 'updateUser':
                     $conn->begin_transaction();
                     try {
@@ -665,58 +665,58 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     break;
 
-               case 'updateBed':
-    if (empty($_POST['id']) || empty($_POST['ward_id']) || empty($_POST['bed_number']) || empty($_POST['status'])) {
-        throw new Exception('Bed ID, ward, bed number, and status are required.');
-    }
-    $id = (int) $_POST['id'];
-    $ward_id = (int) $_POST['ward_id'];
-    $bed_number = $_POST['bed_number'];
-    $new_status = $_POST['status'];
-    $new_patient_id = !empty($_POST['patient_id']) ? (int) $_POST['patient_id'] : null;
+                case 'updateBed':
+                    if (empty($_POST['id']) || empty($_POST['ward_id']) || empty($_POST['bed_number']) || empty($_POST['status'])) {
+                        throw new Exception('Bed ID, ward, bed number, and status are required.');
+                    }
+                    $id = (int) $_POST['id'];
+                    $ward_id = (int) $_POST['ward_id'];
+                    $bed_number = $_POST['bed_number'];
+                    $new_status = $_POST['status'];
+                    $new_patient_id = !empty($_POST['patient_id']) ? (int) $_POST['patient_id'] : null;
+                    $new_doctor_id = !empty($_POST['doctor_id']) ? (int) $_POST['doctor_id'] : null;
 
-    $conn->begin_transaction();
-    try {
-        $stmt_current = $conn->prepare("SELECT status, patient_id FROM beds WHERE id = ? FOR UPDATE");
-        $stmt_current->bind_param("i", $id);
-        $stmt_current->execute();
-        $current_bed = $stmt_current->get_result()->fetch_assoc();
+                    $conn->begin_transaction();
+                    try {
+                        // ... (keep the existing admission/discharge logic here) ...
+                        $stmt_current = $conn->prepare("SELECT status, patient_id FROM beds WHERE id = ? FOR UPDATE");
+                        $stmt_current->bind_param("i", $id);
+                        $stmt_current->execute();
+                        $current_bed = $stmt_current->get_result()->fetch_assoc();
 
-        if ($current_bed) {
-            $old_status = $current_bed['status'];
-            $old_patient_id = $current_bed['patient_id'];
+                        if ($current_bed) {
+                            $old_status = $current_bed['status'];
+                            $old_patient_id = $current_bed['patient_id'];
 
-            // Patient is being discharged from a bed
-            if ($old_status === 'occupied' && $new_status !== 'occupied' && $old_patient_id) {
-                $stmt_discharge = $conn->prepare("UPDATE admissions SET discharge_date = NOW() WHERE patient_id = ? AND bed_id = ? AND discharge_date IS NULL");
-                $stmt_discharge->bind_param("ii", $old_patient_id, $id);
-                $stmt_discharge->execute();
-            }
+                            if ($old_status === 'occupied' && $new_status !== 'occupied' && $old_patient_id) {
+                                $stmt_discharge = $conn->prepare("UPDATE admissions SET discharge_date = NOW() WHERE patient_id = ? AND bed_id = ? AND discharge_date IS NULL");
+                                $stmt_discharge->bind_param("ii", $old_patient_id, $id);
+                                $stmt_discharge->execute();
+                            }
 
-            // Patient is being admitted to a bed
-            if ($new_status === 'occupied' && $old_status !== 'occupied' && $new_patient_id) {
-                $stmt_admit = $conn->prepare("INSERT INTO admissions (patient_id, ward_id, bed_id, admission_date) VALUES (?, ?, ?, NOW())");
-                $stmt_admit->bind_param("iii", $new_patient_id, $ward_id, $id);
-                $stmt_admit->execute();
-            }
-        }
+                            if ($new_status === 'occupied' && $old_status !== 'occupied' && $new_patient_id) {
+                                $stmt_admit = $conn->prepare("INSERT INTO admissions (patient_id, doctor_id, ward_id, bed_id, admission_date) VALUES (?, ?, ?, ?, NOW())");
+                                $stmt_admit->bind_param("iiii", $new_patient_id, $new_doctor_id, $ward_id, $id);
+                                $stmt_admit->execute();
+                            }
+                        }
 
-        // The original logic to update the bed itself
-        $occupied_since = ($new_status === 'occupied') ? date('Y-m-d H:i:s') : null;
-        $reserved_since = ($new_status === 'reserved') ? date('Y-m-d H:i:s') : null;
-        $patient_id_to_set = ($new_status === 'occupied' || $new_status === 'reserved') ? $new_patient_id : null;
+                        $occupied_since = ($new_status === 'occupied') ? date('Y-m-d H:i:s') : null;
+                        $reserved_since = ($new_status === 'reserved') ? date('Y-m-d H:i:s') : null;
+                        $patient_id_to_set = ($new_status === 'occupied' || $new_status === 'reserved') ? $new_patient_id : null;
+                        $doctor_id_to_set = ($new_status === 'occupied') ? $new_doctor_id : null; // Only set doctor if occupied
 
-        $stmt = $conn->prepare("UPDATE beds SET ward_id = ?, bed_number = ?, status = ?, patient_id = ?, occupied_since = ?, reserved_since = ? WHERE id = ?");
-        $stmt->bind_param("ississi", $ward_id, $bed_number, $new_status, $patient_id_to_set, $occupied_since, $reserved_since, $id);
-        $stmt->execute();
+                        $stmt = $conn->prepare("UPDATE beds SET ward_id = ?, bed_number = ?, status = ?, patient_id = ?, doctor_id = ?, occupied_since = ?, reserved_since = ? WHERE id = ?");
+                        $stmt->bind_param("ississsi", $ward_id, $bed_number, $new_status, $patient_id_to_set, $doctor_id_to_set, $occupied_since, $reserved_since, $id);
+                        $stmt->execute();
 
-        $conn->commit();
-        $response = ['success' => true, 'message' => 'Bed updated successfully.'];
-    } catch (Exception $e) {
-        $conn->rollback();
-        throw $e;
-    }
-    break;
+                        $conn->commit();
+                        $response = ['success' => true, 'message' => 'Bed updated successfully.'];
+                    } catch (Exception $e) {
+                        $conn->rollback();
+                        throw $e;
+                    }
+                    break;
 
                 case 'deleteBed':
                     if (empty($_POST['id'])) {
@@ -752,58 +752,58 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     break;
 
-               case 'updateRoom':
-    if (empty($_POST['id']) || empty($_POST['room_number']) || !isset($_POST['price_per_day']) || empty($_POST['status'])) {
-        throw new Exception('Room ID, number, price, and status are required.');
-    }
-    $id = (int) $_POST['id'];
-    $room_number = $_POST['room_number'];
-    $new_status = $_POST['status'];
-    $new_patient_id = !empty($_POST['patient_id']) ? (int) $_POST['patient_id'] : null;
-    $price_per_day = (float) $_POST['price_per_day'];
+                case 'updateRoom':
+                    if (empty($_POST['id']) || empty($_POST['room_number']) || !isset($_POST['price_per_day']) || empty($_POST['status'])) {
+                        throw new Exception('Room ID, number, price, and status are required.');
+                    }
+                    $id = (int) $_POST['id'];
+                    $room_number = $_POST['room_number'];
+                    $new_status = $_POST['status'];
+                    $new_patient_id = !empty($_POST['patient_id']) ? (int) $_POST['patient_id'] : null;
+                    $new_doctor_id = !empty($_POST['doctor_id']) ? (int) $_POST['doctor_id'] : null;
+                    $price_per_day = (float) $_POST['price_per_day'];
 
-    $conn->begin_transaction();
-    try {
-        $stmt_current = $conn->prepare("SELECT status, patient_id FROM rooms WHERE id = ? FOR UPDATE");
-        $stmt_current->bind_param("i", $id);
-        $stmt_current->execute();
-        $current_room = $stmt_current->get_result()->fetch_assoc();
+                    $conn->begin_transaction();
+                    try {
+                        // ... (keep the existing admission/discharge logic here) ...
+                        $stmt_current = $conn->prepare("SELECT status, patient_id FROM rooms WHERE id = ? FOR UPDATE");
+                        $stmt_current->bind_param("i", $id);
+                        $stmt_current->execute();
+                        $current_room = $stmt_current->get_result()->fetch_assoc();
 
-        if ($current_room) {
-            $old_status = $current_room['status'];
-            $old_patient_id = $current_room['patient_id'];
+                        if ($current_room) {
+                            $old_status = $current_room['status'];
+                            $old_patient_id = $current_room['patient_id'];
 
-            // Patient is being discharged from a room
-            if ($old_status === 'occupied' && $new_status !== 'occupied' && $old_patient_id) {
-                $stmt_discharge = $conn->prepare("UPDATE admissions SET discharge_date = NOW() WHERE patient_id = ? AND room_id = ? AND discharge_date IS NULL");
-                $stmt_discharge->bind_param("ii", $old_patient_id, $id);
-                $stmt_discharge->execute();
-            }
+                            if ($old_status === 'occupied' && $new_status !== 'occupied' && $old_patient_id) {
+                                $stmt_discharge = $conn->prepare("UPDATE admissions SET discharge_date = NOW() WHERE patient_id = ? AND room_id = ? AND discharge_date IS NULL");
+                                $stmt_discharge->bind_param("ii", $old_patient_id, $id);
+                                $stmt_discharge->execute();
+                            }
 
-            // Patient is being admitted to a room
-            if ($new_status === 'occupied' && $old_status !== 'occupied' && $new_patient_id) {
-                $stmt_admit = $conn->prepare("INSERT INTO admissions (patient_id, room_id, admission_date) VALUES (?, ?, NOW())");
-                $stmt_admit->bind_param("ii", $new_patient_id, $id);
-                $stmt_admit->execute();
-            }
-        }
+                            if ($new_status === 'occupied' && $old_status !== 'occupied' && $new_patient_id) {
+                                $stmt_admit = $conn->prepare("INSERT INTO admissions (patient_id, doctor_id, room_id, admission_date) VALUES (?, ?, ?, NOW())");
+                                $stmt_admit->bind_param("iii", $new_patient_id, $new_doctor_id, $id);
+                                $stmt_admit->execute();
+                            }
+                        }
 
-        // Original logic to update the room itself
-        $occupied_since = ($new_status === 'occupied') ? date('Y-m-d H:i:s') : null;
-        $reserved_since = ($new_status === 'reserved') ? date('Y-m-d H:i:s') : null;
-        $patient_id_to_set = ($new_status === 'occupied' || $new_status === 'reserved') ? $new_patient_id : null;
+                        $occupied_since = ($new_status === 'occupied') ? date('Y-m-d H:i:s') : null;
+                        $reserved_since = ($new_status === 'reserved') ? date('Y-m-d H:i:s') : null;
+                        $patient_id_to_set = ($new_status === 'occupied' || $new_status === 'reserved') ? $new_patient_id : null;
+                        $doctor_id_to_set = ($new_status === 'occupied') ? $new_doctor_id : null;
 
-        $stmt = $conn->prepare("UPDATE rooms SET room_number = ?, status = ?, patient_id = ?, occupied_since = ?, reserved_since = ?, price_per_day = ? WHERE id = ?");
-        $stmt->bind_param("ssissdi", $room_number, $new_status, $patient_id_to_set, $occupied_since, $reserved_since, $price_per_day, $id);
-        $stmt->execute();
+                        $stmt = $conn->prepare("UPDATE rooms SET room_number = ?, status = ?, patient_id = ?, doctor_id = ?, occupied_since = ?, reserved_since = ?, price_per_day = ? WHERE id = ?");
+                        $stmt->bind_param("ssisssdi", $room_number, $new_status, $patient_id_to_set, $doctor_id_to_set, $occupied_since, $reserved_since, $price_per_day, $id);
+                        $stmt->execute();
 
-        $conn->commit();
-        $response = ['success' => true, 'message' => 'Room updated successfully.'];
-    } catch (Exception $e) {
-        $conn->rollback();
-        throw $e;
-    }
-    break;
+                        $conn->commit();
+                        $response = ['success' => true, 'message' => 'Room updated successfully.'];
+                    } catch (Exception $e) {
+                        $conn->rollback();
+                        throw $e;
+                    }
+                    break;
 
                 case 'deleteRoom':
                     if (empty($_POST['id'])) {
@@ -953,6 +953,53 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
         } elseif (isset($_GET['fetch'])) {
             $fetch_target = $_GET['fetch'];
             switch ($fetch_target) {
+
+                // Add these cases inside the switch for $_GET['fetch']
+                case 'active_doctors':
+                    $sql = "SELECT u.id, u.name, d.specialty 
+                            FROM users u 
+                            JOIN doctors d ON u.id = d.user_id 
+                            WHERE u.active = 1 AND u.role = 'doctor' 
+                            ORDER BY u.name ASC";
+                    $result = $conn->query($sql);
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
+                case 'available_beds':
+                    $sql = "SELECT b.id, b.bed_number, w.name as ward_name 
+                            FROM beds b
+                            JOIN wards w ON b.ward_id = w.id
+                            WHERE b.status = 'available'
+                            ORDER BY w.name, b.bed_number ASC";
+                    $result = $conn->query($sql);
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
+                case 'unassigned_patients':
+                    // Fetches users who are not currently occupying a bed or a room
+                    $sql = "SELECT u.id, u.name, u.display_user_id 
+                            FROM users u
+                            LEFT JOIN beds b ON u.id = b.patient_id AND b.status = 'occupied'
+                            LEFT JOIN rooms r ON u.id = r.patient_id AND r.status = 'occupied'
+                            WHERE u.role = 'user' AND u.active = 1 AND b.id IS NULL AND r.id IS NULL
+                            ORDER BY u.name ASC";
+                    $result = $conn->query($sql);
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
+                case 'available_rooms':
+                    $sql = "SELECT id, room_number 
+                            FROM rooms
+                            WHERE status = 'available'
+                            ORDER BY room_number ASC";
+                    $result = $conn->query($sql);
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
 
                 case 'appointments':
                     $doctor_id_filter = $_GET['doctor_id'] ?? 'all';
@@ -1177,10 +1224,14 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
 
                 case 'beds':
-                    $sql = "SELECT b.id, b.ward_id, w.name as ward_name, b.bed_number, b.status, b.patient_id, u.name as patient_name, b.occupied_since, b.reserved_since, b.price_per_day 
+                    $sql = "SELECT b.id, b.ward_id, w.name as ward_name, b.bed_number, b.status, 
+                                   b.patient_id, p.name as patient_name, 
+                                   b.doctor_id, d.name as doctor_name,
+                                   b.occupied_since, b.reserved_since, b.price_per_day 
                             FROM beds b 
                             JOIN wards w ON b.ward_id = w.id 
-                            LEFT JOIN users u ON b.patient_id = u.id
+                            LEFT JOIN users p ON b.patient_id = p.id
+                            LEFT JOIN users d ON b.doctor_id = d.id
                             ORDER BY w.name, b.bed_number ASC";
                     $result = $conn->query($sql);
                     $data = $result->fetch_all(MYSQLI_ASSOC);
@@ -1188,9 +1239,13 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
 
                 case 'rooms':
-                    $sql = "SELECT r.id, r.room_number, r.status, r.patient_id, u.name as patient_name, r.occupied_since, r.reserved_since, r.price_per_day 
+                    $sql = "SELECT r.id, r.room_number, r.status, 
+                                   r.patient_id, p.name as patient_name, 
+                                   r.doctor_id, d.name as doctor_name,
+                                   r.occupied_since, r.reserved_since, r.price_per_day 
                             FROM rooms r
-                            LEFT JOIN users u ON r.patient_id = u.id
+                            LEFT JOIN users p ON r.patient_id = p.id
+                            LEFT JOIN users d ON r.doctor_id = d.id
                             ORDER BY r.room_number ASC";
                     $result = $conn->query($sql);
                     $data = $result->fetch_all(MYSQLI_ASSOC);
@@ -1249,15 +1304,15 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $chart_sql = "SELECT DATE_FORMAT(appointment_date, '$date_format_chart') as label, COUNT(*) as value FROM appointments WHERE appointment_date >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
                         $table_sql = "SELECT a.id, p.name as patient_name, d.name as doctor_name, a.status, DATE_FORMAT(a.appointment_date, '%Y-%m-%d %H:%i') as date FROM appointments a JOIN users p ON a.user_id = p.id JOIN users d ON a.doctor_id = d.id WHERE a.appointment_date >= DATE_SUB(NOW(), INTERVAL $interval) ORDER BY a.appointment_date DESC";
                     } else { // resource
-    $summary_sql = "SELECT 
+                        $summary_sql = "SELECT 
         (SELECT COUNT(*) FROM beds) as total_beds,
         (SELECT COUNT(*) FROM rooms) as total_rooms,
         (SELECT COUNT(*) FROM beds WHERE status = 'occupied') as occupied_beds,
         (SELECT COUNT(*) FROM rooms WHERE status = 'occupied') as occupied_rooms";
-    
-    $chart_sql = "SELECT DATE_FORMAT(admission_date, '$date_format_chart') as label, COUNT(*) as value FROM admissions WHERE admission_date >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
-    
-    $table_sql = "SELECT 
+
+                        $chart_sql = "SELECT DATE_FORMAT(admission_date, '$date_format_chart') as label, COUNT(*) as value FROM admissions WHERE admission_date >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
+
+                        $table_sql = "SELECT 
                     a.id, 
                     p.name as patient_name, 
                     CASE 
@@ -1274,7 +1329,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                 LEFT JOIN rooms r ON a.room_id = r.id
                 WHERE a.admission_date >= DATE_SUB(NOW(), INTERVAL $interval)
                 ORDER BY a.admission_date DESC";
-}
+                    }
 
                     $summary_result = $conn->query($summary_sql);
                     $data['summary'] = $summary_result->fetch_assoc();
@@ -1408,9 +1463,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pdf') {
     } elseif ($reportType === 'patient') {
         $table_headers = ['ID', 'Patient', 'Doctor', 'Status', 'Date'];
         $table_sql = "SELECT a.id, p.name as patient_name, d.name as doctor_name, a.status, DATE_FORMAT(a.appointment_date, '%Y-%m-%d %H:%i') as date FROM appointments a JOIN users p ON a.user_id = p.id JOIN users d ON a.doctor_id = d.id WHERE a.appointment_date >= DATE_SUB(NOW(), INTERVAL $interval) ORDER BY a.appointment_date DESC";
-   } elseif ($reportType === 'resource') {
-    $table_headers = ['Admission ID', 'Patient Name', 'Location', 'Admission Date', 'Discharge Date'];
-    $table_sql = "SELECT 
+    } elseif ($reportType === 'resource') {
+        $table_headers = ['Admission ID', 'Patient Name', 'Location', 'Admission Date', 'Discharge Date'];
+        $table_sql = "SELECT 
                     a.id, 
                     p.name as patient_name, 
                     CASE 
@@ -1427,13 +1482,13 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pdf') {
                 LEFT JOIN rooms r ON a.room_id = r.id
                 WHERE a.admission_date >= DATE_SUB(NOW(), INTERVAL $interval)
                 ORDER BY a.admission_date DESC";
-}
+    }
 
     $result = $conn->query($table_sql);
     $tableData = $result->fetch_all(MYSQLI_ASSOC);
     $conn->close();
 
-  // --- HTML Template for PDF ---
+    // --- HTML Template for PDF ---
     $medsync_logo_path = 'images/logo.png';
     $hospital_logo_path = 'images/hospital.png'; // Make sure you have this image
     $medsync_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($medsync_logo_path));
@@ -1568,1475 +1623,1505 @@ $pending_appointments = 0;
     <link rel="icon" type="image/png" sizes="16x16" href="images/favicon/favicon-16x16.png">
     <link rel="manifest" href="images/favicon/site.webmanifest">
 
-   <style>
-    /* --- Schedules Panel --- */
-    /* (Keep all existing .schedule-* CSS rules) */
-
-    .time-slot {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        /* Add gap for spacing */
-        background-color: var(--bg-grey);
-        padding: 0.5rem 0.75rem;
-        border-radius: 8px;
-        border: 1px solid var(--border-light);
-    }
-
-    .time-slot label {
-        font-size: 0.8rem;
-        color: var(--text-muted);
-        font-weight: 500;
-    }
-
-    .time-slot input[type="time"] {
-        border: none;
-        background: transparent;
-        outline: none;
-        flex-grow: 1;
-        /* This is the key change */
-        width: 100%;
-        /* Fallback for some browsers */
-        color: var(--text-dark);
-        font-family: 'Poppins', sans-serif;
-    }
-
-    /* Style for the time input's picker indicator to match the theme */
-    input[type="time"]::-webkit-calendar-picker-indicator {
-        filter: invert(0.5);
-        /* A simple trick to make it visible in both light/dark modes */
-    }
-
-    body.dark-mode input[type="time"]::-webkit-calendar-picker-indicator {
-        filter: invert(1);
-    }
-
-    .time-slot .remove-slot-btn {
-        background: none;
-        border: none;
-        color: var(--danger-color);
-        cursor: pointer;
-        font-size: 1.1rem;
-    }
-
-    /* (Keep the rest of the existing schedule CSS rules) */
-
-    /* --- Schedules Panel --- */
-    .schedule-tabs {
-        display: flex;
-        border-bottom: 1px solid var(--border-light);
-        margin-bottom: 2rem;
-    }
-
-    .schedule-tab-button {
-        padding: 0.75rem 1.5rem;
-        cursor: pointer;
-        background: none;
-        border: none;
-        font-weight: 600;
-        color: var(--text-muted);
-        border-bottom: 3px solid transparent;
-        margin-bottom: -1px;
-        /* Overlap border */
-        transition: all 0.3s ease;
-    }
-
-    .schedule-tab-button.active,
-    .schedule-tab-button:hover {
-        color: var(--primary-color);
-        border-bottom-color: var(--primary-color);
-    }
-
-    .schedule-tab-content {
-        display: none;
-    }
-
-    .schedule-tab-content.active {
-        display: block;
-    }
-
-    .schedule-controls {
-        display: flex;
-        gap: 1.5rem;
-        align-items: flex-end;
-        margin-bottom: 2rem;
-        padding: 1.5rem;
-        background-color: var(--bg-grey);
-        border-radius: var(--border-radius);
-    }
-
-    .schedule-editor-container .placeholder-text {
-        text-align: center;
-        color: var(--text-muted);
-        padding: 3rem;
-        background-color: var(--bg-grey);
-        border-radius: var(--border-radius);
-    }
-
-    .day-schedule-card {
-        background-color: var(--bg-light);
-        border: 1px solid var(--border-light);
-        border-radius: var(--border-radius);
-        padding: 1.5rem;
-        margin-bottom: 1rem;
-    }
-
-    .day-schedule-card h4 {
-        margin-bottom: 1.5rem;
-        font-weight: 600;
-    }
-
-    .time-slots-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        /* Increased min-width */
-        gap: 1rem;
-    }
-
-    .time-slot {
-        display: flex;
-        align-items: center;
-        background-color: var(--bg-grey);
-        padding: 0.5rem 0.75rem;
-        border-radius: 8px;
-    }
-
-    .time-slot input {
-        border: none;
-        background: transparent;
-        outline: none;
-        width: 100%;
-    }
-
-    .time-slot .remove-slot-btn {
-        background: none;
-        border: none;
-        color: var(--danger-color);
-        cursor: pointer;
-        font-size: 1.1rem;
-        margin-left: 0.5rem;
-    }
-
-    .add-slot-btn {
-        margin-top: 1rem;
-        background: none;
-        border: 1px dashed var(--primary-color);
-        color: var(--primary-color);
-        font-weight: 600;
-        padding: 0.5rem 1rem;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-
-    .add-slot-btn:hover {
-        background-color: var(--primary-color);
-        color: white;
-    }
-
-    .schedule-actions {
-        margin-top: 2rem;
-        text-align: right;
-    }
-
-    .shift-select {
-        padding: 0.5rem;
-        border-radius: 8px;
-        border: 1px solid var(--border-light);
-        background-color: var(--bg-grey);
-        color: var(--text-dark);
-        font-family: 'Poppins', sans-serif;
-        font-weight: 500;
-    }
-
-    /* --- Enhanced Search Bar --- */
-    .search-container {
-        position: relative;
-        background-color: var(--bg-grey);
-        border-radius: var(--border-radius);
-        display: flex;
-        align-items: center;
-        transition: all 0.3s ease;
-    }
-
-    .search-container:focus-within {
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-        background-color: var(--bg-light);
-    }
-
-    .search-icon {
-        position: absolute;
-        left: 1rem;
-        color: var(--text-muted);
-        font-size: 1rem;
-        transition: color 0.3s ease;
-    }
-
-    .search-container:focus-within .search-icon {
-        color: var(--primary-color);
-    }
-
-    #user-search-input {
-        width: 100%;
-        border: 1px solid var(--border-light);
-        background-color: transparent;
-        border-radius: var(--border-radius);
-        padding: 1.5rem 1rem 0.5rem 3rem;
-        /* Top padding for label */
-        font-size: 1rem;
-        color: var(--text-dark);
-        outline: none;
-    }
-
-    #user-search-input::placeholder {
-        color: transparent;
-        /* Hide placeholder initially */
-    }
-
-    #user-search-label {
-        position: absolute;
-        left: 3rem;
-        top: 50%;
-        transform: translateY(-50%);
-        pointer-events: none;
-        color: var(--text-muted);
-        transition: all 0.3s ease;
-        font-size: 1rem;
-    }
-
-    /* Floating label effect */
-    #user-search-input:focus+#user-search-label,
-    #user-search-input:not(:placeholder-shown)+#user-search-label {
-        top: 0.5rem;
-        transform: translateY(0);
-        font-size: 0.75rem;
-        color: var(--primary-color);
-    }
-
-    /* --- THEMES AND MODERN ADMIN COLOR PALETTE --- */
-    :root {
-        --primary-color: #3B82F6;
-        /* A modern, vibrant blue */
-        --primary-color-dark: #2563EB;
-        --danger-color: #EF4444;
-        --success-color: #22C55E;
-        --warning-color: #F97316;
-
-        --text-dark: #1F2937;
-        /* Dark Gray */
-        --text-light: #F9FAFB;
-        /* Almost White */
-        --text-muted: #6B7280;
-        /* Medium Gray */
-
-        --bg-light: #FFFFFF;
-        /* White */
-        --bg-grey: #F3F4F6;
-        /* Lightest Gray */
-        --border-light: #E5E7EB;
-
-        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-        --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-        --border-radius: 12px;
-        --transition-speed: 0.3s;
-    }
-
-    body.dark-mode {
-        --primary-color: #60A5FA;
-        --primary-color-dark: #3B82F6;
-        --text-dark: #F9FAFB;
-        --text-light: #1F2937;
-        --text-muted: #9CA3AF;
-        --bg-light: #1F2937;
-        /* Card Background */
-        --bg-grey: #111827;
-        /* Main Background */
-        --border-light: #374151;
-    }
-
-    /* --- BASE STYLES --- */
-    * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-    }
-
-    body {
-        font-family: 'Poppins', sans-serif;
-        background-color: var(--bg-grey);
-        color: var(--text-dark);
-        transition: background-color var(--transition-speed), color var(--transition-speed);
-        font-size: 16px;
-    }
-
-    .dashboard-layout {
-        display: flex;
-        min-height: 100vh;
-    }
-
-    /* --- SIDEBAR --- */
-    .sidebar {
-        width: 280px;
-        background-color: var(--bg-light);
-        box-shadow: var(--shadow-lg);
-        display: flex;
-        flex-direction: column;
-        padding: 1.5rem;
-        transition: all var(--transition-speed) ease-in-out;
-        z-index: 1000;
-        position: fixed;
-        height: 100vh;
-        top: 0;
-        left: 0;
-        border-right: 1px solid var(--border-light);
-    }
-
-    .sidebar-header {
-        display: flex;
-        align-items: center;
-        margin-bottom: 2.5rem;
-        padding-left: 0.5rem;
-    }
-
-    .sidebar-header .logo-img {
-        height: 40px;
-        margin-right: 10px;
-    }
-
-    .sidebar-header .logo-text {
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: var(--text-dark);
-    }
-
-    .sidebar-nav {
-        flex-grow: 1;
-        overflow-y: auto;
-    }
-
-    .sidebar-nav ul {
-        list-style: none;
-    }
-
-    .sidebar-nav a,
-    .nav-dropdown-toggle {
-        display: flex;
-        align-items: center;
-        padding: 0.9rem 1rem;
-        color: var(--text-muted);
-        text-decoration: none;
-        border-radius: 8px;
-
-        transition: background-color var(--transition-speed), color var(--transition-speed);
-        font-weight: 500;
-        cursor: pointer;
-    }
-
-    /* ADD THESE NEW RULES FOR CORRECT SPACING */
-    .sidebar-nav>ul>li {
-        margin-bottom: 0.5rem;
-    }
-
-    .nav-dropdown li {
-        margin-bottom: 0.25rem;
-    }
-
-    .nav-dropdown li:last-child {
-        margin-bottom: 0;
-    }
-
-    .sidebar-nav a i,
-    .nav-dropdown-toggle i {
-        width: 20px;
-        margin-right: 1rem;
-        font-size: 1.1rem;
-        text-align: center;
-    }
-
-    .sidebar-nav a:hover,
-    .nav-dropdown-toggle:hover {
-        background-color: var(--bg-grey);
-        color: var(--primary-color);
-    }
-
-    .sidebar-nav a.active,
-    .nav-dropdown-toggle.active {
-        background-color: var(--primary-color);
-        color: white;
-    }
-
-    body.dark-mode .sidebar-nav a.active,
-    body.dark-mode .nav-dropdown-toggle.active {
-        background-color: var(--primary-color-dark);
-    }
-
-    .nav-dropdown-toggle .arrow {
-        margin-left: auto;
-        transition: transform var(--transition-speed);
-    }
-
-    .nav-dropdown-toggle.active .arrow {
-        transform: rotate(90deg);
-    }
-
-    .nav-dropdown {
-        list-style: none;
-        max-height: 0;
-        overflow: hidden;
-        transition: max-height 0.4s ease-in-out;
-        padding-left: 1.5rem;
-    }
-
-    .nav-dropdown a {
-        font-size: 0.95rem;
-        padding: 0.7rem 1rem 0.7rem 0.5rem;
-        background-color: rgba(100, 100, 100, 0.05);
-        padding-bottom: -3.5rem;
-    }
-
-    body.dark-mode .nav-dropdown a {
-        background-color: rgba(255, 255, 255, 0.05);
-    }
-
-    /* ADD THIS RULE TO FIX THE SIDEBAR SPACING */
-    .nav-dropdown li:last-child a {
-        margin-bottom: 0;
-    }
-
-
-    .logout-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        padding: 0.9rem 1rem;
-        background-color: transparent;
-        color: var(--danger-color);
-        border: 1px solid var(--danger-color);
-        border-radius: 8px;
-        font-size: 1rem;
-        font-family: 'Poppins', sans-serif;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all var(--transition-speed);
-        margin-top: 1rem;
-    }
-
-    .logout-btn:hover {
-        background-color: var(--danger-color);
-        color: white;
-    }
-
-    /* --- MAIN CONTENT --- */
-    .main-content {
-        flex-grow: 1;
-        padding: 2rem;
-        overflow-y: auto;
-        margin-left: 280px;
-        transition: margin-left var(--transition-speed);
-    }
-
-    .main-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 2rem;
-    }
-
-    .main-header .title-group {
-        flex-grow: 1;
-    }
-
-    .main-header h1 {
-        font-size: 1.8rem;
-        font-weight: 600;
-        margin: 0;
-    }
-
-    .main-header h2 {
-        font-size: 1.2rem;
-        font-weight: 400;
-        color: var(--text-muted);
-        margin: 0.25rem 0 0 0;
-    }
-
-    .header-actions {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
-
-    .user-profile-widget {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        background-color: var(--bg-light);
-        padding: 0.5rem 1rem;
-        border-radius: var(--border-radius);
-        box-shadow: var(--shadow-md);
-    }
-
-    .user-profile-widget i {
-        font-size: 1.5rem;
-        color: var(--primary-color);
-    }
-
-    .content-panel {
-        display: none;
-        background-color: var(--bg-light);
-        padding: 2rem;
-        border-radius: var(--border-radius);
-        box-shadow: var(--shadow-md);
-    }
-
-    .content-panel.active {
-        display: block;
-    }
-
-    /* --- DASHBOARD HOME --- */
-    .stat-cards-container {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-        gap: 1.5rem;
-        margin-top: 2rem;
-    }
-
-    .stat-card {
-        background: var(--bg-light);
-        padding: 1.5rem;
-        border-radius: var(--border-radius);
-        box-shadow: var(--shadow-md);
-        display: flex;
-        align-items: center;
-        gap: 1.5rem;
-        border-left: 5px solid var(--primary-color);
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-
-    .stat-card:hover {
-        transform: translateY(-5px);
-        box-shadow: var(--shadow-lg);
-    }
-
-    .stat-card .icon {
-        font-size: 2rem;
-        padding: 1rem;
-        border-radius: 50%;
-        color: var(--primary-color);
-        background-color: var(--bg-grey);
-    }
-
-    .stat-card.blue {
-        border-left-color: #3B82F6;
-    }
-
-    .stat-card.blue .icon {
-        color: #3B82F6;
-    }
-
-    .stat-card.green {
-        border-left-color: var(--success-color);
-    }
-
-    .stat-card.green .icon {
-        color: var(--success-color);
-    }
-
-    .stat-card.orange {
-        border-left-color: var(--warning-color);
-    }
-
-    .stat-card.orange .icon {
-        color: var(--warning-color);
-    }
-
-    .stat-card.red {
-        border-left-color: var(--danger-color);
-    }
-
-    .stat-card.red .icon {
-        color: var(--danger-color);
-    }
-
-    /* Added for low stock */
-    .stat-card .info .value {
-        font-size: 1.75rem;
-        font-weight: 600;
-    }
-
-    .stat-card .info .label {
-        color: var(--text-muted);
-        font-size: 0.9rem;
-    }
-
-    .dashboard-grid {
-        display: grid;
-        grid-template-columns: 2fr 1fr;
-        gap: 2rem;
-        margin-top: 2rem;
-    }
-
-    .grid-card {
-        background-color: var(--bg-light);
-        padding: 1.5rem;
-        border-radius: var(--border-radius);
-        box-shadow: var(--shadow-md);
-    }
-
-    .grid-card h3 {
-        margin-bottom: 1.5rem;
-        font-weight: 600;
-    }
-
-    /* --- QUICK ACTIONS --- */
-    .quick-actions .actions-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-        gap: 1rem;
-    }
-
-    .quick-actions .action-btn {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 1.2rem 1rem;
-        border-radius: var(--border-radius);
-        background-color: var(--bg-grey);
-        color: var(--text-dark);
-        text-decoration: none;
-        font-weight: 500;
-        text-align: center;
-        transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s, color 0.2s;
-    }
-
-    .quick-actions .action-btn:hover {
-        transform: translateY(-5px);
-        box-shadow: var(--shadow-lg);
-        background-color: var(--primary-color);
-        color: white;
-    }
-
-    .quick-actions .action-btn i {
-        font-size: 1.8rem;
-        margin-bottom: 0.75rem;
-    }
-
-    /* --- USER MANAGEMENT & GENERIC TABLE STYLES --- */
-    .table-container {
-        overflow-x: auto;
-    }
-
-    .data-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-
-    .data-table th,
-    .data-table td {
-        padding: 1rem;
-        text-align: left;
-        border-bottom: 1px solid var(--border-light);
-        white-space: nowrap;
-    }
-
-    .data-table th {
-        font-weight: 600;
-        font-size: 0.8rem;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: var(--text-muted);
-    }
-
-    .data-table tbody tr {
-        transition: background-color var(--transition-speed);
-    }
-
-    .data-table tbody tr:hover {
-        background-color: var(--bg-grey);
-    }
-
-    .data-table tbody tr.clickable-row {
-        cursor: pointer;
-    }
-
-    .user-list-pfp {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        object-fit: cover;
-        margin-right: 10px;
-    }
-
-    .status-badge {
-        padding: 0.25rem 0.6rem;
-        border-radius: 20px;
-        font-size: 0.8rem;
-        font-weight: 600;
-    }
-
-    .status-badge.active,
-    .status-badge.in-stock {
-        background-color: #D1FAE5;
-        color: #065F46;
-    }
-
-    .status-badge.inactive,
-    .status-badge.low-stock {
-        background-color: #FEE2E2;
-        color: #991B1B;
-    }
-
-    .status-badge.scheduled { background-color: #FEF3C7; color: #92400E; }
-.status-badge.completed { background-color: #D1FAE5; color: #065F46; }
-.status-badge.cancelled { background-color: #FEE2E2; color: #991B1B; }
-
-body.dark-mode .status-badge.scheduled { background-color: #78350F; color: #FDE68A; }
-body.dark-mode .status-badge.completed { background-color: #064E3B; color: #A7F3D0; }
-body.dark-mode .status-badge.cancelled { background-color: #7F1D1D; color: #FECACA; }
-
-    body.dark-mode .status-badge.active,
-    body.dark-mode .status-badge.in-stock {
-        background-color: #064E3B;
-        color: #A7F3D0;
-    }
-
-    body.dark-mode .status-badge.inactive,
-    body.dark-mode .status-badge.low-stock {
-        background-color: #7F1D1D;
-        color: #FECACA;
-    }
-
-    .action-buttons button {
-        background: none;
-        border: none;
-        cursor: pointer;
-        font-size: 1.1rem;
-        margin: 0 5px;
-        transition: color var(--transition-speed);
-    }
-
-    .action-buttons .btn-edit {
-        color: var(--primary-color);
-    }
-
-    .action-buttons .btn-delete {
-        color: var(--danger-color);
-    }
-
-    .quantity-good {
-        color: var(--success-color);
-        font-weight: 600;
-    }
-
-    .quantity-low {
-        color: var(--danger-color);
-        font-weight: 600;
-    }
-
-    /* --- BUTTONS & FORMS --- */
-    .btn {
-        padding: 0.7rem 1.4rem;
-        border-radius: 8px;
-        text-decoration: none;
-        font-weight: 600;
-        transition: all var(--transition-speed);
-        border: 1px solid transparent;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .btn-primary {
-        background-color: var(--primary-color);
-        color: white;
-    }
-
-    .btn-primary:hover {
-        background-color: var(--primary-color-dark);
-    }
-
-    .form-group {
-        margin-bottom: 1rem;
-    }
-
-    .form-group label {
-        display: block;
-        margin-bottom: 0.5rem;
-        font-weight: 500;
-    }
-
-    .form-group input,
-    .form-group select,
-    .form-group textarea {
-        width: 100%;
-        padding: 0.75rem;
-        border: 1px solid var(--border-light);
-        border-radius: 8px;
-        background-color: var(--bg-grey);
-        color: var(--text-dark);
-        transition: all var(--transition-speed);
-    }
-
-    .form-group input:focus,
-    .form-group select:focus,
-    .form-group textarea:focus {
-        outline: none;
-        border-color: var(--primary-color);
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-    }
-
-    .role-specific-fields {
-        border-top: 1px solid var(--border-light);
-        margin-top: 1.5rem;
-        padding-top: 1.5rem;
-    }
-
-    /* --- MODAL, NOTIFICATION, CONFIRMATION STYLES --- */
-    .modal,
-    .notification-container,
-    .confirm-dialog {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        z-index: 1050;
-        display: none;
-        align-items: center;
-        justify-content: center;
-        backdrop-filter: blur(4px);
-        background-color: rgba(0, 0, 0, 0.5);
-    }
-
-    .modal.show,
-    .notification-container.show,
-    .confirm-dialog.show {
-        display: flex;
-    }
-
-.modal-content,
-.confirm-content {
-    background-color: var(--bg-light);
-    padding: 2rem;
-    border-radius: var(--border-radius);
-    box-shadow: var(--shadow-lg);
-    width: 90%;
-    max-width: 500px;
-    animation: slideIn 0.3s ease-out;
-    max-height: 90vh;
-    /* overflow-y: auto; */ /*<-- REMOVE THIS LINE */
-}
-
-#user-detail-modal #user-detail-content {
-    max-height: 70vh;
-    overflow-y: auto;
-    padding-right: 1rem; /* Adds some space for the scrollbar */
-    margin-right: -1rem; /* Compensates for the padding */
-}
-
- #user-detail-modal .modal-content {
-    max-width: 800px;
-    overflow-y: auto; /* <-- ADD THIS LINE */
-}
-
-    .modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-bottom: 1px solid var(--border-light);
-        padding-bottom: 1rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .modal-header h3 {
-        margin: 0;
-    }
-
-    .modal-close-btn {
-        background: none;
-        border: none;
-        font-size: 1.5rem;
-        cursor: pointer;
-        color: var(--text-muted);
-    }
-
-    @keyframes slideIn {
-        from {
-            transform: translateY(-30px) scale(0.95);
-            opacity: 0;
+    <style>
+        /* --- Schedules Panel --- */
+        /* (Keep all existing .schedule-* CSS rules) */
+
+        .time-slot {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            /* Add gap for spacing */
+            background-color: var(--bg-grey);
+            padding: 0.5rem 0.75rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-light);
         }
 
-        to {
-            transform: translateY(0) scale(1);
-            opacity: 1;
-        }
-    }
-
-    .notification {
-        padding: 1rem 1.5rem;
-        border-radius: 8px;
-        color: white;
-        box-shadow: var(--shadow-lg);
-        animation: slideIn 0.3s, fadeOut 0.5s 4.5s forwards;
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 1100;
-    }
-
-    .notification.success {
-        background-color: var(--success-color);
-    }
-
-    .notification.error {
-        background-color: var(--danger-color);
-    }
-
-    .notification.warning {
-        background-color: var(--warning-color);
-    }
-
-    @keyframes fadeOut {
-        to {
-            opacity: 0;
-            transform: translateY(-20px);
-        }
-    }
-
-    .confirm-content {
-        text-align: center;
-    }
-
-    .confirm-content h4 {
-        margin-bottom: 1rem;
-    }
-
-    .confirm-content p {
-        margin-bottom: 1.5rem;
-        color: var(--text-muted);
-    }
-
-    .confirm-buttons {
-        display: flex;
-        justify-content: center;
-        gap: 1rem;
-    }
-
-    .btn-secondary {
-        background-color: var(--bg-grey);
-        color: var(--text-dark);
-        border-color: var(--border-light);
-    }
-
-    body.dark-mode .btn-secondary {
-        background-color: #374151;
-        color: var(--text-light);
-        border-color: #4B5563;
-    }
-
-    .btn-secondary:hover {
-        background-color: #E5E7EB;
-    }
-
-    body.dark-mode .btn-secondary:hover {
-        background-color: #4B5563;
-    }
-
-    .btn-danger {
-        background-color: var(--danger-color);
-        color: white;
-    }
-
-    /* --- DARK/LIGHT THEME TOGGLE --- */
-    .theme-switch-wrapper {
-        display: flex;
-        align-items: center;
-    }
-
-    .theme-switch {
-        display: inline-block;
-        height: 24px;
-        position: relative;
-        width: 48px;
-    }
-
-    .theme-switch input {
-        display: none;
-    }
-
-    .slider {
-        background-color: #ccc;
-        bottom: 0;
-        cursor: pointer;
-        left: 0;
-        position: absolute;
-        right: 0;
-        top: 0;
-        transition: .4s;
-        border-radius: 24px;
-    }
-
-    .slider:before {
-        background-color: #fff;
-        content: "";
-        height: 18px;
-        left: 3px;
-        position: absolute;
-        bottom: 3px;
-        transition: .4s;
-        width: 18px;
-        border-radius: 50%;
-    }
-
-    input:checked+.slider {
-        background-color: var(--primary-color-dark);
-    }
-
-    input:checked+.slider:before {
-        transform: translateX(24px);
-    }
-
-    .theme-switch-wrapper .fa-sun,
-    .theme-switch-wrapper .fa-moon {
-        margin: 0 8px;
-        color: var(--text-muted);
-    }
-
-    /* --- INVENTORY: BEDS & ROOMS --- */
-    .resource-grid-container,
-    .ward-beds-container {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-        gap: 1.5rem;
-    }
-
-    .ward-section {
-        margin-bottom: 2rem;
-    }
-
-    .ward-header {
-        padding-bottom: 1rem;
-        margin-bottom: 1.5rem;
-        border-bottom: 1px solid var(--border-light);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .ward-header h3 {
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: var(--text-dark);
-    }
-
-    .bed-card,
-    .room-card {
-        background-color: var(--bg-light);
-        padding: 1.25rem;
-        border-radius: var(--border-radius);
-        box-shadow: var(--shadow-md);
-        text-align: center;
-        border-left: 5px solid;
-        transition: transform 0.2s, box-shadow 0.2s;
-        cursor: pointer;
-    }
-
-    .bed-card:hover,
-    .room-card:hover {
-        transform: translateY(-5px);
-        box-shadow: var(--shadow-lg);
-    }
-
-    .bed-card.available,
-    .room-card.available {
-        border-color: var(--success-color);
-    }
-
-    .bed-card.occupied,
-    .room-card.occupied {
-        border-color: var(--danger-color);
-    }
-
-    .bed-card.reserved,
-    .room-card.reserved {
-        border-color: var(--primary-color);
-    }
-
-    .bed-card.cleaning,
-    .room-card.cleaning {
-        border-color: var(--warning-color);
-    }
-
-    .bed-card .bed-icon,
-    .room-card .room-icon {
-        font-size: 2rem;
-        margin-bottom: 0.75rem;
-    }
-
-    .bed-card.available .bed-icon,
-    .room-card.available .room-icon {
-        color: var(--success-color);
-    }
-
-    .bed-card.occupied .bed-icon,
-    .room-card.occupied .room-icon {
-        color: var(--danger-color);
-    }
-
-    .bed-card.reserved .bed-icon,
-    .room-card.reserved .room-icon {
-        color: var(--primary-color);
-    }
-
-    .bed-card.cleaning .bed-icon,
-    .room-card.cleaning .room-icon {
-        color: var(--warning-color);
-    }
-
-    .bed-card .bed-number,
-    .room-card .room-number {
-        font-size: 1.2rem;
-        font-weight: 600;
-        margin-bottom: 0.25rem;
-    }
-
-    .bed-card .bed-status,
-    .room-card .room-status {
-        font-size: 0.85rem;
-        font-weight: 500;
-        text-transform: capitalize;
-        margin-bottom: 0.5rem;
-        color: var(--text-muted);
-    }
-
-    .bed-card .patient-info,
-    .room-card .patient-info {
-        font-size: 0.8rem;
-        color: var(--text-muted);
-        margin-top: 0.25rem;
-    }
-
-    .bed-card .action-buttons,
-    .room-card .action-buttons {
-        margin-top: 1rem;
-        display: flex;
-        justify-content: center;
-        gap: 0.5rem;
-    }
-
-    .bed-card .action-buttons button,
-    .room-card .action-buttons button {
-        padding: 0.25rem 0.5rem;
-        font-size: 0.8rem;
-    }
-
-    /* --- MOBILE & RESPONSIVE --- */
-    .hamburger-btn {
-        display: none;
-        background: none;
-        border: none;
-        font-size: 1.5rem;
-        color: var(--text-dark);
-        cursor: pointer;
-        z-index: 1001;
-    }
-
-    .overlay {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        background-color: rgba(0, 0, 0, 0.5);
-        z-index: 998;
-    }
-
-    @media (max-width: 1200px) {
-        .dashboard-grid {
-            grid-template-columns: 1fr; /* Stack on medium screens */
-        }
-    }
-
-    @media (max-width: 992px) {
-        .sidebar {
-            left: -280px;
+        .time-slot label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 500;
         }
 
-        .sidebar.active {
-            left: 0;
-            box-shadow: var(--shadow-lg);
+        .time-slot input[type="time"] {
+            border: none;
+            background: transparent;
+            outline: none;
+            flex-grow: 1;
+            /* This is the key change */
+            width: 100%;
+            /* Fallback for some browsers */
+            color: var(--text-dark);
+            font-family: 'Poppins', sans-serif;
         }
 
-        .main-content {
-            margin-left: 0;
+        /* Style for the time input's picker indicator to match the theme */
+        input[type="time"]::-webkit-calendar-picker-indicator {
+            filter: invert(0.5);
+            /* A simple trick to make it visible in both light/dark modes */
         }
 
-        .hamburger-btn {
+        body.dark-mode input[type="time"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+        }
+
+        .time-slot .remove-slot-btn {
+            background: none;
+            border: none;
+            color: var(--danger-color);
+            cursor: pointer;
+            font-size: 1.1rem;
+        }
+
+        /* (Keep the rest of the existing schedule CSS rules) */
+
+        /* --- Schedules Panel --- */
+        .schedule-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-light);
+            margin-bottom: 2rem;
+        }
+
+        .schedule-tab-button {
+            padding: 0.75rem 1.5rem;
+            cursor: pointer;
+            background: none;
+            border: none;
+            font-weight: 600;
+            color: var(--text-muted);
+            border-bottom: 3px solid transparent;
+            margin-bottom: -1px;
+            /* Overlap border */
+            transition: all 0.3s ease;
+        }
+
+        .schedule-tab-button.active,
+        .schedule-tab-button:hover {
+            color: var(--primary-color);
+            border-bottom-color: var(--primary-color);
+        }
+
+        .schedule-tab-content {
+            display: none;
+        }
+
+        .schedule-tab-content.active {
             display: block;
         }
 
-        .main-header {
-            flex-wrap: wrap; /* Allow header items to wrap */
+        .schedule-controls {
+            display: flex;
+            gap: 1.5rem;
+            align-items: flex-end;
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background-color: var(--bg-grey);
+            border-radius: var(--border-radius);
+        }
+
+        .schedule-editor-container .placeholder-text {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 3rem;
+            background-color: var(--bg-grey);
+            border-radius: var(--border-radius);
+        }
+
+        .day-schedule-card {
+            background-color: var(--bg-light);
+            border: 1px solid var(--border-light);
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .day-schedule-card h4 {
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+        }
+
+        .time-slots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            /* Increased min-width */
             gap: 1rem;
         }
 
-        .main-header .title-group {
-            order: 2;
-            width: 100%; /* Take full width on a new line */
-            text-align: center;
+        .time-slot {
+            display: flex;
+            align-items: center;
+            background-color: var(--bg-grey);
+            padding: 0.5rem 0.75rem;
+            border-radius: 8px;
+        }
+
+        .time-slot input {
+            border: none;
+            background: transparent;
+            outline: none;
+            width: 100%;
+        }
+
+        .time-slot .remove-slot-btn {
+            background: none;
+            border: none;
+            color: var(--danger-color);
+            cursor: pointer;
+            font-size: 1.1rem;
+            margin-left: 0.5rem;
+        }
+
+        .add-slot-btn {
             margin-top: 1rem;
+            background: none;
+            border: 1px dashed var(--primary-color);
+            color: var(--primary-color);
+            font-weight: 600;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
         }
 
-        .header-actions {
-            margin-left: auto;
-            order: 1;
-        }
-        
-        #hamburger-btn {
-            order: 0;
+        .add-slot-btn:hover {
+            background-color: var(--primary-color);
+            color: white;
         }
 
-        .overlay.active {
-            display: block;
-        }
-    }
-
-    @media (max-width: 576px) {
-        .main-content {
-            padding: 1rem;
-        }
-        
-        .content-panel {
-            padding: 1.5rem;
+        .schedule-actions {
+            margin-top: 2rem;
+            text-align: right;
         }
 
-        .main-header h1 {
-            font-size: 1.4rem;
+        .shift-select {
+            padding: 0.5rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-light);
+            background-color: var(--bg-grey);
+            color: var(--text-dark);
+            font-family: 'Poppins', sans-serif;
+            font-weight: 500;
         }
 
-        .main-header h2 {
+        /* --- Enhanced Search Bar --- */
+        .search-container {
+            position: relative;
+            background-color: var(--bg-grey);
+            border-radius: var(--border-radius);
+            display: flex;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .search-container:focus-within {
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+            background-color: var(--bg-light);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 1rem;
+            color: var(--text-muted);
+            font-size: 1rem;
+            transition: color 0.3s ease;
+        }
+
+        .search-container:focus-within .search-icon {
+            color: var(--primary-color);
+        }
+
+        #user-search-input {
+            width: 100%;
+            border: 1px solid var(--border-light);
+            background-color: transparent;
+            border-radius: var(--border-radius);
+            padding: 1.5rem 1rem 0.5rem 3rem;
+            /* Top padding for label */
+            font-size: 1rem;
+            color: var(--text-dark);
+            outline: none;
+        }
+
+        #user-search-input::placeholder {
+            color: transparent;
+            /* Hide placeholder initially */
+        }
+
+        #user-search-label {
+            position: absolute;
+            left: 3rem;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+            color: var(--text-muted);
+            transition: all 0.3s ease;
             font-size: 1rem;
         }
 
-        .stat-cards-container {
-            grid-template-columns: 1fr;
+        /* Floating label effect */
+        #user-search-input:focus+#user-search-label,
+        #user-search-input:not(:placeholder-shown)+#user-search-label {
+            top: 0.5rem;
+            transform: translateY(0);
+            font-size: 0.75rem;
+            color: var(--primary-color);
+        }
+
+        /* --- THEMES AND MODERN ADMIN COLOR PALETTE --- */
+        :root {
+            --primary-color: #3B82F6;
+            /* A modern, vibrant blue */
+            --primary-color-dark: #2563EB;
+            --danger-color: #EF4444;
+            --success-color: #22C55E;
+            --warning-color: #F97316;
+
+            --text-dark: #1F2937;
+            /* Dark Gray */
+            --text-light: #F9FAFB;
+            /* Almost White */
+            --text-muted: #6B7280;
+            /* Medium Gray */
+
+            --bg-light: #FFFFFF;
+            /* White */
+            --bg-grey: #F3F4F6;
+            /* Lightest Gray */
+            --border-light: #E5E7EB;
+
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            --border-radius: 12px;
+            --transition-speed: 0.3s;
+        }
+
+        body.dark-mode {
+            --primary-color: #60A5FA;
+            --primary-color-dark: #3B82F6;
+            --text-dark: #F9FAFB;
+            --text-light: #1F2937;
+            --text-muted: #9CA3AF;
+            --bg-light: #1F2937;
+            /* Card Background */
+            --bg-grey: #111827;
+            /* Main Background */
+            --border-light: #374151;
+        }
+
+        /* --- BASE STYLES --- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--bg-grey);
+            color: var(--text-dark);
+            transition: background-color var(--transition-speed), color var(--transition-speed);
+            font-size: 16px;
+        }
+
+        .dashboard-layout {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* --- SIDEBAR --- */
+        .sidebar {
+            width: 280px;
+            background-color: var(--bg-light);
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+            transition: all var(--transition-speed) ease-in-out;
+            z-index: 1000;
+            position: fixed;
+            height: 100vh;
+            top: 0;
+            left: 0;
+            border-right: 1px solid var(--border-light);
+        }
+
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 2.5rem;
+            padding-left: 0.5rem;
+        }
+
+        .sidebar-header .logo-img {
+            height: 40px;
+            margin-right: 10px;
+        }
+
+        .sidebar-header .logo-text {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        .sidebar-nav {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .sidebar-nav ul {
+            list-style: none;
+        }
+
+        .sidebar-nav a,
+        .nav-dropdown-toggle {
+            display: flex;
+            align-items: center;
+            padding: 0.9rem 1rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            border-radius: 8px;
+
+            transition: background-color var(--transition-speed), color var(--transition-speed);
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        /* ADD THESE NEW RULES FOR CORRECT SPACING */
+        .sidebar-nav>ul>li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav-dropdown li {
+            margin-bottom: 0.25rem;
+        }
+
+        .nav-dropdown li:last-child {
+            margin-bottom: 0;
+        }
+
+        .sidebar-nav a i,
+        .nav-dropdown-toggle i {
+            width: 20px;
+            margin-right: 1rem;
+            font-size: 1.1rem;
+            text-align: center;
+        }
+
+        .sidebar-nav a:hover,
+        .nav-dropdown-toggle:hover {
+            background-color: var(--bg-grey);
+            color: var(--primary-color);
+        }
+
+        .sidebar-nav a.active,
+        .nav-dropdown-toggle.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        body.dark-mode .sidebar-nav a.active,
+        body.dark-mode .nav-dropdown-toggle.active {
+            background-color: var(--primary-color-dark);
+        }
+
+        .nav-dropdown-toggle .arrow {
+            margin-left: auto;
+            transition: transform var(--transition-speed);
+        }
+
+        .nav-dropdown-toggle.active .arrow {
+            transform: rotate(90deg);
+        }
+
+        .nav-dropdown {
+            list-style: none;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease-in-out;
+            padding-left: 1.5rem;
+        }
+
+        .nav-dropdown a {
+            font-size: 0.95rem;
+            padding: 0.7rem 1rem 0.7rem 0.5rem;
+            background-color: rgba(100, 100, 100, 0.05);
+            padding-bottom: -3.5rem;
+        }
+
+        body.dark-mode .nav-dropdown a {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        /* ADD THIS RULE TO FIX THE SIDEBAR SPACING */
+        .nav-dropdown li:last-child a {
+            margin-bottom: 0;
+        }
+
+
+        .logout-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding: 0.9rem 1rem;
+            background-color: transparent;
+            color: var(--danger-color);
+            border: 1px solid var(--danger-color);
+            border-radius: 8px;
+            font-size: 1rem;
+            font-family: 'Poppins', sans-serif;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-speed);
+            margin-top: 1rem;
+        }
+
+        .logout-btn:hover {
+            background-color: var(--danger-color);
+            color: white;
+        }
+
+        /* --- MAIN CONTENT --- */
+        .main-content {
+            flex-grow: 1;
+            padding: 2rem;
+            overflow-y: auto;
+            margin-left: 280px;
+            transition: margin-left var(--transition-speed);
+        }
+
+        .main-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .main-header .title-group {
+            flex-grow: 1;
+        }
+
+        .main-header h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .main-header h2 {
+            font-size: 1.2rem;
+            font-weight: 400;
+            color: var(--text-muted);
+            margin: 0.25rem 0 0 0;
         }
 
         .header-actions {
-            gap: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
         }
 
         .user-profile-widget {
-            padding: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            background-color: var(--bg-light);
+            padding: 0.5rem 1rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
         }
 
-        .user-profile-widget .user-info {
+        .user-profile-widget i {
+            font-size: 1.5rem;
+            color: var(--primary-color);
+        }
+
+        .content-panel {
+            display: none;
+            background-color: var(--bg-light);
+            padding: 2rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+        }
+
+        .content-panel.active {
+            display: block;
+        }
+
+        /* --- DASHBOARD HOME --- */
+        .stat-cards-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg-light);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            border-left: 5px solid var(--primary-color);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .stat-card .icon {
+            font-size: 2rem;
+            padding: 1rem;
+            border-radius: 50%;
+            color: var(--primary-color);
+            background-color: var(--bg-grey);
+        }
+
+        .stat-card.blue {
+            border-left-color: #3B82F6;
+        }
+
+        .stat-card.blue .icon {
+            color: #3B82F6;
+        }
+
+        .stat-card.green {
+            border-left-color: var(--success-color);
+        }
+
+        .stat-card.green .icon {
+            color: var(--success-color);
+        }
+
+        .stat-card.orange {
+            border-left-color: var(--warning-color);
+        }
+
+        .stat-card.orange .icon {
+            color: var(--warning-color);
+        }
+
+        .stat-card.red {
+            border-left-color: var(--danger-color);
+        }
+
+        .stat-card.red .icon {
+            color: var(--danger-color);
+        }
+
+        /* Added for low stock */
+        .stat-card .info .value {
+            font-size: 1.75rem;
+            font-weight: 600;
+        }
+
+        .stat-card .info .label {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .grid-card {
+            background-color: var(--bg-light);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+        }
+
+        .grid-card h3 {
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+        }
+
+        /* --- QUICK ACTIONS --- */
+        .quick-actions .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 1rem;
+        }
+
+        .quick-actions .action-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1.2rem 1rem;
+            border-radius: var(--border-radius);
+            background-color: var(--bg-grey);
+            color: var(--text-dark);
+            text-decoration: none;
+            font-weight: 500;
+            text-align: center;
+            transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s, color 0.2s;
+        }
+
+        .quick-actions .action-btn:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .quick-actions .action-btn i {
+            font-size: 1.8rem;
+            margin-bottom: 0.75rem;
+        }
+
+        /* --- USER MANAGEMENT & GENERIC TABLE STYLES --- */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-light);
+            white-space: nowrap;
+        }
+
+        .data-table th {
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .data-table tbody tr {
+            transition: background-color var(--transition-speed);
+        }
+
+        .data-table tbody tr:hover {
+            background-color: var(--bg-grey);
+        }
+
+        .data-table tbody tr.clickable-row {
+            cursor: pointer;
+        }
+
+        .user-list-pfp {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-right: 10px;
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.6rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .status-badge.active,
+        .status-badge.in-stock {
+            background-color: #D1FAE5;
+            color: #065F46;
+        }
+
+        .status-badge.inactive,
+        .status-badge.low-stock {
+            background-color: #FEE2E2;
+            color: #991B1B;
+        }
+
+        .status-badge.scheduled {
+            background-color: #FEF3C7;
+            color: #92400E;
+        }
+
+        .status-badge.completed {
+            background-color: #D1FAE5;
+            color: #065F46;
+        }
+
+        .status-badge.cancelled {
+            background-color: #FEE2E2;
+            color: #991B1B;
+        }
+
+        body.dark-mode .status-badge.scheduled {
+            background-color: #78350F;
+            color: #FDE68A;
+        }
+
+        body.dark-mode .status-badge.completed {
+            background-color: #064E3B;
+            color: #A7F3D0;
+        }
+
+        body.dark-mode .status-badge.cancelled {
+            background-color: #7F1D1D;
+            color: #FECACA;
+        }
+
+        body.dark-mode .status-badge.active,
+        body.dark-mode .status-badge.in-stock {
+            background-color: #064E3B;
+            color: #A7F3D0;
+        }
+
+        body.dark-mode .status-badge.inactive,
+        body.dark-mode .status-badge.low-stock {
+            background-color: #7F1D1D;
+            color: #FECACA;
+        }
+
+        .action-buttons button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1.1rem;
+            margin: 0 5px;
+            transition: color var(--transition-speed);
+        }
+
+        .action-buttons .btn-edit {
+            color: var(--primary-color);
+        }
+
+        .action-buttons .btn-delete {
+            color: var(--danger-color);
+        }
+
+        .quantity-good {
+            color: var(--success-color);
+            font-weight: 600;
+        }
+
+        .quantity-low {
+            color: var(--danger-color);
+            font-weight: 600;
+        }
+
+        /* --- BUTTONS & FORMS --- */
+        .btn {
+            padding: 0.7rem 1.4rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all var(--transition-speed);
+            border: 1px solid transparent;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-color-dark);
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            background-color: var(--bg-grey);
+            color: var(--text-dark);
+            transition: all var(--transition-speed);
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+
+        .role-specific-fields {
+            border-top: 1px solid var(--border-light);
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+        }
+
+        /* --- MODAL, NOTIFICATION, CONFIRMATION STYLES --- */
+        .modal,
+        .notification-container,
+        .confirm-dialog {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1050;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal.show,
+        .notification-container.show,
+        .confirm-dialog.show {
+            display: flex;
+        }
+
+        .modal-content,
+        .confirm-content {
+            background-color: var(--bg-light);
+            padding: 2rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-lg);
+            width: 90%;
+            max-width: 500px;
+            animation: slideIn 0.3s ease-out;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        #user-detail-modal #user-detail-content {
+            max-height: 70vh;
+            overflow-y: auto;
+            padding-right: 1rem;
+            /* Adds some space for the scrollbar */
+            margin-right: -1rem;
+            /* Compensates for the padding */
+        }
+
+        #user-detail-modal .modal-content {
+            max-width: 800px;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-light);
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+        }
+
+        .modal-close-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-muted);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-30px) scale(0.95);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+        }
+
+        .notification {
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            color: white;
+            box-shadow: var(--shadow-lg);
+            animation: slideIn 0.3s, fadeOut 0.5s 4.5s forwards;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1100;
+        }
+
+        .notification.success {
+            background-color: var(--success-color);
+        }
+
+        .notification.error {
+            background-color: var(--danger-color);
+        }
+
+        .notification.warning {
+            background-color: var(--warning-color);
+        }
+
+        @keyframes fadeOut {
+            to {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+        }
+
+        .confirm-content {
+            text-align: center;
+        }
+
+        .confirm-content h4 {
+            margin-bottom: 1rem;
+        }
+
+        .confirm-content p {
+            margin-bottom: 1.5rem;
+            color: var(--text-muted);
+        }
+
+        .confirm-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        .btn-secondary {
+            background-color: var(--bg-grey);
+            color: var(--text-dark);
+            border-color: var(--border-light);
+        }
+
+        body.dark-mode .btn-secondary {
+            background-color: #374151;
+            color: var(--text-light);
+            border-color: #4B5563;
+        }
+
+        .btn-secondary:hover {
+            background-color: #E5E7EB;
+        }
+
+        body.dark-mode .btn-secondary:hover {
+            background-color: #4B5563;
+        }
+
+        .btn-danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
+
+        /* --- DARK/LIGHT THEME TOGGLE --- */
+        .theme-switch-wrapper {
+            display: flex;
+            align-items: center;
+        }
+
+        .theme-switch {
+            display: inline-block;
+            height: 24px;
+            position: relative;
+            width: 48px;
+        }
+
+        .theme-switch input {
             display: none;
         }
-        
-        .modal-content {
-            padding: 1.5rem;
+
+        .slider {
+            background-color: #ccc;
+            bottom: 0;
+            cursor: pointer;
+            left: 0;
+            position: absolute;
+            right: 0;
+            top: 0;
+            transition: .4s;
+            border-radius: 24px;
         }
-    }
 
-    /* --- REPORTS PANEL --- */
-    #reports-panel .report-controls {
-        display: flex;
-        gap: 1.5rem;
-        align-items: flex-end;
-        margin-bottom: 2.5rem;
-        flex-wrap: wrap;
-        padding: 1.5rem;
-        background-color: var(--bg-grey);
-        border-radius: var(--border-radius);
-    }
-
-    #reports-panel .report-controls .form-group {
-        margin-bottom: 0;
-        flex-grow: 1;
-        min-width: 150px; /* Ensure inputs don't get too squished */
-    }
-
-    #reports-panel .report-summary-cards {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 1.5rem;
-        margin-bottom: 2.5rem;
-    }
-
-    .summary-card {
-        background-color: var(--bg-light);
-        padding: 1.5rem;
-        border-radius: var(--border-radius);
-        box-shadow: var(--shadow-md);
-        border-left: 4px solid var(--primary-color);
-    }
-
-    .summary-card .label {
-        font-size: 0.9rem;
-        color: var(--text-muted);
-        margin-bottom: 0.5rem;
-        display: block;
-    }
-
-    .summary-card .value {
-        font-size: 2rem;
-        font-weight: 600;
-        color: var(--text-dark);
-    }
-
-    #reports-panel #report-chart-container {
-        margin-top: 2rem;
-        padding: 2rem;
-        background-color: var(--bg-light);
-        border-radius: var(--border-radius);
-        box-shadow: var(--shadow-md);
-    }
-    
-    @media (max-width: 576px) {
-        #reports-panel #report-chart-container {
-            padding: 1rem;
+        .slider:before {
+            background-color: #fff;
+            content: "";
+            height: 18px;
+            left: 3px;
+            position: absolute;
+            bottom: 3px;
+            transition: .4s;
+            width: 18px;
+            border-radius: 50%;
         }
-    }
 
+        input:checked+.slider {
+            background-color: var(--primary-color-dark);
+        }
 
-    /* --- ACTIVITY LOGS (AUDIT TRAIL) --- */
-    #activity-panel .log-item,
-    #user-detail-activity-log .log-item {
-        display: flex;
-        align-items: flex-start;
-        gap: 1rem;
-        padding: 1rem;
-        border-bottom: 1px solid var(--border-light);
-    }
+        input:checked+.slider:before {
+            transform: translateX(24px);
+        }
 
-    #activity-panel .log-item:last-child,
-    #user-detail-activity-log .log-item:last-child {
-        border-bottom: none;
-    }
+        .theme-switch-wrapper .fa-sun,
+        .theme-switch-wrapper .fa-moon {
+            margin: 0 8px;
+            color: var(--text-muted);
+        }
 
-    .log-icon {
-        font-size: 1.2rem;
-        color: var(--text-light);
-        background-color: var(--primary-color);
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        display: grid;
-        place-items: center;
-        flex-shrink: 0;
-    }
-
-    .log-icon.update {
-        background-color: var(--warning-color);
-    }
-
-    .log-icon.delete {
-        background-color: var(--danger-color);
-    }
-
-    .log-details p {
-        margin: 0;
-        font-weight: 500;
-    }
-
-    .log-details .log-meta {
-        font-size: 0.85rem;
-        color: var(--text-muted);
-        margin-top: 0.25rem;
-    }
-
-    /* --- USER DETAIL MODAL --- */
-    .user-detail-header {
-        display: flex;
-        flex-direction: column; /* Stack on mobile */
-        align-items: center;
-        gap: 1rem;
-        margin-bottom: 2rem;
-        text-align: center;
-    }
-    
-    @media (min-width: 576px) {
-        .user-detail-header {
-            flex-direction: row; /* Row on larger screens */
-            text-align: left;
+        /* --- INVENTORY: BEDS & ROOMS --- */
+        .resource-grid-container,
+        .ward-beds-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
             gap: 1.5rem;
         }
-    }
 
-    .user-detail-pfp {
-        width: 100px;
-        height: 100px;
-        border-radius: 50%;
-        object-fit: cover;
-        border: 4px solid var(--bg-grey);
-    }
+        .ward-section {
+            margin-bottom: 2rem;
+        }
 
-    .user-detail-info h4 {
-        font-size: 1.5rem;
-        margin: 0;
-    }
+        .ward-header {
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border-light);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
 
-    .user-detail-info p {
-        color: var(--text-muted);
-        margin: 0.25rem 0;
-    }
+        .ward-header h3 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
 
-    .detail-tabs {
-        display: flex;
-        border-bottom: 1px solid var(--border-light);
-        margin-bottom: 1.5rem;
-        overflow-x: auto; /* Allow scrolling tabs on small screens */
-    }
+        .bed-card,
+        .room-card {
+            background-color: var(--bg-light);
+            padding: 1.25rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+            text-align: center;
+            border-left: 5px solid;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+        }
 
-    .detail-tab-button {
-        padding: 0.75rem 1.25rem;
-        cursor: pointer;
-        background: none;
-        border: none;
-        font-weight: 600;
-        color: var(--text-muted);
-        border-bottom: 3px solid transparent;
-        margin-bottom: -1px;
-        white-space: nowrap;
-        /* Overlap border */
-    }
+        .bed-card:hover,
+        .room-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+        }
 
-    .detail-tab-button.active {
-        color: var(--primary-color);
-        border-bottom-color: var(--primary-color);
-    }
+        .bed-card.available,
+        .room-card.available {
+            border-color: var(--success-color);
+        }
 
-    .detail-tab-content {
-        display: none;
-    }
+        .bed-card.occupied,
+        .room-card.occupied {
+            border-color: var(--danger-color);
+        }
 
-    .detail-tab-content.active {
-        display: block;
-    }
+        .bed-card.reserved,
+        .room-card.reserved {
+            border-color: var(--primary-color);
+        }
 
-    .search-result-item {
-        padding: 0.75rem 1rem;
-        cursor: pointer;
-        border-bottom: 1px solid var(--border-light);
-    }
+        .bed-card.cleaning,
+        .room-card.cleaning {
+            border-color: var(--warning-color);
+        }
 
-    .search-result-item:last-child {
-        border-bottom: none;
-    }
+        .bed-card .bed-icon,
+        .room-card .room-icon {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+        }
 
-    .search-result-item:hover {
-        background-color: var(--bg-grey);
-    }
+        .bed-card.available .bed-icon,
+        .room-card.available .room-icon {
+            color: var(--success-color);
+        }
 
-    .search-result-item.none {
-        cursor: default;
-        color: var(--text-muted);
-    }
-</style>
+        .bed-card.occupied .bed-icon,
+        .room-card.occupied .room-icon {
+            color: var(--danger-color);
+        }
+
+        .bed-card.reserved .bed-icon,
+        .room-card.reserved .room-icon {
+            color: var(--primary-color);
+        }
+
+        .bed-card.cleaning .bed-icon,
+        .room-card.cleaning .room-icon {
+            color: var(--warning-color);
+        }
+
+        .bed-card .bed-number,
+        .room-card .room-number {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .bed-card .bed-status,
+        .room-card .room-status {
+            font-size: 0.85rem;
+            font-weight: 500;
+            text-transform: capitalize;
+            margin-bottom: 0.5rem;
+            color: var(--text-muted);
+        }
+
+        .bed-card .patient-info,
+        .room-card .patient-info {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        .bed-card .action-buttons,
+        .room-card .action-buttons {
+            margin-top: 1rem;
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .bed-card .action-buttons button,
+        .room-card .action-buttons button {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        /* --- MOBILE & RESPONSIVE --- */
+        .hamburger-btn {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: var(--text-dark);
+            cursor: pointer;
+            z-index: 1001;
+        }
+
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 998;
+        }
+
+        @media (max-width: 1200px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                /* Stack on medium screens */
+            }
+        }
+
+        @media (max-width: 992px) {
+            .sidebar {
+                left: -280px;
+            }
+
+            .sidebar.active {
+                left: 0;
+                box-shadow: var(--shadow-lg);
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .hamburger-btn {
+                display: block;
+            }
+
+            .main-header {
+                flex-wrap: wrap;
+                /* Allow header items to wrap */
+                gap: 1rem;
+            }
+
+            .main-header .title-group {
+                order: 2;
+                width: 100%;
+                /* Take full width on a new line */
+                text-align: center;
+                margin-top: 1rem;
+            }
+
+            .header-actions {
+                margin-left: auto;
+                order: 1;
+            }
+
+            #hamburger-btn {
+                order: 0;
+            }
+
+            .overlay.active {
+                display: block;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .main-content {
+                padding: 1rem;
+            }
+
+            .content-panel {
+                padding: 1.5rem;
+            }
+
+            .main-header h1 {
+                font-size: 1.4rem;
+            }
+
+            .main-header h2 {
+                font-size: 1rem;
+            }
+
+            .stat-cards-container {
+                grid-template-columns: 1fr;
+            }
+
+            .header-actions {
+                gap: 0.5rem;
+            }
+
+            .user-profile-widget {
+                padding: 0.5rem;
+            }
+
+            .user-profile-widget .user-info {
+                display: none;
+            }
+
+            .modal-content {
+                padding: 1.5rem;
+            }
+        }
+
+        /* --- REPORTS PANEL --- */
+        #reports-panel .report-controls {
+            display: flex;
+            gap: 1.5rem;
+            align-items: flex-end;
+            margin-bottom: 2.5rem;
+            flex-wrap: wrap;
+            padding: 1.5rem;
+            background-color: var(--bg-grey);
+            border-radius: var(--border-radius);
+        }
+
+        #reports-panel .report-controls .form-group {
+            margin-bottom: 0;
+            flex-grow: 1;
+            min-width: 150px;
+            /* Ensure inputs don't get too squished */
+        }
+
+        #reports-panel .report-summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .summary-card {
+            background-color: var(--bg-light);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .summary-card .label {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .summary-card .value {
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        #reports-panel #report-chart-container {
+            margin-top: 2rem;
+            padding: 2rem;
+            background-color: var(--bg-light);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+        }
+
+        @media (max-width: 576px) {
+            #reports-panel #report-chart-container {
+                padding: 1rem;
+            }
+        }
+
+
+        /* --- ACTIVITY LOGS (AUDIT TRAIL) --- */
+        #activity-panel .log-item,
+        #user-detail-activity-log .log-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        #activity-panel .log-item:last-child,
+        #user-detail-activity-log .log-item:last-child {
+            border-bottom: none;
+        }
+
+        .log-icon {
+            font-size: 1.2rem;
+            color: var(--text-light);
+            background-color: var(--primary-color);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            flex-shrink: 0;
+        }
+
+        .log-icon.update {
+            background-color: var(--warning-color);
+        }
+
+        .log-icon.delete {
+            background-color: var(--danger-color);
+        }
+
+        .log-details p {
+            margin: 0;
+            font-weight: 500;
+        }
+
+        .log-details .log-meta {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        /* --- USER DETAIL MODAL --- */
+        .user-detail-header {
+            display: flex;
+            flex-direction: column;
+            /* Stack on mobile */
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        @media (min-width: 576px) {
+            .user-detail-header {
+                flex-direction: row;
+                /* Row on larger screens */
+                text-align: left;
+                gap: 1.5rem;
+            }
+        }
+
+        .user-detail-pfp {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 4px solid var(--bg-grey);
+        }
+
+        .user-detail-info h4 {
+            font-size: 1.5rem;
+            margin: 0;
+        }
+
+        .user-detail-info p {
+            color: var(--text-muted);
+            margin: 0.25rem 0;
+        }
+
+        .detail-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-light);
+            margin-bottom: 1.5rem;
+            /* Allow scrolling tabs on small screens */
+        }
+
+        .detail-tab-button {
+            padding: 0.75rem 1.25rem;
+            cursor: pointer;
+            background: none;
+            border: none;
+            font-weight: 600;
+            color: var(--text-muted);
+            border-bottom: 3px solid transparent;
+            margin-bottom: -1px;
+            white-space: nowrap;
+            /* Overlap border */
+        }
+
+        .detail-tab-button.active {
+            color: var(--primary-color);
+            border-bottom-color: var(--primary-color);
+        }
+
+        .detail-tab-content {
+            display: none;
+        }
+
+        .detail-tab-content.active {
+            display: block;
+        }
+
+        .search-result-item {
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .search-result-item:hover {
+            background-color: var(--bg-grey);
+        }
+
+        .search-result-item.none {
+            cursor: default;
+            color: var(--text-muted);
+        }
+    </style>
 </head>
 
 <body class="light-mode">
@@ -3094,7 +3179,7 @@ body.dark-mode .status-badge.cancelled { background-color: #7F1D1D; color: #FECA
                             Logs</a></li>
                     <li><a href="#" class="nav-link" data-target="settings"><i class="fas fa-user-edit"></i> My
                             Account</a></li>
- <li><a href="#" class="nav-link" data-target="system-settings"><i class="fas fa-cog"></i> System
+                    <li><a href="#" class="nav-link" data-target="system-settings"><i class="fas fa-cog"></i> System
                             Settings</a></li>
                     <li><a href="#" class="nav-link" data-target="notifications"><i class="fas fa-bullhorn"></i>
                             Notifications</a></li>
@@ -3197,40 +3282,44 @@ body.dark-mode .status-badge.cancelled { background-color: #7F1D1D; color: #FECA
                                     class="fas fa-building"></i> Departments</a>
                             <a href="#" class="action-btn nav-link" data-target="notifications"><i
                                     class="fas fa-bullhorn"></i> Send Notifications</a>
-                             <a href="#" class="action-btn nav-link" data-target="system-settings"><i class="fas fa-cog"></i>
+                            <a href="#" class="action-btn nav-link" data-target="system-settings"><i
+                                    class="fas fa-cog"></i>
                                 System Settings</a>
                             <a href="#" class="action-btn nav-link" data-target="settings"><i
                                     class="fas fa-user-edit"></i> My Account</a>
                         </div>
                     </div>
                 </div>
-            
-            </div> <div id="appointments-panel" class="content-panel">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
-        <h2 id="appointments-table-title">Patient Appointments</h2>
-        <div class="form-group" style="flex-grow: 1; max-width: 400px; margin-bottom: 0;">
-            <label for="appointment-doctor-filter" style="margin-bottom: 0.25rem; font-weight: 500;">Filter by Doctor</label>
-            <select id="appointment-doctor-filter">
-                <option value="all">All Doctors</option>
-            </select>
-        </div>
-    </div>
-    <div class="table-container">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Appt. ID</th>
-                    <th>Patient Details</th>
-                    <th>Doctor</th>
-                    <th>Date & Time</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody id="appointments-table-body">
-                </tbody>
-        </table>
-    </div>
-</div>
+
+            </div>
+            <div id="appointments-panel" class="content-panel">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+                    <h2 id="appointments-table-title">Patient Appointments</h2>
+                    <div class="form-group" style="flex-grow: 1; max-width: 400px; margin-bottom: 0;">
+                        <label for="appointment-doctor-filter" style="margin-bottom: 0.25rem; font-weight: 500;">Filter
+                            by Doctor</label>
+                        <select id="appointment-doctor-filter">
+                            <option value="all">All Doctors</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Appt. ID</th>
+                                <th>Patient Details</th>
+                                <th>Doctor</th>
+                                <th>Date & Time</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="appointments-table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
             <div id="users-panel" class="content-panel">
                 <div
@@ -3378,47 +3467,49 @@ body.dark-mode .status-badge.cancelled { background-color: #7F1D1D; color: #FECA
                 <div id="rooms-container" class="resource-grid-container">
                 </div>
             </div>
-<div id="reports-panel" class="content-panel">
-    <div class="report-controls">
-        <div class="form-group">
-            <label for="report-type">Report Type</label>
-            <select id="report-type" name="report_type">
-                <option value="financial">Financial</option>
-                <option value="patient">Patient Statistics</option>
-                <option value="resource">Resource Utilization</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label for="report-period">Period</label>
-            <select id="report-period" name="period">
-                <option value="yearly">Year</option>
-                <option value="monthly" selected>Month</option>
-                <option value="daily">Day</option>
-            </select>
-        </div>
-        <div class="form-group" id="report-year-container">
-            <label for="report-year">Year</label>
-            <input type="number" id="report-year" name="year" value="<?php echo date('Y'); ?>">
-        </div>
-        <div class="form-group" id="report-month-container">
-            <label for="report-month">Month</label>
-            <input type="month" id="report-month" name="month" value="<?php echo date('Y-m'); ?>">
-        </div>
-        <div class="form-group" id="report-day-container" style="display: none;">
-            <label for="report-day">Day</label>
-            <input type="date" id="report-day" name="day" value="<?php echo date('Y-m-d'); ?>">
-        </div>
-        <button id="generate-report-btn" class="btn btn-primary"><i class="fas fa-sync"></i> Generate Report</button>
-        <form id="download-pdf-form" method="GET" action="admin_dashboard.php" target="_blank">
-            <input type="hidden" name="action" value="download_pdf">
-            <input type="hidden" id="pdf-report-type" name="report_type">
-            <input type="hidden" id="pdf-period" name="period">
-            <input type="hidden" id="pdf-year" name="year">
-            <input type="hidden" id="pdf-month" name="month">
-            <input type="hidden" id="pdf-day" name="day">
-            <button type="submit" class="btn btn-secondary"><i class="fas fa-file-pdf"></i> Download PDF</button>
-        </form>
-    </div>
+            <div id="reports-panel" class="content-panel">
+                <div class="report-controls">
+                    <div class="form-group">
+                        <label for="report-type">Report Type</label>
+                        <select id="report-type" name="report_type">
+                            <option value="financial">Financial</option>
+                            <option value="patient">Patient Statistics</option>
+                            <option value="resource">Resource Utilization</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="report-period">Period</label>
+                        <select id="report-period" name="period">
+                            <option value="yearly">Year</option>
+                            <option value="monthly" selected>Month</option>
+                            <option value="daily">Day</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="report-year-container">
+                        <label for="report-year">Year</label>
+                        <input type="number" id="report-year" name="year" value="<?php echo date('Y'); ?>">
+                    </div>
+                    <div class="form-group" id="report-month-container">
+                        <label for="report-month">Month</label>
+                        <input type="month" id="report-month" name="month" value="<?php echo date('Y-m'); ?>">
+                    </div>
+                    <div class="form-group" id="report-day-container" style="display: none;">
+                        <label for="report-day">Day</label>
+                        <input type="date" id="report-day" name="day" value="<?php echo date('Y-m-d'); ?>">
+                    </div>
+                    <button id="generate-report-btn" class="btn btn-primary"><i class="fas fa-sync"></i> Generate
+                        Report</button>
+                    <form id="download-pdf-form" method="GET" action="admin_dashboard.php" target="_blank">
+                        <input type="hidden" name="action" value="download_pdf">
+                        <input type="hidden" id="pdf-report-type" name="report_type">
+                        <input type="hidden" id="pdf-period" name="period">
+                        <input type="hidden" id="pdf-year" name="year">
+                        <input type="hidden" id="pdf-month" name="month">
+                        <input type="hidden" id="pdf-day" name="day">
+                        <button type="submit" class="btn btn-secondary"><i class="fas fa-file-pdf"></i> Download
+                            PDF</button>
+                    </form>
+                </div>
 
                 <div class="report-summary-cards" id="report-summary-cards">
                 </div>
@@ -3475,28 +3566,33 @@ body.dark-mode .status-badge.cancelled { background-color: #7F1D1D; color: #FECA
                 </form>
             </div>
 
-<div id="system-settings-panel" class="content-panel">
-    <h3>System Settings</h3>
-    <p>Configure system-wide settings here. Changes will take effect immediately.</p>
-    <form id="system-settings-form" style="margin-top: 2rem; max-width: 600px;">
-        <input type="hidden" name="action" value="updateSystemSettings">
-        <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+            <div id="system-settings-panel" class="content-panel">
+                <h3>System Settings</h3>
+                <p>Configure system-wide settings here. Changes will take effect immediately.</p>
+                <form id="system-settings-form" style="margin-top: 2rem; max-width: 600px;">
+                    <input type="hidden" name="action" value="updateSystemSettings">
+                    <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
 
-        <div class="form-group">
-    <label for="system_email">System Email Address</label>
-    <input type="email" id="system_email" name="system_email" placeholder="e.g., your_email@gmail.com">
-    <small style="color: var(--text-muted); font-size: 0.8rem;">This email will be used to send OTPs and all other system notifications.</small>
-</div>
+                    <div class="form-group">
+                        <label for="system_email">System Email Address</label>
+                        <input type="email" id="system_email" name="system_email"
+                            placeholder="e.g., your_email@gmail.com">
+                        <small style="color: var(--text-muted); font-size: 0.8rem;">This email will be used to send OTPs
+                            and all other system notifications.</small>
+                    </div>
 
-        <div class="form-group">
-            <label for="gmail_app_password">Gmail App Password</label>
-            <input type="password" id="gmail_app_password" name="gmail_app_password">
-            <small style="color: var(--text-muted); font-size: 0.8rem;">This is used for sending system emails (e.g., OTPs, notifications). <a href="https://support.google.com/accounts/answer/185833" target="_blank">How to get an App Password</a>.</small>
-        </div>
-        
-        <button type="submit" class="btn btn-primary">Save Settings</button>
-    </form>
-</div>
+                    <div class="form-group">
+                        <label for="gmail_app_password">Gmail App Password</label>
+                        <input type="password" id="gmail_app_password" name="gmail_app_password">
+                        <small style="color: var(--text-muted); font-size: 0.8rem;">This is used for sending system
+                            emails (e.g., OTPs, notifications). <a
+                                href="https://support.google.com/accounts/answer/185833" target="_blank">How to get an
+                                App Password</a>.</small>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Save Settings</button>
+                </form>
+            </div>
             <div id="schedules-panel" class="content-panel">
                 <div class="schedule-tabs">
                     <button class="schedule-tab-button active" data-tab="doctor-availability">Doctor
@@ -3637,7 +3733,7 @@ body.dark-mode .status-badge.cancelled { background-color: #7F1D1D; color: #FECA
                 </div>
                 <div class="form-group">
                     <label for="date_of_birth">Date of Birth</label>
-                  <input type="date" id="date_of_birth" name="date_of_birth" max="<?php echo date('Y-m-d'); ?>">
+                    <input type="date" id="date_of_birth" name="date_of_birth" max="<?php echo date('Y-m-d'); ?>">
                 </div>
                 <div class="form-group">
                     <label for="gender">Gender</label>
@@ -3898,6 +3994,12 @@ body.dark-mode .status-badge.cancelled { background-color: #7F1D1D; color: #FECA
                         <option value="">Select Patient</option>
                     </select>
                 </div>
+                <div class="form-group" id="bed-doctor-group" style="display: none;">
+                    <label for="bed-doctor-id">Assign Doctor</label>
+                    <select id="bed-doctor-id" name="doctor_id">
+                        <option value="">Select Doctor</option>
+                    </select>
+                </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Save Bed</button>
             </form>
         </div>
@@ -3935,6 +4037,12 @@ body.dark-mode .status-badge.cancelled { background-color: #7F1D1D; color: #FECA
                     <label for="room-patient-id">Patient</label>
                     <select id="room-patient-id" name="patient_id">
                         <option value="">Select Patient</option>
+                    </select>
+                </div>
+                <div class="form-group" id="room-doctor-group" style="display: none;">
+                    <label for="room-doctor-id">Assign Doctor</label>
+                    <select id="room-doctor-id" name="doctor_id">
+                        <option value="">Select Doctor</option>
                     </select>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Save Room</button>
@@ -4105,11 +4213,11 @@ body.dark-mode .status-badge.cancelled { background-color: #7F1D1D; color: #FECA
                     welcomeMessage.style.display = (targetId === 'dashboard') ? 'block' : 'none';
 
                     if (targetId === 'settings') fetchMyProfile();
- 
-if (targetId === 'appointments') {
-    fetchDoctorsForAppointmentFilter();
-    fetchAppointments(); // Load all appointments initially
-}
+
+                    if (targetId === 'appointments') {
+                        fetchDoctorsForAppointmentFilter();
+                        fetchAppointments(); // Load all appointments initially
+                    }
                     if (targetId === 'reports') generateReport();
                     if (targetId === 'activity') fetchActivityLogs();
                     if (targetId === 'schedules' && doctorSelect.options.length <= 1) fetchDoctorsForScheduling();
@@ -4215,36 +4323,36 @@ if (targetId === 'appointments') {
             };
 
             const fetchDoctorsForAppointmentFilter = async () => {
-    const doctorFilterSelect = document.getElementById('appointment-doctor-filter');
-    // Prevent re-populating if already filled
-    if (doctorFilterSelect.options.length > 1) return;
+                const doctorFilterSelect = document.getElementById('appointment-doctor-filter');
+                // Prevent re-populating if already filled
+                if (doctorFilterSelect.options.length > 1) return;
 
-    try {
-        const response = await fetch('?fetch=doctors_for_scheduling'); // Reusing existing API endpoint
-        const result = await response.json();
-        if (!result.success) throw new Error(result.message);
+                try {
+                    const response = await fetch('?fetch=doctors_for_scheduling'); // Reusing existing API endpoint
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
 
-        result.data.forEach(doctor => {
-            doctorFilterSelect.innerHTML += `<option value="${doctor.id}">${doctor.name} (${doctor.display_user_id})</option>`;
-        });
-    } catch (error) {
-        console.error("Failed to fetch doctors for filter:", error);
-    }
-};
+                    result.data.forEach(doctor => {
+                        doctorFilterSelect.innerHTML += `<option value="${doctor.id}">${doctor.name} (${doctor.display_user_id})</option>`;
+                    });
+                } catch (error) {
+                    console.error("Failed to fetch doctors for filter:", error);
+                }
+            };
 
-const fetchAppointments = async (doctorId = 'all') => {
-    const tableBody = document.getElementById('appointments-table-body');
-    tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading appointments...</td></tr>`;
-    try {
-        const response = await fetch(`?fetch=appointments&doctor_id=${doctorId}`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const result = await response.json();
-        if (!result.success) throw new Error(result.message);
+            const fetchAppointments = async (doctorId = 'all') => {
+                const tableBody = document.getElementById('appointments-table-body');
+                tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading appointments...</td></tr>`;
+                try {
+                    const response = await fetch(`?fetch=appointments&doctor_id=${doctorId}`);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
 
-        if (result.data.length > 0) {
-            tableBody.innerHTML = result.data.map(appt => {
-                const status = appt.status.charAt(0).toUpperCase() + appt.status.slice(1);
-                return `
+                    if (result.data.length > 0) {
+                        tableBody.innerHTML = result.data.map(appt => {
+                            const status = appt.status.charAt(0).toUpperCase() + appt.status.slice(1);
+                            return `
                 <tr>
                     <td>${appt.id}</td>
                     <td>${appt.patient_name} (${appt.patient_display_id})</td>
@@ -4253,14 +4361,14 @@ const fetchAppointments = async (doctorId = 'all') => {
                     <td><span class="status-badge ${appt.status.toLowerCase()}">${status}</span></td>
                 </tr>
             `}).join('');
-        } else {
-            tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No appointments found.</td></tr>`;
-        }
-    } catch (error) {
-        console.error('Fetch error:', error);
-        tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Failed to load appointments: ${error.message}</td></tr>`;
-    }
-};
+                    } else {
+                        tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No appointments found.</td></tr>`;
+                    }
+                } catch (error) {
+                    console.error('Fetch error:', error);
+                    tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Failed to load appointments: ${error.message}</td></tr>`;
+                }
+            };
 
             // --- USER MANAGEMENT (CRUD & Detail View) ---
             const userModal = document.getElementById('user-modal');
@@ -4277,7 +4385,7 @@ const fetchAppointments = async (doctorId = 'all') => {
             });
             // Restrict year in Date of Birth to 4 digits
             const dobInput = document.getElementById('date_of_birth');
-            dobInput.addEventListener('input', function() {
+            dobInput.addEventListener('input', function () {
                 // The value is in 'YYYY-MM-DD' format. We check the year part.
                 if (this.value.length > 0) {
                     const year = this.value.split('-')[0];
@@ -4634,7 +4742,7 @@ const fetchAppointments = async (doctorId = 'all') => {
             });
 
             const systemSettingsForm = document.getElementById('system-settings-form');
-            if(systemSettingsForm) {
+            if (systemSettingsForm) {
                 systemSettingsForm.addEventListener('submit', async (e) => {
                     e.preventDefault();
                     const confirmed = await showConfirmation('Update Settings', 'Are you sure you want to save these system settings? This may affect system functionality like sending emails.');
@@ -4992,36 +5100,70 @@ const fetchAppointments = async (doctorId = 'all') => {
                 }
             };
 
+            const populateDoctorDropdowns = async (selectElement) => {
+                try {
+                    const response = await fetch('?fetch=doctors_for_scheduling');
+                    const result = await response.json();
+
+                    selectElement.innerHTML = '<option value="">Select Doctor</option>';
+                    if (result.success) {
+                        result.data.forEach(doctor => {
+                            selectElement.innerHTML += `<option value="${doctor.id}">${doctor.name} (${doctor.display_user_id})</option>`;
+                        });
+                    }
+                } catch (error) {
+                    console.error('Failed to populate doctor dropdown:', error);
+                }
+            };
+
             bedStatusSelect.addEventListener('change', () => {
                 const showPatient = bedStatusSelect.value === 'occupied' || bedStatusSelect.value === 'reserved';
                 bedPatientGroup.style.display = showPatient ? 'block' : 'none';
                 bedPatientSelect.required = showPatient;
             });
 
+            const bedDoctorGroup = document.getElementById('bed-doctor-group');
+            const bedDoctorSelect = document.getElementById('bed-doctor-id');
+
+            bedStatusSelect.addEventListener('change', () => {
+                const showPatient = bedStatusSelect.value === 'occupied' || bedStatusSelect.value === 'reserved';
+                bedPatientGroup.style.display = showPatient ? 'block' : 'none';
+                bedPatientSelect.required = showPatient;
+                // Show doctor dropdown only when occupied
+                bedDoctorGroup.style.display = bedStatusSelect.value === 'occupied' ? 'block' : 'none';
+                bedDoctorSelect.required = bedStatusSelect.value === 'occupied';
+            });
+
             const openBedModal = async (mode, bed = {}) => {
                 bedForm.reset();
-                await populateBedDropdowns();
+                await Promise.all([populateBedDropdowns(), populateDoctorDropdowns(bedDoctorSelect)]); // Fetch doctors
                 document.getElementById('bed-modal-title').textContent = mode === 'add' ? 'Add New Bed' : `Edit Bed ${bed.bed_number}`;
                 document.getElementById('bed-form-action').value = mode === 'add' ? 'addBed' : 'updateBed';
-                bedPatientGroup.style.display = 'none';
-                bedPatientSelect.required = false;
 
-                document.getElementById('bed-number').readOnly = false;
-                document.getElementById('bed-ward-id').disabled = false;
+                bedPatientGroup.style.display = 'none';
+                bedDoctorGroup.style.display = 'none';
+                bedPatientSelect.required = false;
+                bedDoctorSelect.required = false;
 
                 if (mode === 'edit') {
                     document.getElementById('bed-id').value = bed.id;
-                    setTimeout(() => {
+                    setTimeout(() => { // Use timeout to ensure dropdowns are populated
                         document.getElementById('bed-ward-id').value = bed.ward_id;
                         document.getElementById('bed-number').value = bed.bed_number;
                         document.getElementById('bed-status').value = bed.status;
+
                         const showPatient = bed.status === 'occupied' || bed.status === 'reserved';
                         if (showPatient) {
                             bedPatientGroup.style.display = 'block';
                             bedPatientSelect.required = true;
                             document.getElementById('bed-patient-id').value = bed.patient_id || '';
                         }
-                    }, 100);
+                        if (bed.status === 'occupied') {
+                            bedDoctorGroup.style.display = 'block';
+                            bedDoctorSelect.required = true;
+                            document.getElementById('bed-doctor-id').value = bed.doctor_id || '';
+                        }
+                    }, 150);
                 }
                 bedModal.classList.add('show');
             };
@@ -5055,12 +5197,16 @@ const fetchAppointments = async (doctorId = 'all') => {
                             </div>
                             <div class="ward-beds-container">
                                 ${beds.map(bed => {
+                            // PASTE YOUR SNIPPET HERE, REPLACING THE OLD ONE
                             let patientInfo = '';
                             if (bed.status === 'occupied' && bed.patient_name) {
-                                patientInfo = `<div class="patient-info">Occupied by: ${bed.patient_name}<br><small>Since: ${new Date(bed.occupied_since).toLocaleDateString()}</small></div>`;
+                                let doctorInfo = bed.doctor_name ? `<br><small>Doctor: ${bed.doctor_name}</small>` : '';
+                                patientInfo = `<div class="patient-info">Occupied by: ${bed.patient_name}${doctorInfo}</div>`;
                             } else if (bed.status === 'reserved' && bed.patient_name) {
-                                patientInfo = `<div class="patient-info">Reserved for: ${bed.patient_name}<br><small>Since: ${new Date(bed.reserved_since).toLocaleDateString()}</small></div>`;
+                                patientInfo = `<div class="patient-info">Reserved for: ${bed.patient_name}</div>`;
                             }
+
+                            // THIS IS THE CODE THAT COMES AFTER YOUR SNIPPET
                             return `
                                     <div class="bed-card ${bed.status}" data-bed='${JSON.stringify(bed)}'>
                                         <div class="bed-icon"><i class="fas fa-bed"></i></div>
@@ -5133,26 +5279,45 @@ const fetchAppointments = async (doctorId = 'all') => {
                 roomPatientSelect.required = showPatient;
             });
 
+            const roomDoctorGroup = document.getElementById('room-doctor-group');
+            const roomDoctorSelect = document.getElementById('room-doctor-id');
+
+            roomStatusSelect.addEventListener('change', () => {
+                const showPatient = roomStatusSelect.value === 'occupied' || roomStatusSelect.value === 'reserved';
+                roomPatientGroup.style.display = showPatient ? 'block' : 'none';
+                roomPatientSelect.required = showPatient;
+                // Show doctor dropdown only when occupied
+                roomDoctorGroup.style.display = roomStatusSelect.value === 'occupied' ? 'block' : 'none';
+                roomDoctorSelect.required = roomStatusSelect.value === 'occupied';
+            });
+
             const openRoomModal = async (mode, room = {}) => {
                 roomForm.reset();
-                await populateRoomDropdowns();
+                await Promise.all([populateRoomDropdowns(), populateDoctorDropdowns(roomDoctorSelect)]); // Fetch doctors
                 document.getElementById('room-modal-title').textContent = mode === 'add' ? 'Add New Room' : `Edit Room ${room.room_number}`;
                 document.getElementById('room-form-action').value = mode === 'add' ? 'addRoom' : 'updateRoom';
-                roomPatientGroup.style.display = 'none';
-                roomPatientSelect.required = false;
 
-                document.getElementById('room-number').readOnly = false;
+                roomPatientGroup.style.display = 'none';
+                roomDoctorGroup.style.display = 'none';
+                roomPatientSelect.required = false;
+                roomDoctorSelect.required = false;
 
                 if (mode === 'edit') {
                     document.getElementById('room-id').value = room.id;
                     document.getElementById('room-number').value = room.room_number;
                     document.getElementById('room-price-per-day').value = room.price_per_day;
                     document.getElementById('room-status').value = room.status;
+
                     const showPatient = room.status === 'occupied' || room.status === 'reserved';
                     if (showPatient) {
                         roomPatientGroup.style.display = 'block';
                         roomPatientSelect.required = true;
                         document.getElementById('room-patient-id').value = room.patient_id || '';
+                    }
+                    if (room.status === 'occupied') {
+                        roomDoctorGroup.style.display = 'block';
+                        roomDoctorSelect.required = true;
+                        document.getElementById('room-doctor-id').value = room.doctor_id || '';
                     }
                 } else {
                     document.getElementById('room-price-per-day').value = '0.00';
@@ -5178,12 +5343,16 @@ const fetchAppointments = async (doctorId = 'all') => {
 
                     if (result.data.length > 0) {
                         roomsContainer.innerHTML = result.data.map(room => {
+                            // PASTE YOUR SNIPPET HERE (adapted for rooms)
                             let patientInfo = '';
                             if (room.status === 'occupied' && room.patient_name) {
-                                patientInfo = `<div class="patient-info">Occupied by: ${room.patient_name}<br><small>Since: ${new Date(room.occupied_since).toLocaleDateString()}</small></div>`;
+                                let doctorInfo = room.doctor_name ? `<br><small>Doctor: ${room.doctor_name}</small>` : '';
+                                patientInfo = `<div class="patient-info">Occupied by: ${room.patient_name}${doctorInfo}</div>`;
                             } else if (room.status === 'reserved' && room.patient_name) {
-                                patientInfo = `<div class="patient-info">Reserved for: ${room.patient_name}<br><small>Since: ${new Date(room.reserved_since).toLocaleDateString()}</small></div>`;
+                                patientInfo = `<div class="patient-info">Reserved for: ${room.patient_name}</div>`;
                             }
+
+                            // THIS IS THE CODE THAT COMES AFTER YOUR SNIPPET
                             return `
                         <div class="room-card ${room.status}" data-room='${JSON.stringify(room)}'>
                             <div class="room-icon"><i class="fas fa-door-closed"></i></div>
@@ -5335,27 +5504,27 @@ const fetchAppointments = async (doctorId = 'all') => {
             };
 
             const reportPeriodSelect = document.getElementById('report-period');
-const yearContainer = document.getElementById('report-year-container');
-const monthContainer = document.getElementById('report-month-container');
-const dayContainer = document.getElementById('report-day-container');
+            const yearContainer = document.getElementById('report-year-container');
+            const monthContainer = document.getElementById('report-month-container');
+            const dayContainer = document.getElementById('report-day-container');
 
-reportPeriodSelect.addEventListener('change', () => {
-    const period = reportPeriodSelect.value;
-    yearContainer.style.display = 'none';
-    monthContainer.style.display = 'none';
-    dayContainer.style.display = 'none';
+            reportPeriodSelect.addEventListener('change', () => {
+                const period = reportPeriodSelect.value;
+                yearContainer.style.display = 'none';
+                monthContainer.style.display = 'none';
+                dayContainer.style.display = 'none';
 
-    if (period === 'yearly') {
-        yearContainer.style.display = 'block';
-    } else if (period === 'monthly') {
-        monthContainer.style.display = 'block';
-    } else if (period === 'daily') {
-        dayContainer.style.display = 'block';
-    }
-});
+                if (period === 'yearly') {
+                    yearContainer.style.display = 'block';
+                } else if (period === 'monthly') {
+                    monthContainer.style.display = 'block';
+                } else if (period === 'daily') {
+                    dayContainer.style.display = 'block';
+                }
+            });
 
-// Trigger change event on load to set the initial correct view
-reportPeriodSelect.dispatchEvent(new Event('change'));
+            // Trigger change event on load to set the initial correct view
+            reportPeriodSelect.dispatchEvent(new Event('change'));
 
             generateReportBtn.addEventListener('click', generateReport);
 
@@ -5855,9 +6024,9 @@ reportPeriodSelect.dispatchEvent(new Event('change'));
                 }
             });
 
-document.getElementById('appointment-doctor-filter').addEventListener('change', (e) => {
-    fetchAppointments(e.target.value);
-});
+            document.getElementById('appointment-doctor-filter').addEventListener('change', (e) => {
+                fetchAppointments(e.target.value);
+            });
 
             // --- INITIAL LOAD ---
             updateDashboardStats();

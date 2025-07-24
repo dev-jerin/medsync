@@ -1,6 +1,6 @@
 -- This is the complete and updated database schema for MedSync.
 -- It includes all tables and columns required for the latest features,
--- including the 'is_read' column for notifications.
+-- including the 'is_read' column for notifications and doctor_id in beds/rooms.
 
 CREATE DATABASE IF NOT EXISTS `medsync` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE `medsync`;
@@ -156,7 +156,8 @@ CREATE TABLE `beds` (
   `ward_id` INT(11) NOT NULL,
   `bed_number` VARCHAR(50) NOT NULL,
   `status` ENUM('available', 'occupied', 'reserved', 'cleaning') NOT NULL DEFAULT 'available',
-  `patient_id` INT(11) DEFAULT NULL COMMENT 'FK to users table, used for both occupied and reserved status',
+  `patient_id` INT(11) DEFAULT NULL,
+  `doctor_id` INT(11) DEFAULT NULL,
   `occupied_since` DATETIME DEFAULT NULL,
   `reserved_since` DATETIME DEFAULT NULL,
   `price_per_day` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
@@ -164,9 +165,9 @@ CREATE TABLE `beds` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `ward_bed_unique` (`ward_id`, `bed_number`),
   CONSTRAINT `fk_beds_ward` FOREIGN KEY (`ward_id`) REFERENCES `wards` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `fk_beds_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `fk_beds_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_beds_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
 --
 -- Table structure for table `rooms`
 --
@@ -175,6 +176,7 @@ CREATE TABLE `rooms` (
   `room_number` varchar(50) NOT NULL,
   `status` enum('available','occupied','reserved','cleaning') NOT NULL DEFAULT 'available',
   `patient_id` int(11) DEFAULT NULL,
+  `doctor_id` INT(11) DEFAULT NULL,
   `occupied_since` datetime DEFAULT NULL,
   `reserved_since` datetime DEFAULT NULL,
   `price_per_day` decimal(10,2) NOT NULL DEFAULT 0.00,
@@ -182,9 +184,9 @@ CREATE TABLE `rooms` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `room_number` (`room_number`),
   KEY `patient_id` (`patient_id`),
-  CONSTRAINT `fk_rooms_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `fk_rooms_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_rooms_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
 --
 -- Table structure for table `appointments`
 --
@@ -235,9 +237,10 @@ CREATE TABLE `notifications` (
   CONSTRAINT `fk_notifications_recipient` FOREIGN KEY (`recipient_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE IF NOT EXISTS `admissions` (
+CREATE TABLE `admissions` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `patient_id` int(11) NOT NULL,
+  `doctor_id` int(11) DEFAULT NULL,
   `ward_id` int(11) DEFAULT NULL,
   `bed_id` int(11) DEFAULT NULL,
   `room_id` int(11) DEFAULT NULL,
@@ -245,7 +248,9 @@ CREATE TABLE IF NOT EXISTS `admissions` (
   `discharge_date` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `patient_id` (`patient_id`),
-  CONSTRAINT `fk_admissions_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+  KEY `doctor_id` (`doctor_id`),
+  CONSTRAINT `fk_admissions_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_admissions_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `system_settings` (
