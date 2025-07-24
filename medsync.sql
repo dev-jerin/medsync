@@ -205,6 +205,7 @@ CREATE TABLE `appointments` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
+--
 -- Table structure for table `transactions`
 --
 CREATE TABLE `transactions` (
@@ -213,7 +214,10 @@ CREATE TABLE `transactions` (
   `description` varchar(255) NOT NULL,
   `amount` decimal(10,2) NOT NULL,
   `type` enum('payment','refund') NOT NULL DEFAULT 'payment',
+  `status` enum('pending','paid') NOT NULL DEFAULT 'pending',
+  `payment_mode` enum('unpaid','cash','card','online') NOT NULL DEFAULT 'unpaid',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `paid_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
   CONSTRAINT `fk_transactions_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
@@ -259,3 +263,97 @@ CREATE TABLE `system_settings` (
   PRIMARY KEY (`setting_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 INSERT INTO `system_settings` (`setting_key`, `setting_value`) VALUES ('gmail_app_password', 'sswyqzegdpyixbyw');
+
+--
+-- Table structure for table `lab_results`
+--
+CREATE TABLE `lab_results` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `patient_id` int(11) NOT NULL,
+  `doctor_id` int(11) DEFAULT NULL,
+  `staff_id` int(11) NOT NULL COMMENT 'Staff member who entered the result',
+  `test_name` varchar(255) NOT NULL,
+  `test_date` date NOT NULL,
+  `result_details` text DEFAULT NULL,
+  `attachment_path` varchar(255) DEFAULT NULL COMMENT 'Path to an uploaded file (e.g., PDF)',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `patient_id` (`patient_id`),
+  KEY `doctor_id` (`doctor_id`),
+  KEY `staff_id` (`staff_id`),
+  CONSTRAINT `fk_lab_results_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_lab_results_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_lab_results_staff` FOREIGN KEY (`staff_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Table structure for table `conversations`
+--
+CREATE TABLE `conversations` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_one_id` int(11) NOT NULL,
+  `user_two_id` int(11) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_conversation` (`user_one_id`,`user_two_id`),
+  KEY `fk_conversations_user_two` (`user_two_id`),
+  CONSTRAINT `fk_conversations_user_one` FOREIGN KEY (`user_one_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_conversations_user_two` FOREIGN KEY (`user_two_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Table structure for table `messages`
+--
+CREATE TABLE `messages` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `conversation_id` int(11) NOT NULL,
+  `sender_id` int(11) NOT NULL,
+  `receiver_id` int(11) NOT NULL,
+  `message_text` text NOT NULL,
+  `is_read` tinyint(1) NOT NULL DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `conversation_id` (`conversation_id`),
+  KEY `sender_id` (`sender_id`),
+  KEY `receiver_id` (`receiver_id`),
+  CONSTRAINT `fk_messages_conversation` FOREIGN KEY (`conversation_id`) REFERENCES `conversations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_messages_receiver` FOREIGN KEY (`receiver_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_messages_sender` FOREIGN KEY (`sender_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Table structure for table `prescriptions`
+--
+CREATE TABLE `prescriptions` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `patient_id` int(11) NOT NULL,
+  `doctor_id` int(11) NOT NULL,
+  `prescription_date` date NOT NULL,
+  `status` enum('pending','dispensed','partial','cancelled') NOT NULL DEFAULT 'pending',
+  `notes` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `patient_id` (`patient_id`),
+  KEY `doctor_id` (`doctor_id`),
+  CONSTRAINT `fk_prescriptions_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_prescriptions_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Table structure for table `prescription_items`
+--
+CREATE TABLE `prescription_items` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `prescription_id` int(11) NOT NULL,
+  `medicine_id` int(11) NOT NULL,
+  `dosage` varchar(100) NOT NULL,
+  `frequency` varchar(100) NOT NULL,
+  `quantity_prescribed` int(11) NOT NULL DEFAULT 1,
+  `is_dispensed` tinyint(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `prescription_id` (`prescription_id`),
+  KEY `medicine_id` (`medicine_id`),
+  CONSTRAINT `fk_items_prescription` FOREIGN KEY (`prescription_id`) REFERENCES `prescriptions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_items_medicine` FOREIGN KEY (`medicine_id`) REFERENCES `medicines` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

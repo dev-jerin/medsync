@@ -1,5 +1,89 @@
 <?php
 require_once 'config.php';
+use Dompdf\Dompdf;
+use Dompdf\Options;
+
+if (isset($_GET['action']) && $_GET['action'] === 'generate_bill_pdf') {
+    if (empty($_GET['patient_id'])) {
+        die("Patient ID is required.");
+    }
+    $patient_id = (int)$_GET['patient_id'];
+    $conn = getDbConnection();
+
+    // Fetch Patient and Transaction Data
+    $stmt_patient = $conn->prepare("SELECT name, display_user_id FROM users WHERE id = ?");
+    $stmt_patient->bind_param("i", $patient_id);
+    $stmt_patient->execute();
+    $patient = $stmt_patient->get_result()->fetch_assoc();
+
+    $stmt_trans = $conn->prepare("SELECT description, amount, status, created_at FROM transactions WHERE user_id = ? AND status = 'pending' ORDER BY created_at ASC");
+    $stmt_trans->bind_param("i", $patient_id);
+    $stmt_trans->execute();
+    $transactions = $stmt_trans->get_result()->fetch_all(MYSQLI_ASSOC);
+    $conn->close();
+
+    $total_due = array_reduce($transactions, function($sum, $item) {
+        return $sum + $item['amount'];
+    }, 0);
+
+    // HTML for PDF
+    $hospital_logo_path = 'images/hospital.png';
+    $hospital_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($hospital_logo_path));
+
+    $html = '
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body { font-family: DejaVu Sans, sans-serif; font-size: 12px; color: #333; }
+            .header { text-align: center; margin-bottom: 20px; }
+            .header img { width: 80px; }
+            .header h2 { margin: 0; color: #007BFF;}
+            .patient-details { margin-bottom: 20px; border: 1px solid #ddd; padding: 10px; border-radius: 5px; }
+            .bill-table { width: 100%; border-collapse: collapse; }
+            .bill-table th, .bill-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            .bill-table th { background-color: #f2f2f2; }
+            .total { text-align: right; margin-top: 20px; font-size: 1.2em; font-weight: bold; }
+            .footer { position: fixed; bottom: 0; text-align: center; font-size: 10px; color: #888; width:100%;}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <img src="' . $hospital_logo_base64 . '" alt="Hospital Logo">
+            <h2>Calysta Health Institute</h2>
+            <p>Kerala, India | +91 45235 31245</p>
+        </div>
+        <h3>Patient Invoice</h3>
+        <div class="patient-details">
+            <strong>Patient:</strong> ' . htmlspecialchars($patient['name']) . '<br>
+            <strong>Patient ID:</strong> ' . htmlspecialchars($patient['display_user_id']) . '<br>
+            <strong>Invoice Date:</strong> ' . date('Y-m-d') . '
+        </div>
+        <h4>Pending Items:</h4>
+        <table class="bill-table">
+            <thead><tr><th>Date</th><th>Description</th><th>Amount</th></tr></thead>
+            <tbody>';
+    foreach ($transactions as $t) {
+        $html .= '<tr><td>' . date('Y-m-d', strtotime($t['created_at'])) . '</td><td>' . htmlspecialchars($t['description']) . '</td><td style="text-align:right;">₹' . number_format($t['amount'], 2) . '</td></tr>';
+    }
+    $html .= '
+            </tbody>
+        </table>
+        <div class="total">Total Due: ₹' . number_format($total_due, 2) . '</div>
+        <div class="footer"><p>Thank you for choosing Calysta Health Institute.</p></div>
+    </body>
+    </html>';
+
+    require_once 'vendor/autoload.php';
+    $options = new Options();
+    $options->set('isHtml5ParserEnabled', true);
+    $dompdf = new Dompdf($options);
+    $dompdf->loadHtml($html);
+    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->render();
+    $dompdf->stream("invoice_" . $patient['display_user_id'] . ".pdf", ["Attachment" => 0]);
+    exit();
+}
 
 // --- Session Security ---
 // 1. Check if user is logged in
@@ -116,10 +200,10 @@ function generateDisplayId($role, $conn)
 if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHOD'] === 'POST')) {
     header('Content-Type: application/json');
     $response = ['success' => false, 'message' => 'An unknown error occurred.'];
-     $staff_user_id_for_log = $_SESSION['user_id']; // Get the staff's ID for logging
+    $staff_user_id_for_log = $_SESSION['user_id']; // Get the staff's ID for logging
     $conn = getDbConnection();
 
-    
+
 
     try {
         // CSRF token validation for POST requests
@@ -169,13 +253,57 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         throw new Exception('The selected bed or room is no longer available. Please refresh and try again.');
                     }
 
-                        // --- Audit Log ---
+                    // --- Audit Log ---
                     $log_details = "Admitted patient (ID: {$patient_id}) to {$resource_type} (ID: {$resource_id}) under Dr. (ID: {$doctor_id}).";
                     log_activity($conn, $staff_user_id_for_log, 'admit_patient', $patient_id, $log_details);
 
                     $conn->commit();
                     $response = ['success' => true, 'message' => 'Patient admitted successfully.'];
                     break;
+
+                    case 'addTransaction':
+    if (empty($_POST['patient_id']) || empty($_POST['description']) || !isset($_POST['amount']) || empty($_POST['type'])) {
+        throw new Exception('All fields are required for a transaction.');
+    }
+    $patient_id = (int)$_POST['patient_id'];
+    $description = $_POST['description'];
+    $amount = (float)$_POST['amount'];
+    $type = $_POST['type'];
+
+    $stmt = $conn->prepare("INSERT INTO transactions (user_id, description, amount, type) VALUES (?, ?, ?, ?)");
+    $stmt->bind_param("isds", $patient_id, $description, $amount, $type);
+    if ($stmt->execute()) {
+        $log_details = "Created a new transaction for patient ID {$patient_id}: {$description} - ₹{$amount} ({$type}).";
+        log_activity($conn, $staff_user_id_for_log, 'create_transaction', $patient_id, $log_details);
+        $response = ['success' => true, 'message' => 'Transaction added successfully.'];
+    } else {
+        throw new Exception('Failed to add transaction.');
+    }
+    break;
+
+    case 'markTransactionsPaid':
+    if (empty($_POST['transaction_ids']) || empty($_POST['payment_mode'])) {
+        throw new Exception('Transaction IDs and payment mode are required.');
+    }
+    $transaction_ids = json_decode($_POST['transaction_ids']);
+    if (!is_array($transaction_ids) || count($transaction_ids) === 0) {
+        throw new Exception('Invalid transaction IDs provided.');
+    }
+    $payment_mode = $_POST['payment_mode'];
+    $placeholders = implode(',', array_fill(0, count($transaction_ids), '?'));
+    $types = str_repeat('i', count($transaction_ids));
+
+    $stmt = $conn->prepare("UPDATE transactions SET status = 'paid', payment_mode = ?, paid_at = NOW() WHERE id IN ($placeholders) AND status = 'pending'");
+    $stmt->bind_param("s" . $types, $payment_mode, ...$transaction_ids);
+
+    if ($stmt->execute()) {
+        $log_details = "Marked transaction(s) " . implode(', ', $transaction_ids) . " as paid via {$payment_mode}.";
+        log_activity($conn, $staff_user_id_for_log, 'update_transaction', null, $log_details);
+        $response = ['success' => true, 'message' => 'Transaction(s) marked as paid.'];
+    } else {
+        throw new Exception('Failed to update transaction status.');
+    }
+    break;
 
                 // --- INVENTORY MANAGEMENT ACTIONS ---
                 case 'addMedicine':
@@ -214,7 +342,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt = $conn->prepare("UPDATE medicines SET name = ?, description = ?, quantity = ?, unit_price = ?, low_stock_threshold = ? WHERE id = ?");
                     $stmt->bind_param("ssidii", $name, $description, $quantity, $unit_price, $low_stock_threshold, $id);
                     if ($stmt->execute()) {
-                          // --- Audit Log ---
+                        // --- Audit Log ---
                         $log_details = "Updated medicine '{$name}' (ID: {$id}). New quantity: {$quantity}.";
                         log_activity($conn, $staff_user_id_for_log, 'update_medicine', null, $log_details);
                         $response = ['success' => true, 'message' => 'Medicine updated successfully.'];
@@ -231,7 +359,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt = $conn->prepare("DELETE FROM medicines WHERE id = ?");
                     $stmt->bind_param("i", $id);
                     if ($stmt->execute()) {
-                           // --- Audit Log ---
+                        // --- Audit Log ---
                         // To make the log more descriptive, you can fetch the medicine name before deleting
                         $log_details = "Deleted medicine with ID: {$id}.";
                         log_activity($conn, $staff_user_id_for_log, 'delete_medicine', null, $log_details);
@@ -252,7 +380,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt = $conn->prepare("INSERT INTO blood_inventory (blood_group, quantity_ml, low_stock_threshold_ml) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE quantity_ml = ?, low_stock_threshold_ml = ?");
                     $stmt->bind_param("siiii", $blood_group, $quantity_ml, $low_stock_threshold_ml, $quantity_ml, $low_stock_threshold_ml);
                     if ($stmt->execute()) {
-                                   // --- Audit Log ---
+                        // --- Audit Log ---
                         $log_details = "Updated blood inventory for group '{$blood_group}' to {$quantity_ml} ml.";
                         log_activity($conn, $staff_user_id_for_log, 'update_blood_inventory', null, $log_details);
                         $response = ['success' => true, 'message' => 'Blood inventory updated successfully.'];
@@ -318,83 +446,83 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     break;
 
-             case 'updateUser':
-    $conn->begin_transaction();
-    try {
-        if (empty($_POST['id'])) {
-            throw new Exception('User ID is missing.');
-        }
-        $id = (int)$_POST['id'];
+                case 'updateUser':
+                    $conn->begin_transaction();
+                    try {
+                        if (empty($_POST['id'])) {
+                            throw new Exception('User ID is missing.');
+                        }
+                        $id = (int) $_POST['id'];
 
-        $stmt_check_role = $conn->prepare("SELECT role, profile_picture FROM users WHERE id = ?");
-        $stmt_check_role->bind_param("i", $id);
-        $stmt_check_role->execute();
-        $user_to_update = $stmt_check_role->get_result()->fetch_assoc();
-        if (!$user_to_update || !in_array($user_to_update['role'], ['user', 'doctor'])) {
-            throw new Exception('Permission denied to modify this user.');
-        }
+                        $stmt_check_role = $conn->prepare("SELECT role, profile_picture FROM users WHERE id = ?");
+                        $stmt_check_role->bind_param("i", $id);
+                        $stmt_check_role->execute();
+                        $user_to_update = $stmt_check_role->get_result()->fetch_assoc();
+                        if (!$user_to_update || !in_array($user_to_update['role'], ['user', 'doctor'])) {
+                            throw new Exception('Permission denied to modify this user.');
+                        }
 
-        // Correctly retrieve all fields from the form
-        $name = $_POST['name'];
-        $username = $_POST['username'];
-        $email = $_POST['email'];
-        $phone = $_POST['phone'];
-        $date_of_birth = !empty($_POST['date_of_birth']) ? $_POST['date_of_birth'] : null;
-        $gender = !empty($_POST['gender']) ? $_POST['gender'] : null;
-        $active = isset($_POST['active']) ? (int)$_POST['active'] : 1;
+                        // Correctly retrieve all fields from the form
+                        $name = $_POST['name'];
+                        $username = $_POST['username'];
+                        $email = $_POST['email'];
+                        $phone = $_POST['phone'];
+                        $date_of_birth = !empty($_POST['date_of_birth']) ? $_POST['date_of_birth'] : null;
+                        $gender = !empty($_POST['gender']) ? $_POST['gender'] : null;
+                        $active = isset($_POST['active']) ? (int) $_POST['active'] : 1;
 
-        $sql_parts = ["name = ?", "username = ?", "email = ?", "phone = ?", "date_of_birth = ?", "gender = ?", "active = ?"];
-        $params = [$name, $username, $email, $phone, $date_of_birth, $gender, $active];
-        $types = "ssssssi";
+                        $sql_parts = ["name = ?", "username = ?", "email = ?", "phone = ?", "date_of_birth = ?", "gender = ?", "active = ?"];
+                        $params = [$name, $username, $email, $phone, $date_of_birth, $gender, $active];
+                        $types = "ssssssi";
 
-        if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == 0) {
-            if ($user_to_update['profile_picture'] && $user_to_update['profile_picture'] !== 'default.png') {
-                $old_pfp_path = "uploads/profile_pictures/" . $user_to_update['profile_picture'];
-                if (file_exists($old_pfp_path)) {
-                    unlink($old_pfp_path);
-                }
-            }
-            $target_dir = "uploads/profile_pictures/";
-            $image_name = uniqid() . '_' . basename($_FILES["profile_picture"]["name"]);
-            $target_file = $target_dir . $image_name;
-            if (move_uploaded_file($_FILES["profile_picture"]["tmp_name"], $target_file)) {
-                $sql_parts[] = "profile_picture = ?";
-                $params[] = $image_name;
-                $types .= "s";
-            }
-        }
+                        if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == 0) {
+                            if ($user_to_update['profile_picture'] && $user_to_update['profile_picture'] !== 'default.png') {
+                                $old_pfp_path = "uploads/profile_pictures/" . $user_to_update['profile_picture'];
+                                if (file_exists($old_pfp_path)) {
+                                    unlink($old_pfp_path);
+                                }
+                            }
+                            $target_dir = "uploads/profile_pictures/";
+                            $image_name = uniqid() . '_' . basename($_FILES["profile_picture"]["name"]);
+                            $target_file = $target_dir . $image_name;
+                            if (move_uploaded_file($_FILES["profile_picture"]["tmp_name"], $target_file)) {
+                                $sql_parts[] = "profile_picture = ?";
+                                $params[] = $image_name;
+                                $types .= "s";
+                            }
+                        }
 
-        // Add password update logic if a new password is provided
-        if (!empty($_POST['password'])) {
-            $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
-            $sql_parts[] = "password = ?";
-            $params[] = $hashed_password;
-            $types .= "s";
-        }
+                        // Add password update logic if a new password is provided
+                        if (!empty($_POST['password'])) {
+                            $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+                            $sql_parts[] = "password = ?";
+                            $params[] = $hashed_password;
+                            $types .= "s";
+                        }
 
-        $sql = "UPDATE users SET " . implode(", ", $sql_parts) . " WHERE id = ?";
-        $params[] = $id;
-        $types .= "i";
+                        $sql = "UPDATE users SET " . implode(", ", $sql_parts) . " WHERE id = ?";
+                        $params[] = $id;
+                        $types .= "i";
 
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param($types, ...$params);
-        $stmt->execute();
+                        $stmt = $conn->prepare($sql);
+                        $stmt->bind_param($types, ...$params);
+                        $stmt->execute();
 
-        if ($user_to_update['role'] === 'doctor') {
-            $stmt_doctor = $conn->prepare("UPDATE doctors SET specialty = ?, qualifications = ? WHERE user_id = ?");
-            $stmt_doctor->bind_param("ssi", $_POST['specialty'], $_POST['qualifications'], $id);
-            $stmt_doctor->execute();
-        }
-    // --- Audit Log ---
+                        if ($user_to_update['role'] === 'doctor') {
+                            $stmt_doctor = $conn->prepare("UPDATE doctors SET specialty = ?, qualifications = ? WHERE user_id = ?");
+                            $stmt_doctor->bind_param("ssi", $_POST['specialty'], $_POST['qualifications'], $id);
+                            $stmt_doctor->execute();
+                        }
+                        // --- Audit Log ---
                         $log_details = "Updated user '{$username}' (ID: {$id}).";
                         log_activity($conn, $staff_user_id_for_log, 'update_user', $id, $log_details);
-        $conn->commit();
-        $response = ['success' => true, 'message' => 'User updated successfully.'];
-    } catch (Exception $e) {
-        $conn->rollback();
-        throw $e;
-    }
-    break;
+                        $conn->commit();
+                        $response = ['success' => true, 'message' => 'User updated successfully.'];
+                    } catch (Exception $e) {
+                        $conn->rollback();
+                        throw $e;
+                    }
+                    break;
 
                 case 'deleteUser':
                     if (empty($_POST['id'])) {
@@ -413,13 +541,13 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt = $conn->prepare("UPDATE users SET active = 0 WHERE id = ?");
                     $stmt->bind_param("i", $id);
                     $stmt->execute();
-                        // --- Audit Log ---
+                    // --- Audit Log ---
                     $log_details = "Deactivated user with ID: {$id}.";
                     log_activity($conn, $staff_user_id_for_log, 'deactivate_user', $id, $log_details);
                     $response = ['success' => true, 'message' => 'User deactivated successfully.'];
                     break;
 
-                           case 'removeProfilePicture':
+                case 'removeProfilePicture':
                     if (empty($_POST['id'])) {
                         throw new Exception('Invalid user ID.');
                     }
@@ -444,7 +572,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt_update = $conn->prepare("UPDATE users SET profile_picture = 'default.png' WHERE id = ?");
                     $stmt_update->bind_param("i", $id);
                     if ($stmt_update->execute()) {
-                         // --- Audit Log ---
+                        // --- Audit Log ---
                         $log_details = "Removed profile picture for user ID: {$id}.";
                         log_activity($conn, $staff_user_id_for_log, 'update_user', $id, $log_details);
                         $response = ['success' => true, 'message' => 'Profile picture removed successfully.'];
@@ -452,6 +580,227 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         throw new Exception('Failed to remove profile picture.');
                     }
                     break;
+
+                case 'updateProfile':
+                    if (empty($_POST['name']) || empty($_POST['email'])) {
+                        throw new Exception('Name and Email are required.');
+                    }
+                    $id = $_SESSION['user_id'];
+                    $name = $_POST['name'];
+                    $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
+                    if (!$email) {
+                        throw new Exception('Invalid email format.');
+                    }
+                    $phone = $_POST['phone'];
+
+                    $sql_parts = ["name = ?", "email = ?", "phone = ?"];
+                    $params = [$name, $email, $phone];
+                    $types = "sss";
+
+                    if (!empty($_POST['password'])) {
+                        $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+                        $sql_parts[] = "password = ?";
+                        $params[] = $hashed_password;
+                        $types .= "s";
+                    }
+
+                    $sql = "UPDATE users SET " . implode(", ", $sql_parts) . " WHERE id = ?";
+                    $params[] = $id;
+                    $types .= "i";
+
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param($types, ...$params);
+
+                    if ($stmt->execute()) {
+                        $_SESSION['username'] = $name; // Update session username
+                        log_activity($conn, $staff_user_id_for_log, 'update_own_profile', $id, 'Staff updated their own profile details.');
+                        $response = ['success' => true, 'message' => 'Your profile has been updated successfully.'];
+                    } else {
+                        throw new Exception('Failed to update your profile.');
+                    }
+                    break;
+
+                case 'addLabResult':
+                    $conn->begin_transaction();
+                    try {
+                        // --- Validation ---
+                        if (empty($_POST['patient_id']) || empty($_POST['test_name']) || empty($_POST['test_date'])) {
+                            throw new Exception('Patient, test name, and test date are required.');
+                        }
+
+                        $patient_id = (int) $_POST['patient_id'];
+                        $doctor_id = !empty($_POST['doctor_id']) ? (int) $_POST['doctor_id'] : null;
+                        $test_name = $_POST['test_name'];
+                        $test_date = $_POST['test_date'];
+                        $result_details = $_POST['result_details'] ?? null;
+                        $staff_id = $_SESSION['user_id'];
+                        $attachment_path = null;
+
+                        // --- File Upload Handling (Optional) ---
+                        if (isset($_FILES['attachment']) && $_FILES['attachment']['error'] == 0) {
+                            $target_dir = "uploads/lab_results/";
+                            if (!file_exists($target_dir)) {
+                                mkdir($target_dir, 0777, true);
+                            }
+                            $file_name = uniqid() . '_' . basename($_FILES["attachment"]["name"]);
+                            $target_file = $target_dir . $file_name;
+
+                            // You might want to add more validation here (file type, size, etc.)
+                            if (move_uploaded_file($_FILES["attachment"]["tmp_name"], $target_file)) {
+                                $attachment_path = $file_name;
+                            } else {
+                                throw new Exception('Failed to upload the attachment.');
+                            }
+                        }
+
+                        // --- Database Insertion ---
+                        $stmt = $conn->prepare(
+                            "INSERT INTO lab_results (patient_id, doctor_id, staff_id, test_name, test_date, result_details, attachment_path) VALUES (?, ?, ?, ?, ?, ?, ?)"
+                        );
+                        $stmt->bind_param("iiissss", $patient_id, $doctor_id, $staff_id, $test_name, $test_date, $result_details, $attachment_path);
+
+                        if (!$stmt->execute()) {
+                            throw new Exception('Failed to save lab result to the database.');
+                        }
+
+                        // --- Audit Log ---
+                        $log_details = "Entered new lab result '{$test_name}' for patient ID {$patient_id}.";
+                        log_activity($conn, $staff_user_id_for_log, 'add_lab_result', $patient_id, $log_details);
+
+                        $conn->commit();
+                        $response = ['success' => true, 'message' => 'Lab result saved successfully.'];
+
+                    } catch (Exception $e) {
+                        $conn->rollback();
+                        throw $e; // Re-throw to be caught by the main handler
+                    }
+                    break;
+
+                    case 'mark_notifications_read':
+    $staff_id = $_SESSION['user_id'];
+    // This query updates the is_read flag for notifications targeted to this specific user or their role.
+    $sql = "UPDATE notifications SET is_read = 1 WHERE (recipient_user_id = ? OR recipient_role = 'staff' OR recipient_role = 'all') AND is_read = 0";
+    $stmt = $conn->prepare($sql);
+    if ($stmt) {
+        $stmt->bind_param("i", $staff_id);
+        if ($stmt->execute()) {
+            $response = ['success' => true, 'message' => 'Notifications marked as read.'];
+        } else {
+            $response = ['success' => false, 'message' => 'Database update failed.'];
+        }
+        $stmt->close();
+    } else {
+        $response = ['success' => false, 'message' => 'Database statement could not be prepared.'];
+    }
+    break;
+
+                case 'sendMessage':
+                    $conn->begin_transaction();
+                    try {
+                        if (empty($_POST['receiver_id']) || empty(trim($_POST['message_text']))) {
+                            throw new Exception('Receiver and message text are required.');
+                        }
+                        $receiver_id = (int) $_POST['receiver_id'];
+                        $message_text = trim($_POST['message_text']);
+                        $sender_id = $_SESSION['user_id'];
+
+                        if ($sender_id === $receiver_id) {
+                            throw new Exception('Cannot send a message to yourself.');
+                        }
+
+                        // --- Find or create a conversation ---
+                        $user_one = min($sender_id, $receiver_id);
+                        $user_two = max($sender_id, $receiver_id);
+
+                        $stmt = $conn->prepare("SELECT id FROM conversations WHERE user_one_id = ? AND user_two_id = ?");
+                        $stmt->bind_param("ii", $user_one, $user_two);
+                        $stmt->execute();
+                        $conversation = $stmt->get_result()->fetch_assoc();
+
+                        if ($conversation) {
+                            $conversation_id = $conversation['id'];
+                        } else {
+                            $stmt = $conn->prepare("INSERT INTO conversations (user_one_id, user_two_id) VALUES (?, ?)");
+                            $stmt->bind_param("ii", $user_one, $user_two);
+                            $stmt->execute();
+                            $conversation_id = $conn->insert_id;
+                        }
+
+                        // --- Insert the message ---
+                        $stmt = $conn->prepare("INSERT INTO messages (conversation_id, sender_id, receiver_id, message_text) VALUES (?, ?, ?, ?)");
+                        $stmt->bind_param("iiis", $conversation_id, $sender_id, $receiver_id, $message_text);
+                        if (!$stmt->execute()) {
+                            throw new Exception('Failed to send message.');
+                        }
+
+                        $conn->commit();
+                        $response = ['success' => true, 'message' => 'Message sent.'];
+
+                    } catch (Exception $e) {
+                        $conn->rollback();
+                        throw $e;
+                    }
+                    break;
+
+                    case 'dispenseMedication':
+    $conn->begin_transaction();
+    try {
+        if (empty($_POST['prescription_item_id'])) {
+            throw new Exception('Prescription item ID is required.');
+        }
+        $item_id = (int)$_POST['prescription_item_id'];
+
+        // 1. Get item details (medicine_id, quantity)
+        $stmt_item = $conn->prepare("SELECT medicine_id, quantity_prescribed, prescription_id FROM prescription_items WHERE id = ? AND is_dispensed = 0");
+        $stmt_item->bind_param("i", $item_id);
+        $stmt_item->execute();
+        $item = $stmt_item->get_result()->fetch_assoc();
+
+        if (!$item) {
+            throw new Exception('Item is already dispensed or does not exist.');
+        }
+
+        $medicine_id = $item['medicine_id'];
+        $quantity_to_dispense = $item['quantity_prescribed'];
+        $prescription_id = $item['prescription_id'];
+
+        // 2. Check stock and update medicine inventory
+        $stmt_stock = $conn->prepare("UPDATE medicines SET quantity = quantity - ? WHERE id = ? AND quantity >= ?");
+        $stmt_stock->bind_param("iii", $quantity_to_dispense, $medicine_id, $quantity_to_dispense);
+        $stmt_stock->execute();
+
+        if ($stmt_stock->affected_rows === 0) {
+            throw new Exception('Insufficient stock for this medicine. Cannot dispense.');
+        }
+
+        // 3. Mark the prescription item as dispensed
+        $stmt_dispense = $conn->prepare("UPDATE prescription_items SET is_dispensed = 1 WHERE id = ?");
+        $stmt_dispense->bind_param("i", $item_id);
+        $stmt_dispense->execute();
+
+        // 4. Check if all items for this prescription are dispensed and update main prescription status
+        $stmt_check_all = $conn->prepare("SELECT COUNT(*) as pending_items FROM prescription_items WHERE prescription_id = ? AND is_dispensed = 0");
+        $stmt_check_all->bind_param("i", $prescription_id);
+        $stmt_check_all->execute();
+        $pending_count = $stmt_check_all->get_result()->fetch_assoc()['pending_items'];
+        
+        $new_status = ($pending_count == 0) ? 'dispensed' : 'partial';
+        $stmt_update_status = $conn->prepare("UPDATE prescriptions SET status = ? WHERE id = ?");
+        $stmt_update_status->bind_param("si", $new_status, $prescription_id);
+        $stmt_update_status->execute();
+        
+        // --- Audit Log ---
+        $log_details = "Dispensed medication (Item ID: {$item_id}) for Prescription ID: {$prescription_id}.";
+        log_activity($conn, $staff_user_id_for_log, 'dispense_medication', null, $log_details);
+        
+        $conn->commit();
+        $response = ['success' => true, 'message' => 'Medication dispensed successfully.'];
+
+    } catch (Exception $e) {
+        $conn->rollback();
+        throw $e;
+    }
+    break;
             }
         }
 
@@ -460,6 +809,47 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
         elseif (isset($_GET['fetch'])) {
             $fetch_target = $_GET['fetch'];
             switch ($fetch_target) {
+
+                case 'transactions':
+    $search = $_GET['search'] ?? '';
+    $sql = "SELECT t.id, u.name as patient_name, t.description, t.amount, t.type, t.created_at
+            FROM transactions t
+            JOIN users u ON t.user_id = u.id";
+
+    $params = [];
+    $types = "";
+
+    if (!empty($search)) {
+        $sql .= " WHERE u.name LIKE ? OR t.description LIKE ?";
+        $search_term = "%{$search}%";
+        array_push($params, $search_term, $search_term);
+        $types .= "ss";
+    }
+    $sql .= " ORDER BY t.created_at DESC";
+
+    $stmt = $conn->prepare($sql);
+    if (!empty($params)) {
+        $stmt->bind_param($types, ...$params);
+    }
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $data = $result->fetch_all(MYSQLI_ASSOC);
+    $response = ['success' => true, 'data' => $data];
+    break;
+
+    case 'user_transactions':
+    if (empty($_GET['patient_id'])) {
+        throw new Exception('Patient ID is required.');
+    }
+    $patient_id = (int)$_GET['patient_id'];
+    $sql = "SELECT id, description, amount, status, type, created_at FROM transactions WHERE user_id = ? ORDER BY created_at DESC";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $patient_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $data = $result->fetch_all(MYSQLI_ASSOC);
+    $response = ['success' => true, 'data' => $data];
+    break;
 
                 case 'search_unassigned_users':
                     $term = $_GET['term'] ?? '';
@@ -490,7 +880,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     $search = $_GET['search'] ?? '';
 
-                          $sql = "SELECT u.id, u.display_user_id, u.name, u.username, u.email, u.phone, u.date_of_birth, u.gender, u.role, u.active, u.created_at, u.profile_picture, d.specialty, d.qualifications
+                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, u.email, u.phone, u.date_of_birth, u.gender, u.role, u.active, u.created_at, u.profile_picture, d.specialty, d.qualifications
             FROM users u
             LEFT JOIN doctors d ON u.id = d.user_id
             WHERE u.role = ?";
@@ -638,7 +1028,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $response = ['success' => true, 'data' => $data];
                     break;
 
-                         case 'my_activity':
+                case 'my_activity':
                     $staff_id = $_SESSION['user_id'];
                     $sql = "SELECT a.id, a.action, a.details, a.created_at, t.name as target_user_name
                             FROM activity_logs a
@@ -653,6 +1043,169 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $data = $result->fetch_all(MYSQLI_ASSOC);
                     $response = ['success' => true, 'data' => $data];
                     break;
+
+                case 'my_profile':
+                    $staff_id = $_SESSION['user_id'];
+                    $stmt = $conn->prepare("SELECT name, email, phone, username FROM users WHERE id = ?");
+                    $stmt->bind_param("i", $staff_id);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $data = $result->fetch_assoc();
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
+                case 'lab_results_history':
+                    if (empty($_GET['patient_id'])) {
+                        throw new Exception('Patient ID is required to fetch lab history.');
+                    }
+                    $patient_id = (int) $_GET['patient_id'];
+
+                    $sql = "SELECT lr.id, lr.test_name, lr.test_date, lr.result_details, lr.attachment_path, lr.created_at, 
+                   d.name as doctor_name, s.name as staff_name
+            FROM lab_results lr
+            LEFT JOIN users d ON lr.doctor_id = d.id
+            JOIN users s ON lr.staff_id = s.id
+            WHERE lr.patient_id = ?
+            ORDER BY lr.test_date DESC, lr.created_at DESC";
+
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("i", $patient_id);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
+                    case 'all_notifications':
+    $staff_id = $_SESSION['user_id'];
+    $sql = "SELECT n.id, n.message, n.created_at, n.is_read, u.name as sender_name 
+            FROM notifications n
+            JOIN users u ON n.sender_id = u.id
+            WHERE (n.recipient_user_id = ? OR n.recipient_role = 'staff' OR n.recipient_role = 'all')
+            ORDER BY n.created_at DESC";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $staff_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $data = $result->fetch_all(MYSQLI_ASSOC);
+    $response = ['success' => true, 'data' => $data];
+    break;
+
+case 'unread_notification_count':
+    $staff_id = $_SESSION['user_id'];
+    $sql = "SELECT COUNT(*) as unread_count 
+            FROM notifications
+            WHERE 
+                (recipient_user_id = ? OR recipient_role = 'staff' OR recipient_role = 'all') 
+                AND is_read = 0";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $staff_id);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    $response = ['success' => true, 'count' => $result['unread_count']];
+    break;
+
+                case 'messenger_contacts':
+                    $current_user_id = $_SESSION['user_id'];
+                    // Fetches doctors and other staff, excluding the current user
+                    $sql = "SELECT id, name, role, display_user_id 
+            FROM users 
+            WHERE (role = 'doctor' OR role = 'staff') AND active = 1 AND id != ? 
+            ORDER BY role, name ASC";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("i", $current_user_id);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
+                case 'messages':
+                    if (empty($_GET['contact_id'])) {
+                        throw new Exception('Contact ID is required.');
+                    }
+                    $contact_id = (int) $_GET['contact_id'];
+                    $current_user_id = $_SESSION['user_id'];
+
+                    $user_one = min($current_user_id, $contact_id);
+                    $user_two = max($current_user_id, $contact_id);
+
+                    // Mark messages as read
+                    $stmt_read = $conn->prepare("UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ?");
+                    $stmt_read->bind_param("ii", $contact_id, $current_user_id);
+                    $stmt_read->execute();
+
+                    // Fetch messages
+                    $sql = "SELECT m.id, m.sender_id, m.message_text, m.created_at
+            FROM messages m
+            JOIN conversations c ON m.conversation_id = c.id
+            WHERE c.user_one_id = ? AND c.user_two_id = ?
+            ORDER BY m.created_at ASC";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("ii", $user_one, $user_two);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
+                    case 'pending_prescriptions':
+    $sql = "SELECT p.id, patient.name as patient_name, doctor.name as doctor_name, p.prescription_date, p.status
+            FROM prescriptions p
+            JOIN users patient ON p.patient_id = patient.id
+            JOIN users doctor ON p.doctor_id = doctor.id
+            WHERE p.status = 'pending' OR p.status = 'partial'
+            ORDER BY p.prescription_date ASC";
+    $result = $conn->query($sql);
+    $data = $result->fetch_all(MYSQLI_ASSOC);
+    $response = ['success' => true, 'data' => $data];
+    break;
+
+case 'prescription_details':
+    if (empty($_GET['id'])) {
+        throw new Exception('Prescription ID is required.');
+    }
+    $id = (int)$_GET['id'];
+    $sql = "SELECT pi.id, pi.dosage, pi.frequency, pi.is_dispensed, m.name as medicine_name, m.quantity as stock_level
+            FROM prescription_items pi
+            JOIN medicines m ON pi.medicine_id = m.id
+            WHERE pi.prescription_id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $data = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $response = ['success' => true, 'data' => $data];
+    break;
+
+    case 'staff_dashboard_stats':
+    $stats = [];
+    
+    // Count of patients currently admitted (pending discharge)
+    $stats['pending_discharges'] = $conn->query("SELECT COUNT(*) as c FROM admissions WHERE discharge_date IS NULL")->fetch_assoc()['c'];
+    
+    // Count of prescriptions needing attention
+    $stats['pending_prescriptions'] = $conn->query("SELECT COUNT(*) as c FROM prescriptions WHERE status = 'pending' OR status = 'partial'")->fetch_assoc()['c'];
+
+    // Count low stock medicines
+    $low_medicines_count = $conn->query("SELECT COUNT(*) as c FROM medicines WHERE quantity <= low_stock_threshold")->fetch_assoc()['c'];
+
+    // Count low stock blood units
+    $low_blood_count = $conn->query("SELECT COUNT(*) as c FROM blood_inventory WHERE quantity_ml <= low_stock_threshold_ml")->fetch_assoc()['c'];
+
+    $stats['low_stock_items'] = $low_medicines_count + $low_blood_count;
+    
+    // For "Pending Admissions", we can count active patients not currently in a bed or room
+    $stats['pending_admissions'] = $conn->query("
+        SELECT COUNT(u.id) as c 
+        FROM users u 
+        LEFT JOIN admissions a ON u.id = a.patient_id AND a.discharge_date IS NULL
+        WHERE u.role = 'user' AND u.active = 1 AND a.id IS NULL
+    ")->fetch_assoc()['c'];
+
+    $response = ['success' => true, 'data' => $stats];
+    break;
 
             }
         }
@@ -1757,6 +2310,7 @@ if (function_exists('getDbConnection')) {
                             Dashboard</a></li>
                     <li><a href="#" class="nav-link" data-target="admissions"><i class="fas fa-user-plus"></i>
                             Admissions</a></li>
+                            <li><a href="#" class="nav-link" data-target="billing"><i class="fas fa-file-invoice-dollar"></i> Billing</a></li>
                     <li><a href="#" class="nav-link" data-target="dispensing"><i class="fas fa-pills"></i> Medication
                             Dispensing</a></li>
                     <li><a href="#" class="nav-link" data-target="discharges"><i class="fas fa-hospital-user"></i>
@@ -1771,6 +2325,9 @@ if (function_exists('getDbConnection')) {
                             Messenger</a></li>
                     <li><a href="#" class="nav-link" data-target="activity-log"><i class="fas fa-history"></i> Activity
                             Log</a></li>
+                    <li><a href="#" class="nav-link" data-target="my-account"><i class="fas fa-user-cog"></i> My
+                            Account</a></li>
+                            <li><a href="#" class="nav-link" data-target="all-notifications"><i class="fas fa-bell"></i> Notifications</a></li>
                 </ul>
             </nav>
             <div class="sidebar-footer">
@@ -1796,6 +2353,11 @@ if (function_exists('getDbConnection')) {
                         </label>
                         <i class="fas fa-moon"></i>
                     </div>
+
+                    <div class="notification-bell-wrapper nav-link" id="notification-bell-wrapper" data-target="all-notifications" style="position: relative; cursor: pointer; padding: 0.5rem; font-size: 1.2rem;">
+    <i class="fas fa-bell"></i>
+    <span id="notification-count" style="position: absolute; top: -5px; right: -8px; background-color: var(--danger-color); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; display: none; place-items: center;"></span>
+</div>
                     <button class="btn-icon" id="settings-btn" title="Dashboard Settings"><i
                             class="fas fa-cog"></i></button>
                     <div class="user-profile-widget">
@@ -1809,62 +2371,54 @@ if (function_exists('getDbConnection')) {
                 </div>
             </header>
 
-            <div id="dashboard-panel" class="content-panel active">
-                <div class="stat-cards-container">
-                    <div class="stat-card">
-                        <div class="icon"><i class="fas fa-bed"></i></div>
-                        <div class="info">
-                            <div class="value">15</div>
-                            <div class="label">Pending Admissions</div>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="icon"><i class="fas fa-file-export"></i></div>
-                        <div class="info">
-                            <div class="value">8</div>
-                            <div class="label">Pending Discharges</div>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="icon"><i class="fas fa-pills"></i></div>
-                        <div class="info">
-                            <div class="value">23</div>
-                            <div class="label">Prescriptions to Dispense</div>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="icon"><i class="fas fa-box-open"></i></div>
-                        <div class="info">
-                            <div class="value">5</div>
-                            <div class="label">Low Stock Items</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="dashboard-grid" style="margin-top: 2rem; grid-template-columns: 2fr 1fr; gap: 2rem;">
-                    <div class="quick-actions">
-                        <h3>Quick Actions</h3>
-                        <div class="actions-grid">
-                            <a href="#" class="action-btn nav-link" data-target="admissions"><i
-                                    class="fas fa-user-plus"></i> Admit Patient</a>
-                            <a href="#" class="action-btn nav-link" data-target="discharges"><i
-                                    class="fas fa-file-export"></i> Process Discharge</a>
-                            <a href="#" class="action-btn nav-link" data-target="inventory"><i class="fas fa-dolly"></i>
-                                Update Inventory</a>
-                            <a href="#" class="action-btn nav-link" data-target="manage-users"><i
-                                    class="fas fa-users-cog"></i> Manage Users</a>
-                        </div>
-                    </div>
-                    <div class="panel-container">
-                        <h3>Visual Analytics</h3>
-                        <div class="chart-container" id="bed-occupancy-chart">
-                            <i class="fas fa-chart-pie" style="font-size: 2rem; margin-right: 1rem;"></i>
-                            <p>Bed Occupancy Chart</p>
-                        </div>
-                        <small class="small-note" style="text-align: center; margin-top: 1rem;">Chart library (e.g.,
-                            Chart.js) required to render.</small>
-                    </div>
-                </div>
+         <div id="dashboard-panel" class="content-panel active">
+    <div class="stat-cards-container">
+        <div class="stat-card">
+            <div class="icon"><i class="fas fa-user-plus"></i></div>
+            <div class="info">
+                <div class="value" id="stat-pending-admissions">0</div>
+                <div class="label">Pending Admissions</div>
             </div>
+        </div>
+        <div class="stat-card">
+            <div class="icon"><i class="fas fa-hospital-user"></i></div>
+            <div class="info">
+                <div class="value" id="stat-pending-discharges">0</div>
+                <div class="label">Current In-Patients</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="icon"><i class="fas fa-pills"></i></div>
+            <div class="info">
+                <div class="value" id="stat-pending-prescriptions">0</div>
+                <div class="label">Prescriptions to Dispense</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="icon"><i class="fas fa-exclamation-triangle"></i></div>
+            <div class="info">
+                <div class="value" id="stat-low-stock-items">0</div>
+                <div class="label">Low Stock Items</div>
+            </div>
+        </div>
+    </div>
+    <div class="dashboard-grid" style="margin-top: 2rem; grid-template-columns: 2fr 1fr; gap: 2rem;">
+        <div class="panel-container">
+            <h3>Your Recent Activity</h3>
+            <div id="dashboard-activity-log">
+                </div>
+        </div>
+        <div class="quick-actions">
+            <h3>Quick Actions</h3>
+            <div class="actions-grid">
+                <a href="#" class="action-btn nav-link" data-target="admissions"><i class="fas fa-user-plus"></i> Admit Patient</a>
+                <a href="#" class="action-btn nav-link" data-target="dispensing"><i class="fas fa-pills"></i> Dispense Meds</a>
+                <a href="#" class="action-btn nav-link" data-target="inventory"><i class="fas fa-boxes"></i> Inventory</a>
+                <a href="#" class="action-btn nav-link" data-target="manage-users"><i class="fas fa-users"></i> Manage Users</a>
+            </div>
+        </div>
+    </div>
+</div>
 
 
 
@@ -1905,57 +2459,103 @@ if (function_exists('getDbConnection')) {
                     </form>
                 </div>
             </div>
-
-            <div id="dispensing-panel" class="content-panel">
-                <div class="panel-container">
-                    <div class="panel-header">
-                        <h3>Pending Prescriptions</h3>
-                        <div class="search-bar">
-                            <input type="text" class="table-search" data-table="dispensing-table"
-                                placeholder="Search by patient name...">
-                        </div>
-                    </div>
-                    <table class="custom-table" id="dispensing-table">
-                        <thead>
-                            <tr>
-                                <th>Patient Name</th>
-                                <th>Prescribing Doctor</th>
-                                <th>Date</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>Mark Johnson</td>
-                                <td>Dr. Alice Williams</td>
-                                <td>2025-07-23</td>
-                                <td><span class="badge badge-warning">Pending</span></td>
-                                <td><button class="btn btn-primary btn-sm" onclick="openModal('dispenseModal')"><i
-                                            class="fas fa-eye"></i> View & Dispense</button></td>
-                            </tr>
-                            <tr>
-                                <td>Laura Davis</td>
-                                <td>Dr. Ben Carter</td>
-                                <td>2025-07-22</td>
-                                <td><span class="badge badge-warning">Pending</span></td>
-                                <td><button class="btn btn-primary btn-sm" onclick="openModal('dispenseModal')"><i
-                                            class="fas fa-eye"></i> View & Dispense</button></td>
-                            </tr>
-                            <tr>
-                                <td>Chris Lee</td>
-                                <td>Dr. Alice Williams</td>
-                                <td>2025-07-22</td>
-                                <td><span class="badge badge-success">Dispensed</span></td>
-                                <td><button class="btn btn-primary btn-sm" disabled><i class="fas fa-check"></i>
-                                        Completed</button></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+<div id="billing-panel" class="content-panel">
+    <div class="panel-container">
+        <div class="panel-header">
+            <h3>Billing & Invoicing</h3>
+            <div class="search-bar" style="display:flex; gap: 1rem;">
+                <input type="text" id="billing-search-input" placeholder="Search by patient name or description..." style="min-width: 300px;">
+                <button id="add-transaction-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add Transaction</button>
             </div>
+        </div>
+        <div class="table-container">
+            <table class="custom-table" id="billing-table">
+                <thead>
+                    <tr>
+                        <th>Transaction ID</th>
+                        <th>Patient Name</th>
+                        <th>Description</th>
+                        <th>Amount</th>
+                        <th>Type</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody id="billing-table-body">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 
-           <div id="discharges-panel" class="content-panel">
+<div id="billing-panel" class="content-panel">
+    <div class="panel-container">
+        <div class="panel-header">
+            <h3>Patient Billing</h3>
+        </div>
+        <div class="form-group" style="max-width: 500px; margin-bottom: 2rem; position: relative;">
+            <label for="billing-patient-search">Search Patient (by Name or ID)</label>
+            <input type="text" id="billing-patient-search" placeholder="Start typing..." autocomplete="off">
+            <div id="billing-patient-search-results" class="patient-search-results"></div>
+            <input type="hidden" id="billing-patient-id">
+        </div>
+
+        <div id="billing-details-container" style="display: none;">
+            <h4 id="billing-patient-name"></h4>
+            <div id="billing-actions" style="margin-top: 1rem; display:flex; gap: 1rem;">
+                 <button id="mark-paid-btn" class="btn btn-success" disabled><i class="fas fa-check"></i> Mark Selected as Paid</button>
+                 <form id="download-bill-pdf-form" method="GET" action="staff_dashboard.php" target="_blank" style="margin: 0;">
+                    <input type="hidden" name="action" value="generate_bill_pdf">
+                    <input type="hidden" id="pdf-patient-id" name="patient_id">
+                    <button type="submit" class="btn btn-secondary"><i class="fas fa-file-pdf"></i> Generate Full Invoice</button>
+                </form>
+            </div>
+            <div class="table-container" style="margin-top: 1.5rem;">
+                <table class="custom-table" id="billing-table">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="select-all-bills"></th>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="billing-table-body">
+                    </tbody>
+                </table>
+            </div>
+             <div style="text-align: right; margin-top: 1rem; font-size: 1.2rem; font-weight: 600;">
+                <strong>Total Due: </strong><span id="total-due-amount">₹0.00</span>
+            </div>
+        </div>
+         <div id="billing-placeholder">
+            <p style="text-align:center; color: var(--text-muted); padding: 2rem;">Search for a patient to view their billing details.</p>
+        </div>
+    </div>
+</div>
+
+       <div id="dispensing-panel" class="content-panel">
+    <div class="panel-container">
+        <div class="panel-header">
+            <h3>Pending Prescriptions</h3>
+        </div>
+        <table class="custom-table" id="dispensing-table">
+            <thead>
+                <tr>
+                    <th>Patient Name</th>
+                    <th>Prescribing Doctor</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="dispensing-table-body">
+                </tbody>
+        </table>
+    </div>
+</div>
+
+            <div id="discharges-panel" class="content-panel">
                 <div class="panel-container">
                     <div class="panel-header">
                         <h3>Pending Discharges</h3>
@@ -1976,14 +2576,16 @@ if (function_exists('getDbConnection')) {
                                 <td>101-A</td>
                                 <td>Dr. Ben Carter</td>
                                 <td>2025-07-23</td>
-                                <td><button class="btn btn-primary btn-sm" onclick="openModal('dischargeModal')"><i class="fas fa-tasks"></i> Process Clearance</button></td>
+                                <td><button class="btn btn-primary btn-sm" onclick="openModal('dischargeModal')"><i
+                                            class="fas fa-tasks"></i> Process Clearance</button></td>
                             </tr>
                             <tr>
                                 <td>Robert Brown</td>
                                 <td>203-B</td>
                                 <td>Dr. Alice Williams</td>
                                 <td>2025-07-22</td>
-                                <td><button class="btn btn-primary btn-sm" onclick="openModal('dischargeModal')"><i class="fas fa-tasks"></i> Process Clearance</button></td>
+                                <td><button class="btn btn-primary btn-sm" onclick="openModal('dischargeModal')"><i
+                                            class="fas fa-tasks"></i> Process Clearance</button></td>
                             </tr>
                         </tbody>
                     </table>
@@ -2073,30 +2675,68 @@ if (function_exists('getDbConnection')) {
                         <button class="tab-button active" data-tab="enter-results">Enter New Result</button>
                         <button class="tab-button" data-tab="view-results">View Past Results</button>
                     </div>
+
                     <div id="enter-results-content" class="tab-content active">
                         <div class="panel-header">
                             <h3>Enter Lab Result</h3>
                         </div>
-                        <form class="form-grid">
-                            <div class="form-group"><label>Search Patient</label><input type="text"
-                                    placeholder="Name or ID"></div>
-                            <div class="form-group"><label>Test Name</label><input type="text"
-                                    placeholder="e.g., Complete Blood Count"></div>
-                            <div class="form-group"><label>Test Date</label><input type="date"
-                                    value="<?php echo date('Y-m-d'); ?>"></div>
-                            <div class="form-group" style="grid-column: 1 / -1;"><label>Result Details /
-                                    Notes</label><textarea></textarea></div>
-                            <div class="form-group"><button type="submit" class="btn btn-primary"><i
-                                        class="fas fa-save"></i> Save Result</button></div>
+                        <form id="lab-result-form" class="form-grid" enctype="multipart/form-data">
+                            <input type="hidden" name="action" value="addLabResult">
+                            <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+
+                            <div class="form-group" style="grid-column: 1 / -1; position: relative;">
+                                <label for="lab-patient-search">Search Patient (by Name or ID)</label>
+                                <input type="text" id="lab-patient-search"
+                                    placeholder="Start typing to find a patient..." autocomplete="off">
+                                <div id="lab-patient-search-results" class="patient-search-results"></div>
+                                <input type="hidden" id="lab-patient-id" name="patient_id" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="lab-test-name">Test Name</label>
+                                <input type="text" id="lab-test-name" name="test_name"
+                                    placeholder="e.g., Complete Blood Count" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="lab-test-date">Test Date</label>
+                                <input type="date" id="lab-test-date" name="test_date"
+                                    value="<?php echo date('Y-m-d'); ?>" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="lab-doctor-id">Ordering Doctor (Optional)</label>
+                                <select id="lab-doctor-id" name="doctor_id">
+                                    <option value="">Select Doctor...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="lab-attachment">Upload Attachment (PDF, IMG)</label>
+                                <input type="file" id="lab-attachment" name="attachment" accept=".pdf,.jpg,.jpeg,.png">
+                            </div>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label for="lab-result-details">Result Details / Notes</label>
+                                <textarea id="lab-result-details" name="result_details" rows="4"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save
+                                    Result</button>
+                            </div>
                         </form>
                     </div>
+
                     <div id="view-results-content" class="tab-content">
                         <div class="panel-header">
                             <h3>View Patient Lab History</h3>
                         </div>
-                        <div class="search-bar" style="margin-bottom: 1.5rem;"><input type="text"
-                                placeholder="Search for a patient..."></div>
-                        <p><i>Search for a patient to view their lab result history.</i></p>
+                        <div class="form-group" style="position: relative;">
+                            <label for="lab-history-patient-search">Search Patient to View History</label>
+                            <input type="text" id="lab-history-patient-search" placeholder="Start typing..."
+                                autocomplete="off">
+                            <div id="lab-history-patient-search-results" class="patient-search-results"></div>
+                            <input type="hidden" id="lab-history-patient-id">
+                        </div>
+                        <div id="lab-history-container" style="margin-top: 1.5rem;">
+                            <p><i>Search for and select a patient to view their lab result history.</i></p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2134,34 +2774,26 @@ if (function_exists('getDbConnection')) {
                     <div class="messenger-layout">
                         <div class="contact-list">
                             <div class="contact-list-header">Contacts</div>
-                            <div class="contacts">
-                                <div class="contact active">
-                                    <div class="avatar">AW</div>
-                                    <div class="name">Dr. Alice Williams</div>
-                                </div>
-                                <div class="contact">
-                                    <div class="avatar">BC</div>
-                                    <div class="name">Dr. Ben Carter</div>
-                                </div>
-                                <div class="contact">
-                                    <div class="avatar"><i class="fas fa-pills"></i></div>
-                                    <div class="name">Pharmacy Desk</div>
-                                </div>
+                            <div class="contacts" id="messenger-contact-list">
+                                <p style="text-align: center; padding: 1rem;">Loading contacts...</p>
                             </div>
                         </div>
-                        <div class="chat-window">
-                            <div class="chat-header">Dr. Alice Williams</div>
-                            <div class="chat-messages">
-                                <div class="message received">Good morning. Please check on the updated lab results for
-                                    Sarah Miller in Room 101-A.</div>
-                                <div class="message sent">Good morning, Dr. Williams. I have the results here and will
-                                    upload them shortly.</div>
-                                <div class="message received">Thank you.</div>
+                        <div class="chat-window" id="messenger-chat-window" style="display: none;">
+                            <div class="chat-header" id="messenger-chat-header">Select a contact</div>
+                            <div class="chat-messages" id="messenger-chat-messages">
                             </div>
-                            <div class="chat-input">
-                                <input type="text" placeholder="Type a message...">
-                                <button class="btn btn-primary">Send</button>
-                            </div>
+                            <form class="chat-input" id="messenger-send-form">
+                                <input type="hidden" id="messenger-receiver-id" name="receiver_id">
+                                <input type="text" id="messenger-message-input" name="message_text"
+                                    placeholder="Type a message..." autocomplete="off" required>
+                                <button type="submit" class="btn btn-primary">Send</button>
+                            </form>
+                        </div>
+                        <div class="chat-window" id="messenger-placeholder"
+                            style="display: flex; align-items: center; justify-content: center; flex-direction: column;">
+                            <i class="fas fa-comments" style="font-size: 4rem; color: var(--text-muted);"></i>
+                            <p style="margin-top: 1rem; color: var(--text-muted);">Select a contact to start messaging.
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -2173,21 +2805,130 @@ if (function_exists('getDbConnection')) {
                         <h3>My Recent Activity</h3>
                     </div>
                     <div id="activity-timeline-container">
+                    </div>
+                </div>
+            </div>
+            <div id="my-account-panel" class="content-panel">
+                <div class="panel-container">
+                    <div class="panel-header">
+                        <h3>My Account Details</h3>
+                    </div>
+                    <p>Edit your personal information and password here.</p>
+                    <form id="profile-form" class="form-grid" style="margin-top: 1.5rem; max-width: 700px;">
+                        <input type="hidden" name="action" value="updateProfile">
+                        <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+
+                        <div class="form-group">
+                            <label for="profile-name">Full Name</label>
+                            <input type="text" id="profile-name" name="name" required>
                         </div>
+                        <div class="form-group">
+                            <label for="profile-email">Email</label>
+                            <input type="email" id="profile-email" name="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="profile-phone">Phone Number</label>
+                            <input type="tel" id="profile-phone" name="phone" pattern="\+[0-9]{10,15}"
+                                title="Enter in format +CountryCodeNumber">
+                        </div>
+                        <div class="form-group">
+                            <label for="profile-username">Username</label>
+                            <input type="text" id="profile-username" name="username" disabled>
+                            <small style="font-size: 0.8rem; color: var(--text-muted);">Username cannot be
+                                changed.</small>
+                        </div>
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label for="profile-password">New Password</label>
+                            <input type="password" id="profile-password" name="password">
+                            <small style="font-size: 0.8rem; color: var(--text-muted);">Leave blank to keep your current
+                                password.</small>
+                        </div>
+                        <div class="form-group">
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                        </div>
+                    </form>
                 </div>
             </div>
 
-         <div id="activity-timeline-container">
+            <div id="all-notifications-panel" class="content-panel">
     </div>
-                </div>
-            </div>
 
-        </main>
+            <div id="activity-timeline-container">
+            </div>
+    </div>
+    </div>
+
+    </main>
     </div>
 
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
     <div class="modal-overlay" id="modal-overlay">
+        <div class="modal-container" id="transaction-modal">
+    <div class="modal-header">
+        <h3 id="transaction-modal-title">Add New Transaction</h3>
+        <button class="btn-icon" onclick="closeAllModals()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+        <form id="transaction-form" class="form-grid">
+            <input type="hidden" name="action" value="addTransaction">
+            <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+
+            <div class="form-group" style="grid-column: 1 / -1; position: relative;">
+                <label for="transaction-patient-search">Search Patient (by Name or ID)</label>
+                <input type="text" id="transaction-patient-search" placeholder="Start typing to search for a patient..." autocomplete="off">
+                <div id="transaction-patient-search-results" class="patient-search-results"></div>
+                <input type="hidden" id="transaction-patient-id" name="patient_id" required>
+            </div>
+            <div class="form-group">
+                <label for="transaction-description">Description</label>
+                <input type="text" id="transaction-description" name="description" required>
+            </div>
+            <div class="form-group">
+                <label for="transaction-amount">Amount (₹)</label>
+                <input type="number" id="transaction-amount" name="amount" step="0.01" min="0" required>
+            </div>
+            <div class="form-group">
+                <label for="transaction-type">Type</label>
+                <select id="transaction-type" name="type" required>
+                    <option value="payment">Payment</option>
+                    <option value="refund">Refund</option>
+                </select>
+            </div>
+        </form>
+    </div>
+    <div class="modal-footer">
+        <button class="btn" onclick="closeAllModals()">Cancel</button>
+        <button class="btn btn-primary" form="transaction-form" type="submit">Save Transaction</button>
+    </div>
+</div>
+
+<div class="modal-container" id="payment-modal">
+    <div class="modal-header">
+        <h3>Mark as Paid</h3>
+        <button class="btn-icon" onclick="closeAllModals()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+        <p>You have selected <strong id="selected-bills-count">0</strong> item(s) with a total of <strong id="selected-bills-total">₹0.00</strong>.</p>
+        <form id="payment-form">
+            <input type="hidden" name="action" value="markTransactionsPaid">
+            <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+            <input type="hidden" id="transaction-ids-input" name="transaction_ids">
+            <div class="form-group">
+                <label for="payment-mode">Select Payment Mode</label>
+                <select id="payment-mode" name="payment_mode" required>
+                    <option value="cash">Cash</option>
+                    <option value="card">Card</option>
+                    <option value="online">Online</option>
+                </select>
+            </div>
+        </form>
+    </div>
+    <div class="modal-footer">
+        <button class="btn" onclick="closeAllModals()">Cancel</button>
+        <button class="btn btn-success" form="payment-form" type="submit">Confirm Payment</button>
+    </div>
+</div>
         <div class="modal-container" id="user-modal">
             <div class="modal-header">
                 <h3 id="user-modal-title">Add New User</h3>
@@ -2332,46 +3073,17 @@ if (function_exists('getDbConnection')) {
             <div class="modal-footer"><button class="btn" onclick="closeAllModals()">Close</button></div>
         </div>
 
-        <div class="modal-container" id="dispenseModal">
-            <div class="modal-header">
-                <h3>Prescription Details: Mark Johnson</h3><button class="btn-icon" onclick="closeAllModals()"><i
-                        class="fas fa-times"></i></button>
-            </div>
-            <div class="modal-body">
-                <p><strong>Prescribing Doctor:</strong> Dr. Alice Williams</p>
-                <p><strong>Date:</strong> 2025-07-23</p>
-                <hr style="margin: 1rem 0; border-color: var(--border-light);">
-                <h5>Medications:</h5>
-                <table class="custom-table">
-                    <thead>
-                        <tr>
-                            <th>Medicine</th>
-                            <th>Dosage</th>
-                            <th>Frequency</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Atorvastatin 20mg</td>
-                            <td>1 tablet</td>
-                            <td>Once daily</td>
-                        </tr>
-                        <tr>
-                            <td>Aspirin 81mg</td>
-                            <td>1 tablet</td>
-                            <td>Once daily</td>
-                        </tr>
-                    </tbody>
-                </table>
-                <p class="small-note"><i class="fas fa-info-circle"></i>Marking as 'Dispensed' will automatically update
-                    medicine inventory levels.</p>
-            </div>
-            <div class="modal-footer">
-                <button class="btn" onclick="closeAllModals()">Cancel</button>
-                <button class="btn btn-warning">Mark Not Available</button>
-                <button class="btn btn-success">Mark as Dispensed</button>
-            </div>
+      <div class="modal-container" id="dispenseModal">
+    <div class="modal-header">
+        <h3 id="dispense-modal-title">Prescription Details</h3>
+        <button class="btn-icon" onclick="closeAllModals()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body" id="dispense-modal-body">
         </div>
+    <div class="modal-footer">
+        <button class="btn" onclick="closeAllModals()">Close</button>
+    </div>
+</div>
 
         <div class="modal-container" id="settingsModal">
             <div class="modal-header">
@@ -2486,6 +3198,7 @@ if (function_exists('getDbConnection')) {
     </div>
 
     <script>
+        
         /**
  * A generic handler for submitting forms via AJAX.
  * It automatically includes the CSRF token and provides notifications.
@@ -2513,6 +3226,497 @@ if (function_exists('getDbConnection')) {
                 alert('Error: ' + error.message); // Or a prettier notification
             }
         };
+
+        
+
+   const setupPatientSearch = (inputId, resultsId, hiddenId, onSelectCallback) => {
+    const searchInput = document.getElementById(inputId);
+    const searchResults = document.getElementById(resultsId);
+    const hiddenInput = document.getElementById(hiddenId);
+    let searchTimeout;
+
+    searchInput.addEventListener('keyup', () => {
+        clearTimeout(searchTimeout);
+        const searchTerm = searchInput.value.trim();
+        hiddenInput.value = '';
+        if (onSelectCallback) {
+             billingDetailsContainer.style.display = 'none';
+             billingPlaceholder.style.display = 'block';
+        }
+
+
+        if (searchTerm.length < 2) {
+            searchResults.style.display = 'none';
+            return;
+        }
+
+        searchTimeout = setTimeout(async () => {
+            try {
+                const response = await fetch(`staff_dashboard.php?fetch=search_unassigned_users&term=${encodeURIComponent(searchTerm)}`);
+                const result = await response.json();
+                if (result.success) {
+                    if (result.data.length > 0) {
+                        searchResults.innerHTML = result.data.map(p =>
+                            `<div class="search-result-item" data-id="${p.id}" data-name="${p.name} (${p.display_user_id})">
+                            ${p.name} (${p.display_user_id})
+                        </div>`
+                        ).join('');
+                    } else {
+                        searchResults.innerHTML = '<div class="search-result-item no-results">No patients found.</div>';
+                    }
+                    searchResults.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Patient search failed:', error);
+            }
+        }, 300);
+    });
+
+    searchResults.addEventListener('click', (e) => {
+        const item = e.target.closest('.search-result-item');
+        if (item && item.dataset.id) {
+            hiddenInput.value = item.dataset.id;
+            searchInput.value = item.dataset.name;
+            searchResults.style.display = 'none';
+
+            if (onSelectCallback) {
+                onSelectCallback(item.dataset.id, item.dataset.name);
+            }
+        }
+    });
+};
+        // --- BILLING PANEL ---
+const billingPanel = document.getElementById('billing-panel');
+const addTransactionBtn = document.getElementById('add-transaction-btn');
+const transactionModal = document.getElementById('transaction-modal');
+const transactionForm = document.getElementById('transaction-form');
+const billingSearchInput = document.getElementById('billing-search-input');
+
+const fetchAndRenderTransactions = async (searchTerm = '') => {
+    const tableBody = document.getElementById('billing-table-body');
+    tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Loading transactions...</td></tr>`;
+    try {
+        const response = await fetch(`staff_dashboard.php?fetch=transactions&search=${encodeURIComponent(searchTerm)}`);
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message);
+
+        if (result.data.length > 0) {
+            tableBody.innerHTML = result.data.map(t => `
+                <tr>
+                    <td>${t.id}</td>
+                    <td>${t.patient_name}</td>
+                    <td>${t.description}</td>
+                    <td>₹${parseFloat(t.amount).toFixed(2)}</td>
+                    <td><span class="badge ${t.type === 'payment' ? 'badge-success' : 'badge-danger'}">${t.type}</span></td>
+                    <td>${new Date(t.created_at).toLocaleString()}</td>
+                </tr>
+            `).join('');
+        } else {
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No transactions found.</td></tr>`;
+        }
+    } catch (error) {
+        tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--danger-color);">${error.message}</td></tr>`;
+    }
+};
+
+addTransactionBtn.addEventListener('click', () => {
+    transactionForm.reset();
+    openModal('transaction-modal');
+});
+
+transactionForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await handleFormSubmit(new FormData(transactionForm), () => {
+        fetchAndRenderTransactions(); // Refresh the table
+    }, 'transaction-modal');
+});
+
+let billingSearchTimeout;
+billingSearchInput.addEventListener('keyup', () => {
+    clearTimeout(billingSearchTimeout);
+    billingSearchTimeout = setTimeout(() => {
+        fetchAndRenderTransactions(billingSearchInput.value);
+    }, 300);
+});
+
+// Setup patient search for the transaction modal
+setupPatientSearch('transaction-patient-search', 'transaction-patient-search-results', 'transaction-patient-id');
+
+// Trigger fetch when billing panel is shown
+const billingNavLink = document.querySelector('.nav-link[data-target="billing"]');
+if (billingNavLink) {
+    billingNavLink.addEventListener('click', () => {
+        if (!billingPanel.dataset.initialized) {
+            fetchAndRenderTransactions();
+            billingPanel.dataset.initialized = 'true';
+        }
+    });
+}
+
+        const fetchLabHistory = async (patientId) => {
+            const historyContainer = document.getElementById('lab-history-container');
+            historyContainer.innerHTML = `<p><i>Loading history...</i></p>`;
+            try {
+                const response = await fetch(`staff_dashboard.php?fetch=lab_results_history&patient_id=${patientId}`);
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message);
+
+                if (result.data.length > 0) {
+                    historyContainer.innerHTML = `
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th>Test Name</th>
+                            <th>Test Date</th>
+                            <th>Entered By</th>
+                            <th>Details</th>
+                            <th>Attachment</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${result.data.map(res => `
+                            <tr>
+                                <td>${res.test_name}</td>
+                                <td>${new Date(res.test_date).toLocaleDateString()}</td>
+                                <td>${res.staff_name}</td>
+                                <td>${res.result_details || 'N/A'}</td>
+                                <td>${res.attachment_path ? `<a href="uploads/lab_results/${res.attachment_path}" target="_blank">View File</a>` : 'None'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+                } else {
+                    historyContainer.innerHTML = `<p><i>No lab history found for this patient.</i></p>`;
+                }
+            } catch (error) {
+                historyContainer.innerHTML = `<p style="color:var(--danger-color)">Error fetching history: ${error.message}</p>`;
+            }
+        };
+
+        const notificationBell = document.getElementById('notification-bell-wrapper');
+const notificationCountBadge = document.getElementById('notification-count');
+const allNotificationsPanel = document.getElementById('all-notifications-panel');
+
+const updateNotificationCount = async () => {
+    try {
+        const response = await fetch('staff_dashboard.php?fetch=unread_notification_count');
+        const result = await response.json();
+        if (result.success && result.count > 0) {
+            notificationCountBadge.textContent = result.count;
+            notificationCountBadge.style.display = 'grid';
+        } else {
+            notificationCountBadge.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Failed to fetch notification count:', error);
+    }
+};
+
+const loadAllNotifications = async () => {
+    allNotificationsPanel.innerHTML = '<div class="panel-container"><p style="text-align: center; padding: 2rem;">Loading messages...</p></div>';
+    try {
+        const response = await fetch('staff_dashboard.php?fetch=all_notifications');
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message);
+
+        let content = `
+            <div class="panel-container">
+                <div class="panel-header">
+                    <h3>All Notifications</h3>
+                </div>
+        `;
+
+        if (result.data.length > 0) {
+            result.data.forEach(notif => {
+                const isUnread = notif.is_read == 0;
+                const itemStyle = isUnread ? 'background-color: var(--bg-grey);' : '';
+                content += `
+                    <div class="notification-item" style="display: flex; gap: 1rem; padding: 1.5rem; border-bottom: 1px solid var(--border-light); ${itemStyle}">
+                        <div style="font-size: 1.5rem; color: var(--primary-color); padding-top: 5px;"><i class="fas fa-envelope-open-text"></i></div>
+                        <div style="flex-grow: 1;">
+                            <p style="margin: 0 0 0.25rem 0; font-weight: ${isUnread ? '600' : '500'};">${notif.message}</p>
+                            <small style="color: var(--text-muted);">From: ${notif.sender_name} on ${new Date(notif.created_at).toLocaleString()}</small>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            content += '<p style="text-align: center; padding: 2rem;">You have no notifications.</p>';
+        }
+        content += `</div>`;
+        allNotificationsPanel.innerHTML = content;
+    } catch (error) {
+        allNotificationsPanel.innerHTML = '<div class="panel-container"><p style="text-align: center; color: var(--danger-color);">Could not load notifications.</p></div>';
+    }
+};
+
+notificationBell.addEventListener('click', async (e) => {
+    // The panel switching is now handled by the main navLink listener.
+    // This listener is now only for marking notifications as read.
+    e.stopPropagation(); // Prevent any parent handlers from firing.
+
+    try {
+        const formData = new FormData();
+        formData.append('action', 'mark_notifications_read');
+        formData.append('csrf_token', '<?php echo $_SESSION['csrf_token']; ?>');
+        const response = await fetch('staff_dashboard.php', { method: 'POST', body: formData });
+        const result = await response.json();
+        if (result.success) {
+            // Update the UI immediately after marking as read
+            notificationCountBadge.style.display = 'none';
+            // Reload the notifications to show their "read" state
+            if (document.getElementById('all-notifications-panel').classList.contains('active')) {
+                loadAllNotifications();
+            }
+        }
+    } catch (error) {
+        console.error('Error marking notifications as read:', error);
+    }
+});
+
+// Add a polling interval to check for new notifications periodically
+setInterval(updateNotificationCount, 30000); // Check every 30 seconds
+
+        let currentContactId = null;
+        let messagePollInterval = null;
+        const currentUserId = <?php echo $_SESSION['user_id']; ?>;
+
+        const fetchMessengerContacts = async () => {
+            const contactList = document.getElementById('messenger-contact-list');
+            try {
+                const response = await fetch('staff_dashboard.php?fetch=messenger_contacts');
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message);
+
+                if (result.data.length > 0) {
+                    contactList.innerHTML = result.data.map(contact => `
+                <div class="contact" data-contact-id="${contact.id}" data-contact-name="${contact.name}">
+                    <div class="avatar">${contact.name.charAt(0)}</div>
+                    <div class="name">${contact.name} <small>(${contact.role})</small></div>
+                </div>
+            `).join('');
+                } else {
+                    contactList.innerHTML = '<p style="text-align: center; padding: 1rem;">No contacts found.</p>';
+                }
+            } catch (error) {
+                contactList.innerHTML = `<p style="text-align: center; padding: 1rem; color:var(--danger-color)">${error.message}</p>`;
+            }
+        };
+
+        const renderMessages = (messages) => {
+            const messagesContainer = document.getElementById('messenger-chat-messages');
+            messagesContainer.innerHTML = messages.map(msg => {
+                const messageClass = msg.sender_id == currentUserId ? 'sent' : 'received';
+                return `<div class="message ${messageClass}">${msg.message_text.replace(/\n/g, '<br>')}</div>`;
+            }).join('');
+            // Scroll to the bottom
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        };
+
+        const fetchMessages = async (contactId) => {
+            if (!contactId) return;
+            currentContactId = contactId;
+
+            // Stop any previous polling
+            if (messagePollInterval) clearInterval(messagePollInterval);
+
+            const messagesContainer = document.getElementById('messenger-chat-messages');
+            messagesContainer.innerHTML = '<p style="text-align:center;">Loading messages...</p>';
+
+            try {
+                const response = await fetch(`staff_dashboard.php?fetch=messages&contact_id=${contactId}`);
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message);
+                renderMessages(result.data);
+
+                // Start polling for new messages
+                messagePollInterval = setInterval(() => fetchMessages(currentContactId), 5000); // Poll every 5 seconds
+            } catch (error) {
+                messagesContainer.innerHTML = `<p style="text-align:center; color:var(--danger-color);">${error.message}</p>`;
+            }
+        };
+
+        const fetchPendingPrescriptions = async () => {
+    const tableBody = document.getElementById('dispensing-table-body');
+    tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading pending prescriptions...</td></tr>`;
+    try {
+        const response = await fetch('staff_dashboard.php?fetch=pending_prescriptions');
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message);
+
+        if (result.data.length > 0) {
+            tableBody.innerHTML = result.data.map(p => {
+                const statusClass = p.status === 'pending' ? 'badge-warning' : 'badge-info';
+                return `
+                <tr>
+                    <td>${p.patient_name}</td>
+                    <td>Dr. ${p.doctor_name}</td>
+                    <td>${new Date(p.prescription_date).toLocaleDateString()}</td>
+                    <td><span class="badge ${statusClass}">${p.status}</span></td>
+                    <td><button class="btn btn-primary btn-sm btn-view-prescription" data-id="${p.id}" data-patient-name="${p.patient_name}"><i class="fas fa-eye"></i> View & Dispense</button></td>
+                </tr>
+            `}).join('');
+        } else {
+            tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No pending prescriptions found.</td></tr>`;
+        }
+    } catch (error) {
+        tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--danger-color);">${error.message}</td></tr>`;
+    }
+};
+
+const openDispenseModal = async (prescriptionId, patientName) => {
+    const modalTitle = document.getElementById('dispense-modal-title');
+    const modalBody = document.getElementById('dispense-modal-body');
+    modalTitle.textContent = `Dispensing for: ${patientName}`;
+    modalBody.innerHTML = `<p>Loading details...</p>`;
+    openModal('dispenseModal');
+
+    try {
+        const response = await fetch(`staff_dashboard.php?fetch=prescription_details&id=${prescriptionId}`);
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message);
+        
+        modalBody.innerHTML = `
+            <h5>Medications:</h5>
+            <table class="custom-table" id="dispense-items-table">
+                <thead><tr><th>Medicine</th><th>Dosage</th><th>Stock</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody>
+                ${result.data.map(item => `
+                    <tr>
+                        <td>${item.medicine_name}</td>
+                        <td>${item.dosage}</td>
+                        <td>${item.stock_level} units</td>
+                        <td>${item.is_dispensed ? '<span class="badge badge-success">Dispensed</span>' : '<span class="badge badge-warning">Pending</span>'}</td>
+                        <td>
+                            <button class="btn btn-success btn-sm btn-dispense-item" 
+                                    data-item-id="${item.id}" 
+                                    ${item.is_dispensed ? 'disabled' : ''}>
+                                <i class="fas fa-check"></i> Dispense
+                            </button>
+                        </td>
+                    </tr>
+                `).join('')}
+                </tbody>
+            </table>
+            <p class="small-note"><i class="fas fa-info-circle"></i> Dispensing a medication will automatically update inventory levels.</p>
+        `;
+
+    } catch (error) {
+        modalBody.innerHTML = `<p style="color:var(--danger-color)">${error.message}</p>`;
+    }
+};
+
+const updateStaffDashboard = async () => {
+    try {
+        const response = await fetch('staff_dashboard.php?fetch=staff_dashboard_stats');
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message);
+
+        const stats = result.data;
+        document.getElementById('stat-pending-admissions').textContent = stats.pending_admissions || 0;
+        document.getElementById('stat-pending-discharges').textContent = stats.pending_discharges || 0;
+        document.getElementById('stat-pending-prescriptions').textContent = stats.pending_prescriptions || 0;
+        document.getElementById('stat-low-stock-items').textContent = stats.low_stock_items || 0;
+        
+        // Also fetch and display recent activity on the dashboard
+        const activityContainer = document.getElementById('dashboard-activity-log');
+        const activityResponse = await fetch('staff_dashboard.php?fetch=my_activity');
+        const activityResult = await activityResponse.json();
+        if(activityResult.success && activityResult.data.length > 0) {
+            activityContainer.innerHTML = activityResult.data.slice(0, 5).map(log => { // Show latest 5 activities
+                 const time = new Date(log.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+                 return `
+                    <div class="activity-item" style="margin-bottom: 1rem; position:relative; padding-left: 1.5rem;">
+                         <div style="position:absolute; left:0; top: 5px; width:10px; height:10px; border-radius:50%; background:var(--primary-color);"></div>
+                        <div class="activity-content">
+                            <div class="description">${log.details}</div>
+                            <div class="time" style="font-size:0.8rem; color: var(--text-muted);">${time}</div>
+                        </div>
+                    </div>
+                 `;
+            }).join('');
+        } else {
+            activityContainer.innerHTML = '<p>No recent activity to display.</p>';
+        }
+
+    } catch (error) {
+        console.error('Failed to update dashboard stats:', error);
+    }
+};
+
+document.getElementById('dispensing-table').addEventListener('click', (e) => {
+    const viewBtn = e.target.closest('.btn-view-prescription');
+    if(viewBtn) {
+        openDispenseModal(viewBtn.dataset.id, viewBtn.dataset.patientName);
+    }
+});
+
+document.getElementById('dispenseModal').addEventListener('click', async (e) => {
+    const dispenseBtn = e.target.closest('.btn-dispense-item');
+    if(dispenseBtn && !dispenseBtn.disabled) {
+        const itemId = dispenseBtn.dataset.itemId;
+        if (!confirm('Are you sure you want to dispense this item? This will reduce the stock count.')) return;
+        
+        const formData = new FormData();
+        formData.append('action', 'dispenseMedication');
+        formData.append('prescription_item_id', itemId);
+        formData.append('csrf_token', '<?php echo $_SESSION['csrf_token']; ?>');
+
+        await handleFormSubmit(formData, () => {
+            // Refresh the main table after closing the modal
+            closeAllModals();
+            fetchPendingPrescriptions();
+        });
+    }
+});
+
+        document.getElementById('messenger-contact-list').addEventListener('click', (e) => {
+            const contactDiv = e.target.closest('.contact');
+            if (contactDiv) {
+                const contactId = contactDiv.dataset.contactId;
+                const contactName = contactDiv.dataset.contactName;
+
+                // Update UI
+                document.querySelectorAll('#messenger-contact-list .contact').forEach(c => c.classList.remove('active'));
+                contactDiv.classList.add('active');
+                document.getElementById('messenger-placeholder').style.display = 'none';
+                document.getElementById('messenger-chat-window').style.display = 'flex';
+                document.getElementById('messenger-chat-header').textContent = contactName;
+                document.getElementById('messenger-receiver-id').value = contactId;
+
+                fetchMessages(contactId);
+            }
+        });
+
+        document.getElementById('messenger-send-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const messageInput = document.getElementById('messenger-message-input');
+            const messageText = messageInput.value.trim();
+            if (!messageText) return;
+
+            const formData = new FormData();
+            formData.append('action', 'sendMessage');
+            formData.append('receiver_id', document.getElementById('messenger-receiver-id').value);
+            formData.append('message_text', messageText);
+            formData.append('csrf_token', '<?php echo $_SESSION['csrf_token']; ?>');
+
+            messageInput.value = ''; // Optimistically clear input
+
+            try {
+                const response = await fetch('staff_dashboard.php', { method: 'POST', body: formData });
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message);
+
+                // Fetch messages immediately to show the new one
+                fetchMessages(currentContactId);
+
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+                messageInput.value = messageText; // Restore text on failure
+            }
+        });
 
         // --- MANAGE USERS PANEL ---
         // Moved these functions to global scope or passed them correctly
@@ -2676,36 +3880,159 @@ if (function_exists('getDbConnection')) {
             }
         };
 
+        const fetchMyProfile = async () => {
+            try {
+                const response = await fetch(`staff_dashboard.php?fetch=my_profile`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message);
+
+                const profile = result.data;
+                document.getElementById('profile-name').value = profile.name || '';
+                document.getElementById('profile-email').value = profile.email || '';
+                document.getElementById('profile-phone').value = profile.phone || '';
+                document.getElementById('profile-username').value = profile.username || '';
+            } catch (error) {
+                alert('Could not load your profile data.');
+            }
+        };
 
         document.addEventListener("DOMContentLoaded", function () {
 
-             const fetchMyActivityLogs = async () => {
-        const container = document.getElementById('activity-timeline-container');
-        container.innerHTML = '<p style="text-align:center;">Loading your activity...</p>';
-        try {
-            const response = await fetch('staff_dashboard.php?fetch=my_activity');
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
+            // --- BILLING PANEL ---
+const billingPanel = document.getElementById('billing-panel');
+const billingSearchInput = document.getElementById('billing-patient-search');
+const billingSearchResults = document.getElementById('billing-patient-search-results');
+const billingHiddenId = document.getElementById('billing-patient-id');
+const billingDetailsContainer = document.getElementById('billing-details-container');
+const billingPlaceholder = document.getElementById('billing-placeholder');
+const markPaidBtn = document.getElementById('mark-paid-btn');
+const paymentModal = document.getElementById('payment-modal');
+const paymentForm = document.getElementById('payment-form');
 
-            if (result.data.length > 0) {
-                const timelineHTML = result.data.map(log => {
-                    const time = new Date(log.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
-                    return `
+const fetchAndRenderUserBills = async (patientId) => {
+    const tableBody = document.getElementById('billing-table-body');
+    const totalDueEl = document.getElementById('total-due-amount');
+    tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading bills...</td></tr>`;
+    totalDueEl.textContent = '₹0.00';
+    markPaidBtn.disabled = true;
+
+    try {
+        const response = await fetch(`staff_dashboard.php?fetch=user_transactions&patient_id=${patientId}`);
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message);
+
+        let totalDue = 0;
+        if (result.data.length > 0) {
+            tableBody.innerHTML = result.data.map(t => {
+                const isPending = t.status === 'pending';
+                if (isPending) {
+                    totalDue += parseFloat(t.amount);
+                }
+                return `
+                    <tr>
+                        <td>${isPending ? `<input type="checkbox" class="bill-checkbox" value="${t.id}" data-amount="${t.amount}">` : ''}</td>
+                        <td>${new Date(t.created_at).toLocaleDateString()}</td>
+                        <td>${t.description}</td>
+                        <td>₹${parseFloat(t.amount).toFixed(2)}</td>
+                        <td><span class="badge ${t.status === 'paid' ? 'badge-success' : 'badge-warning'}">${t.status}</span></td>
+                    </tr>
+                `;
+            }).join('');
+        } else {
+            tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No transactions found for this patient.</td></tr>`;
+        }
+        totalDueEl.textContent = `₹${totalDue.toFixed(2)}`;
+    } catch (error) {
+        tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--danger-color);">${error.message}</td></tr>`;
+    }
+};
+
+setupPatientSearch('billing-patient-search', 'billing-patient-search-results', 'billing-patient-id', (patientId, patientName) => {
+    billingDetailsContainer.style.display = 'block';
+    billingPlaceholder.style.display = 'none';
+    document.getElementById('billing-patient-name').textContent = `Billing for: ${patientName}`;
+    document.getElementById('pdf-patient-id').value = patientId;
+    fetchAndRenderUserBills(patientId);
+});
+
+document.getElementById('billing-table-body').addEventListener('change', (e) => {
+    if (e.target.classList.contains('bill-checkbox')) {
+        const selected = document.querySelectorAll('.bill-checkbox:checked').length > 0;
+        markPaidBtn.disabled = !selected;
+    }
+});
+
+document.getElementById('select-all-bills').addEventListener('change', function() {
+    document.querySelectorAll('.bill-checkbox').forEach(cb => cb.checked = this.checked);
+    markPaidBtn.disabled = !this.checked;
+});
+
+markPaidBtn.addEventListener('click', () => {
+    const selectedCheckboxes = document.querySelectorAll('.bill-checkbox:checked');
+    const transactionIds = Array.from(selectedCheckboxes).map(cb => cb.value);
+    const totalAmount = Array.from(selectedCheckboxes).reduce((sum, cb) => sum + parseFloat(cb.dataset.amount), 0);
+
+    if (transactionIds.length === 0) return;
+
+    document.getElementById('selected-bills-count').textContent = transactionIds.length;
+    document.getElementById('selected-bills-total').textContent = `₹${totalAmount.toFixed(2)}`;
+    document.getElementById('transaction-ids-input').value = JSON.stringify(transactionIds);
+
+    openModal('payment-modal');
+});
+
+paymentForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await handleFormSubmit(new FormData(paymentForm), () => {
+        const patientId = document.getElementById('billing-patient-id').value;
+        fetchAndRenderUserBills(patientId);
+    }, 'payment-modal');
+});
+
+            const fetchMyActivityLogs = async () => {
+                const container = document.getElementById('activity-timeline-container');
+                container.innerHTML = '<p style="text-align:center;">Loading your activity...</p>';
+                try {
+                    const response = await fetch('staff_dashboard.php?fetch=my_activity');
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
+
+                    if (result.data.length > 0) {
+                        const timelineHTML = result.data.map(log => {
+                            const time = new Date(log.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+                            return `
                         <li class="activity-item">
                             <div class="activity-content">
                                 <div class="description">${log.details}</div>
                                 <div class="time"><i class="far fa-clock"></i> ${time}</div>
                             </div>
                         </li>`;
-                }).join('');
-                container.innerHTML = `<ul class="activity-timeline">${timelineHTML}</ul>`;
-            } else {
-                container.innerHTML = '<p style="text-align:center;">No recent activity found for your account.</p>';
+                        }).join('');
+                        container.innerHTML = `<ul class="activity-timeline">${timelineHTML}</ul>`;
+                    } else {
+                        container.innerHTML = '<p style="text-align:center;">No recent activity found for your account.</p>';
+                    }
+                } catch (error) {
+                    container.innerHTML = `<p style="text-align:center; color:var(--danger-color)">Error loading activity: ${error.message}</p>`;
+                }
+            };
+
+            const profileForm = document.getElementById('profile-form');
+            if (profileForm) {
+                profileForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const formData = new FormData(profileForm);
+                    const name = formData.get('name');
+
+                    await handleFormSubmit(formData, () => {
+                        // Update UI elements with the new name
+                        document.getElementById('welcome-message').textContent = `Hello, ${name}!`;
+                        document.querySelector('.user-profile-widget strong').textContent = name;
+                    });
+                });
             }
-        } catch (error) {
-            container.innerHTML = `<p style="text-align:center; color:var(--danger-color)">Error loading activity: ${error.message}</p>`;
-        }
-    };
+
             // --- CORE UI ELEMENTS & STATE ---
             const hamburgerBtn = document.getElementById('hamburger-btn');
             const sidebar = document.getElementById('sidebar');
@@ -2716,6 +4043,30 @@ if (function_exists('getDbConnection')) {
             const themeToggle = document.getElementById('theme-toggle');
             const modalOverlay = document.getElementById('modal-overlay');
             const settingsBtn = document.getElementById('settings-btn');
+
+            // --- INITIAL NOTIFICATION CHECK ---
+updateNotificationCount();
+
+// --- INITIAL DASHBOARD LOAD ---
+updateStaffDashboard();
+
+            // --- LAB RESULTS PANEL ---
+            const labResultForm = document.getElementById('lab-result-form');
+            const labDoctorSelect = document.getElementById('lab-doctor-id');
+
+            // Setup patient search for both forms in the lab panel
+            setupPatientSearch('lab-patient-search', 'lab-patient-search-results', 'lab-patient-id');
+            setupPatientSearch('lab-history-patient-search', 'lab-history-patient-search-results', 'lab-history-patient-id');
+
+            if (labResultForm) {
+                labResultForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    await handleFormSubmit(new FormData(labResultForm), () => {
+                        labResultForm.reset(); // Clear form on success
+                        document.getElementById('lab-patient-id').value = ''; // Clear hidden patient ID
+                    });
+                });
+            }
 
             // --- THEME TOGGLE ---
             const applyTheme = (theme) => {
@@ -2774,43 +4125,55 @@ if (function_exists('getDbConnection')) {
             });
             sidebarOverlay.addEventListener('click', closeMenu);
 
-            navLinks.forEach(link => {
-                link.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const targetId = link.dataset.target;
+       navLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const targetId = link.dataset.target;
 
-                    if (targetId === 'admissions') {
-                        populateAdmissionDropdowns();
-                    }
+        // --- Data Loading Logic ---
+        if (targetId === 'admissions') populateAdmissionDropdowns();
+        if (targetId === 'dispensing') fetchPendingPrescriptions();
+        if (targetId === 'my-account') fetchMyProfile();
+        if (targetId === 'activity-log') fetchMyActivityLogs();
+        if (targetId === 'inventory') setupInventoryPanel();
+        if (targetId === 'all-notifications') loadAllNotifications(); // Load notifications when panel is opened
 
-                          if (targetId === 'activity-log') {
-                        fetchMyActivityLogs();
-                    }
+        if (targetId === 'lab-results') {
+            if (labDoctorSelect.options.length <= 1) {
+                populateAdmissionDropdowns();
+                setTimeout(() => {
+                    const adminDoctorSelect = document.getElementById('admit-doctor');
+                    labDoctorSelect.innerHTML = adminDoctorSelect.innerHTML;
+                }, 500);
+            }
+        }
+        
+        if (targetId === 'messenger') {
+            if (document.getElementById('messenger-contact-list').querySelector('p')) {
+                fetchMessengerContacts();
+            }
+        } else {
+            if (messagePollInterval) clearInterval(messagePollInterval);
+        }
 
-                    // NEW: Trigger inventory data load when switching to inventory panel
-                    if (targetId === 'inventory') {
-                        setupInventoryPanel();
-                    }
+        if (targetId === 'manage-users' && !document.getElementById('manage-users-panel').dataset.initialized) {
+            setupManageUsersPanel();
+            document.getElementById('manage-users-panel').dataset.initialized = 'true';
+        }
 
-                    if (targetId === 'manage-users') {
-                        // Call setupManageUsersPanel only if it hasn't been set up or needs re-initialization
-                        // This prevents re-attaching event listeners multiple times
-                        if (!document.getElementById('manage-users-panel').dataset.initialized) {
-                            setupManageUsersPanel();
-                            document.getElementById('manage-users-panel').dataset.initialized = 'true';
-                        }
-                    }
+        // --- Panel Switching UI ---
+        document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
+        document.getElementById(targetId + '-panel').classList.add('active');
+        navLinks.forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
 
-                    document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
-                    document.getElementById(targetId + '-panel').classList.add('active');
-                    navLinks.forEach(l => l.classList.remove('active'));
-                    link.classList.add('active');
-                    panelTitle.textContent = link.innerText.trim();
-                    welcomeMessage.style.display = (targetId === 'dashboard') ? 'block' : 'none';
+        // Update title, handling the bell icon which has no inner text
+        panelTitle.textContent = link.id === 'notification-bell-wrapper' ? 'Notifications' : link.innerText.trim();
+        welcomeMessage.style.display = (targetId === 'dashboard') ? 'block' : 'none';
 
-                    if (window.innerWidth <= 992) closeMenu();
-                });
-            });
+        if (window.innerWidth <= 992) closeMenu();
+    });
+});
 
             // --- ADMISSIONS DATA FETCHING & FORM LOGIC ---
             const populateAdmissionDropdowns = async () => {
@@ -3246,4 +4609,5 @@ if (function_exists('getDbConnection')) {
         });
     </script>
 </body>
+
 </html>
