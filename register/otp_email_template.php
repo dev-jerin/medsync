@@ -1,15 +1,14 @@
 <?php
 /**
- * Returns the HTML content for the professional welcome email.
+ * Returns the HTML content for the professional OTP verification email.
  *
  * @param string $name The user's full name.
- * @param string $username The user's username.
- * @param string $display_user_id The user's formatted User ID (e.g., U0001).
+ * @param string $otp The 6-digit One-Time Password.
  * @return string The complete HTML email body.
  */
-function getWelcomeEmailTemplate($name, $username, $display_user_id) {
+function getOtpEmailTemplate($name, $otp) {
     $currentYear = date('Y');
-
+    
     return <<<HTML
 <!DOCTYPE html>
 <html lang="en">
@@ -17,7 +16,7 @@ function getWelcomeEmailTemplate($name, $username, $display_user_id) {
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to MedSync!</title>
+    <title>Your MedSync Verification Code</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
         body { margin: 0; padding: 0; width: 100% !important; font-family: 'Inter', Arial, sans-serif; background-color: #f7fafc; color: #4a5568; }
@@ -27,9 +26,10 @@ function getWelcomeEmailTemplate($name, $username, $display_user_id) {
         .header h1 { margin: 0; font-size: 28px; font-weight: 700; }
         .content-body { padding: 40px 35px; line-height: 1.6; text-align: left; }
         .content-body p { font-size: 16px; margin: 0 0 20px 0; }
-        .details-box { background-color: #f7fafc; border-left: 4px solid #0067FF; margin: 25px 0; padding: 20px; border-radius: 8px; }
-        .details-box p { margin: 10px 0; font-size: 15px; }
-        .details-box strong { color: #1a202c; }
+        .otp-box { text-align: center; margin: 30px 0; }
+        .otp-label { font-size: 14px; color: #6c757d; margin-bottom: 10px; }
+        .otp-code { display: inline-block; background-color: #e6f0ff; color: #0058d6; font-size: 36px; font-weight: 700; letter-spacing: 10px; padding: 15px 30px; border-radius: 8px; user-select: all; border: 1px dashed #0067FF; }
+        .validity-text { font-size: 14px; color: #6c757d; text-align: center; margin-top: 15px; }
         .footer { text-align: center; padding: 25px; font-size: 13px; color: #a0aec0; }
     </style>
 </head>
@@ -39,21 +39,18 @@ function getWelcomeEmailTemplate($name, $username, $display_user_id) {
             <td align="center">
                 <div class="main-content">
                     <div class="header">
-                        <h1>Welcome to MedSync</h1>
+                        <h1>Account Verification</h1>
                     </div>
                     <div class="content-body">
                         <p>Dear <strong>{$name}</strong>,</p>
-                        <p>We are pleased to confirm that your account with MedSync has been successfully created. Welcome to the Calysta Health Institute community, where we are dedicated to providing you with seamless healthcare management.</p>
-                        
-                        <p>For your records, here are your account details:</p>
-                        <div class="details-box">
-                            <p><strong>Your User ID:</strong> <span style="font-weight: bold; color: #0058d6;">{$display_user_id}</span></p>
-                            <p><strong>Your Username:</strong> {$username}</p>
+                        <p>Thank you for registering with MedSync. To ensure the security of your account, please use the following One-Time Password (OTP) to complete your registration process.</p>
+                        <div class="otp-box">
+                            <p class="otp-label">Your Verification Code:</p>
+                            <span class="otp-code">{$otp}</span>
                         </div>
-
-                        <p>You can now use your credentials to log in to the MedSync platform to manage your appointments and access our services.</p>
-                        <p>Thank you for entrusting us with your health.</p>
-                        <p>Sincerely,<br>The MedSync Team at Calysta Health Institute</p>
+                        <p class="validity-text">This code is valid for the next 10 minutes.</p>
+                        <p>If you did not initiate this registration, please disregard this email. No further action is required.</p>
+                        <p>Sincerely,<br>The MedSync Team</p>
                     </div>
                 </div>
                 <div class="footer">

@@ -1,453 +1,154 @@
 <?php
-// Include the configuration file to initialize session and CSRF token
+// config.php initializes the session and CSRF token
 require_once 'config.php';
+
+// If a user is already logged in, redirect them to their dashboard
+if (isset($_SESSION['user_id'])) {
+    // A robust solution would be to redirect based on the role stored in the session
+    $role = $_SESSION['role'];
+    header("Location: {$role}/dashboard.php");
+    exit();
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register - MedSync</title>
+    <title>Create Your Account - MedSync</title>
     
+    <!-- Fonts, Favicon, Icons -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-
-    <style>
-        /* --- Base Styles & Variables (Consistent with index.php) --- */
-        :root {
-            --primary-color: #007BFF;
-            --primary-dark: #0056b3;
-            --secondary-color: #17a2b8;
-            --text-dark: #343a40;
-            --text-light: #f8f9fa;
-            --background-light: #ffffff;
-            --background-grey: #f1f5f9;
-            --success-color: #28a745;
-            --error-color: #dc3545;
-            --shadow-sm: 0 4px 6px rgba(0, 0, 0, 0.05);
-            --shadow-md: 0 10px 15px rgba(0, 0, 0, 0.1);
-            --border-radius: 12px;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Poppins', sans-serif;
-            background-color: var(--background-grey);
-            color: var(--text-dark);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 2rem 0;
-        }
-
-        .container {
-            width: 90%;
-            max-width: 500px;
-            margin: auto;
-        }
-        
-        /* --- Registration Card --- */
-        .register-card {
-            background: var(--background-light);
-            padding: 2.5rem 3rem;
-            border-radius: var(--border-radius);
-            box-shadow: var(--shadow-md);
-            width: 100%;
-        }
-        
-        .register-header {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-
-        .register-header .logo {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--primary-color);
-            text-decoration: none;
-            margin-bottom: 0.5rem;
-            display: inline-block;
-        }
-        
-        .register-header .logo i {
-            margin-right: 8px;
-        }
-
-        .register-header h1 {
-            font-size: 1.8rem;
-            font-weight: 600;
-        }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-            position: relative;
-        }
-
-        .form-group label {
-            display: block;
-            font-weight: 500;
-            margin-bottom: 0.5rem;
-        }
-
-        .form-group input,
-        .form-group select {
-            width: 100%;
-            padding: 0.8rem 1rem;
-            border: 1px solid #ced4da;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-family: 'Poppins', sans-serif;
-            transition: border-color 0.3s ease, box-shadow 0.3s ease;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus {
-            outline: none;
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.2);
-        }
-        
-        .btn {
-            padding: 0.75rem 1.5rem;
-            border-radius: var(--border-radius);
-            text-decoration: none;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            border: none;
-            cursor: pointer;
-            width: 100%;
-            text-align: center;
-        }
-
-        .btn-primary {
-            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
-            color: var(--text-light);
-            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.2);
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 6px 20px rgba(0, 123, 255, 0.3);
-        }
-
-        .login-link {
-            text-align: center;
-            margin-top: 1.5rem;
-        }
-
-        .login-link a {
-            color: var(--primary-color);
-            font-weight: 500;
-            text-decoration: none;
-        }
-        
-        .login-link a:hover {
-            text-decoration: underline;
-        }
-        
-        /* --- Password Strength Meter --- */
-        #password-strength-meter {
-            height: 5px;
-            width: 100%;
-            background: #e0e0e0;
-            border-radius: 5px;
-            margin-top: 5px;
-        }
-        #password-strength-bar {
-            height: 100%;
-            width: 0;
-            background: var(--error-color);
-            border-radius: 5px;
-            transition: width 0.3s, background-color 0.3s;
-        }
-        #password-strength-text {
-            font-size: 0.85rem;
-            margin-top: 5px;
-            text-align: right;
-        }
-
-        /* --- Message Box --- */
-        .message-box {
-            padding: 1rem;
-            border-radius: var(--border-radius);
-            margin-bottom: 1rem;
-            text-align: center;
-            border: 1px solid transparent;
-        }
-        .error-message {
-            background-color: rgba(220, 53, 69, 0.1);
-            color: var(--error-color);
-            border-color: rgba(220, 53, 69, 0.2);
-        }
-        
-        .availability-message {
-            font-size: 0.85rem;
-            margin-top: 5px;
-        }
-        
-        .availability-message.error {
-            color: var(--error-color);
-        }
-        
-        .availability-message.success {
-            color: var(--success-color);
-        }
-
-        /*logo */
-        .logo {
-            font-size: 1.8rem;
-            font-weight: 700;
-            color: var(--primary-color);
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-        }
-
-        .logo-img {
-            height: 33px; /* Adjust as needed */
-            width: auto;
-            margin-right: 8px; /* Match original spacing */
-        }
-    </style>
-        <link rel="apple-touch-icon" sizes="180x180" href="images/favicon/apple-touch-icon.png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="apple-touch-icon" sizes="180x180" href="images/favicon/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="images/favicon/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="images/favicon/favicon-16x16.png">
     <link rel="manifest" href="images/favicon/site.webmanifest">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="main/styles.css"> <!-- Main styles for header/footer -->
+    <link rel="stylesheet" href="register/styles.css"> <!-- Page-specific styles -->
 </head>
 <body>
-    <div class="container">
-        <div class="register-card">
-            <div class="register-header">
+
+    <!-- Header -->
+    <header class="header" id="header">
+        <nav class="container navbar">
             <a href="index.php" class="logo">
-                <img src="images/logo.png" alt="MedSync Logo" class="logo-img">MedSync
+                <img src="images/logo.png" alt="MedSync Logo" class="logo-img">
+                <span>MedSync</span>
             </a>
-                <h1>Create Your Patient Account</h1>
+            <div class="nav-actions">
+                <a href="login.php" class="btn btn-secondary">Login</a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="auth-page">
+        <div class="auth-container">
+            <!-- Left Panel: Branding & Illustration -->
+            <div class="auth-panel">
+                <img src="https://images.unsplash.com/photo-1551601651-2a8555f1a136?q=80&w=2147&auto=format&fit=crop" alt="A friendly male doctor smiling in a modern clinic" class="auth-image">
+                <div class="auth-panel-overlay">
+                    <h2>Join a Healthier Future</h2>
+                    <p>Register with MedSync to manage your health with ease and efficiency.</p>
+                </div>
             </div>
 
-            <?php
-            // Display any registration error messages stored in the session
-            if (isset($_SESSION['register_error'])) {
-                echo '<div class="message-box error-message">' . htmlspecialchars($_SESSION['register_error']) . '</div>';
-                unset($_SESSION['register_error']); // Clear the message after displaying it
-            }
-            ?>
-
-            <form id="registerForm" action="register/register_process.php" method="POST" onsubmit="return validateForm()">
-                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
-
-                <div class="form-group">
-                    <label for="name">Full Name</label>
-                    <input type="text" id="name" name="name" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="username">Username (no spaces, will be converted to lowercase)</label>
-                    <input type="text" id="username" name="username" required>
-                    <div id="username-availability" class="availability-message"></div>
-                </div>
-
-                <div class="form-group">
-                    <label for="email">Email Address</label>
-                    <input type="email" id="email" name="email" required>
-                    <div id="email-availability" class="availability-message"></div>
-                </div>
-
-                <div class="form-group">
-                    <label for="phone">Phone Number (e.g., +911234567890)</label>
-                    <input type="tel" id="phone" name="phone" pattern="\+[0-9]{10,15}" title="Please enter phone number in format: +CountryCodeNumber" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="date_of_birth">Date of Birth</label>
-                    <input type="date" id="date_of_birth" name="date_of_birth" max="<?php echo date('Y-m-d'); ?>" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="gender">Gender</label>
-                    <select id="gender" name="gender" required>
-                        <option value="" disabled selected>Select your gender</option>
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                        <option value="Other">Other</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" name="password" required>
-                    <div id="password-strength-meter">
-                        <div id="password-strength-bar"></div>
+            <!-- Right Panel: Registration Form -->
+            <div class="auth-form-wrapper">
+                <div class="auth-form-container">
+                    <div class="auth-header">
+                        <h1>Create Your Account</h1>
+                        <p>Let's get you started. Already have an account? <a href="login.php">Log in</a>.</p>
                     </div>
-                    <div id="password-strength-text"></div>
-                </div>
 
-                <div class="form-group">
-                    <label for="confirm_password">Confirm Password</label>
-                    <input type="password" id="confirm_password" name="confirm_password" required>
+                    <?php
+                    if (isset($_SESSION['register_error'])) {
+                        echo '<div class="message-box error-message">' . htmlspecialchars($_SESSION['register_error']) . '</div>';
+                        unset($_SESSION['register_error']);
+                    }
+                    ?>
+
+                    <form id="registerForm" action="register/register_process.php" method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+
+                        <!-- Profile Picture Uploader -->
+                        <div class="form-group profile-picture-uploader">
+                            <label for="profile_picture_input">Profile Picture</label>
+                            <div class="profile-picture-container">
+                                <img src="uploads/profile_pictures/default.png" alt="Profile Preview" id="profile_picture_preview" class="profile-picture-preview">
+                                <input type="file" id="profile_picture_input" name="profile_picture" accept="image/jpeg, image/png, image/gif" style="display: none;">
+                                <button type="button" class="btn-change-pic" onclick="document.getElementById('profile_picture_input').click();"></button>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <input type="text" id="name" name="name" class="form-control" placeholder=" " required>
+                            <label for="name" class="form-label">Full Name</label>
+                        </div>
+                        
+                        <div class="form-group">
+                            <input type="text" id="username" name="username" class="form-control" placeholder=" " required>
+                            <label for="username" class="form-label">Username</label>
+                            <div id="username-availability" class="availability-message"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <input type="email" id="email" name="email" class="form-control" placeholder=" " required>
+                            <label for="email" class="form-label">Email Address</label>
+                            <div id="email-availability" class="availability-message"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <input type="tel" id="phone" name="phone" class="form-control" placeholder=" " pattern="\+[0-9]{10,15}" title="Format: +911234567890" required>
+                            <label for="phone" class="form-label">Phone Number (e.g., +91...)</label>
+                        </div>
+
+                        <div class="form-group-row">
+                            <div class="form-group">
+                                <input type="date" id="date_of_birth" name="date_of_birth" class="form-control" placeholder=" " max="<?php echo date('Y-m-d'); ?>" required>
+                                <label for="date_of_birth" class="form-label">Date of Birth</label>
+                            </div>
+                            <div class="form-group">
+                                <select id="gender" name="gender" class="form-control" required>
+                                    <option value="" disabled selected></option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                                <label for="gender" class="form-label">Gender</label>
+                            </div>
+                        </div>
+
+                        <div class="form-group password-group">
+                            <input type="password" id="password" name="password" class="form-control" placeholder=" " required>
+                            <label for="password" class="form-label">Password</label>
+                            <i class="fa fa-eye-slash password-toggle-icon" id="togglePassword"></i>
+                        </div>
+                        
+                        <!-- Password Strength Indicator -->
+                        <div class="password-strength-container">
+                            <div id="password-strength-meter">
+                                <div id="password-strength-bar"></div>
+                            </div>
+                            <div id="password-strength-text"></div>
+                        </div>
+
+                        <div class="form-group password-group">
+                            <input type="password" id="confirm_password" name="confirm_password" class="form-control" placeholder=" " required>
+                            <label for="confirm_password" class="form-label">Confirm Password</label>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary btn-full-width">Create Account</button>
+                    </form>
                 </div>
-                
-                <button type="submit" class="btn btn-primary">Register</button>
-            </form>
-            <div class="login-link">
-                <p>Already have an account? <a href="login.php">Login here</a></p>
             </div>
         </div>
-    </div>
-
-    <script>
-        /**
-         * Client-side form validation before submission.
-         */
-        function validateForm() {
-            const password = document.getElementById('password').value;
-            const confirmPassword = document.getElementById('confirm_password').value;
-            const phone = document.getElementById('phone').value;
-
-            if (password !== confirmPassword) {
-                alert('Passwords do not match. Please try again.');
-                return false; // Prevent form submission
-            }
-            
-            if (!phone.startsWith('+')) {
-                alert('Phone number must start with a country code (+).');
-                return false;
-            }
-            return true; // Allow form submission
-        }
-        
-        /**
-         * Real-time username formatting
-         */
-        const usernameInput = document.getElementById('username');
-        usernameInput.addEventListener('input', function() {
-            // Converts to lowercase and removes spaces
-            this.value = this.value.toLowerCase().replace(/\s/g, '');
-        });
-
-        /**
-         * Password strength meter logic.
-         */
-        const passwordInput = document.getElementById('password');
-        const strengthBar = document.getElementById('password-strength-bar');
-        const strengthText = document.getElementById('password-strength-text');
-
-        passwordInput.addEventListener('input', function() {
-            const password = this.value;
-            let strength = 0;
-            let text = 'Weak';
-            let color = 'var(--error-color)';
-
-            if (password.length >= 8) strength++;
-            if (password.match(/[a-z]/)) strength++;
-            if (password.match(/[A-Z]/)) strength++;
-            if (password.match(/[0-9]/)) strength++;
-            if (password.match(/[^a-zA-Z0-9]/)) strength++;
-
-            switch(strength) {
-                case 0:
-                case 1:
-                case 2:
-                    text = 'Weak';
-                    color = '#dc3545'; // red
-                    break;
-                case 3:
-                    text = 'Medium';
-                    color = '#ffc107'; // yellow
-                    break;
-                case 4:
-                    text = 'Strong';
-                    color = '#28a745'; // green
-                    break;
-                case 5:
-                    text = 'Very Strong';
-                    color = '#007BFF'; // blue
-                    break;
-            }
-
-            strengthBar.style.width = (strength * 20) + '%';
-            strengthBar.style.backgroundColor = color;
-            strengthText.textContent = text;
-        });
-
-        /**
-         * Real-time availability checking and DOB year validation
-         */
-        document.addEventListener('DOMContentLoaded', function() {
-            const usernameInput = document.getElementById('username');
-            const emailInput = document.getElementById('email');
-            const usernameAvailability = document.getElementById('username-availability');
-            const emailAvailability = document.getElementById('email-availability');
-            const dobInput = document.getElementById('date_of_birth');
-
-            usernameInput.addEventListener('blur', function() {
-                const username = this.value;
-                if(username.length < 3) {
-                    usernameAvailability.textContent = 'Username must be at least 3 characters long.';
-                    usernameAvailability.className = 'availability-message error';
-                    return;
-                }
-                
-                fetch('check_availability.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: 'username=' + encodeURIComponent(username)
-                })
-                .then(response => response.json())
-                .then(data => {
-                    usernameAvailability.textContent = data.message;
-                    if(data.available) {
-                        usernameAvailability.className = 'availability-message success';
-                    } else {
-                        usernameAvailability.className = 'availability-message error';
-                    }
-                });
-            });
-            
-            emailInput.addEventListener('blur', function() {
-                const email = this.value;
-                if(email.length === 0) {
-                    emailAvailability.textContent = '';
-                    return;
-                }
-                
-                fetch('check_availability.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: 'email=' + encodeURIComponent(email)
-                })
-                .then(response => response.json())
-                .then(data => {
-                    emailAvailability.textContent = data.message;
-                    if(data.available) {
-                        emailAvailability.className = 'availability-message success';
-                    } else {
-                        emailAvailability.className = 'availability-message error';
-                    }
-                });
-            });
-
-            // Restrict year in Date of Birth to 4 digits
-            dobInput.addEventListener('input', function() {
-                // The value is in 'YYYY-MM-DD' format. We check the year part.
-                if (this.value.length > 0) {
-                    const year = this.value.split('-')[0];
-                    if (year.length > 4) {
-                        this.value = year.slice(0, 4) + this.value.substring(year.length);
-                    }
-                }
-            });
-        });
-
-    </script>
+    </main>
+    
+    <script src="register/script.js"></script>
 </body>
 </html>

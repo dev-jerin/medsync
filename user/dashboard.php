@@ -1,6 +1,6 @@
 <?php
 // Include the backend logic for session management and data retrieval.
-require_once 'user/user.php';
+require_once 'user.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -12,18 +12,18 @@ require_once 'user/user.php';
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
-    <link rel="apple-touch-icon" sizes="180x180" href="images/favicon/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="images/favicon/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="images/favicon/favicon-16x16.png">
-    <link rel="manifest" href="images/favicon/site.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="../images/favicon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="../images/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../images/favicon/favicon-16x16.png">
+    <link rel="manifest" href="../images/favicon/site.webmanifest">
 
-    <link rel="stylesheet" href="user/styles.css">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="dashboard-container">
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <img src="images/logo.png" alt="MedSync Logo" class="logo">
+                <img src="../images/logo.png" alt="MedSync Logo" class="logo">
                 <span class="logo-text">MedSync</span>
             </div>
             <nav class="sidebar-nav">
@@ -67,7 +67,7 @@ require_once 'user/user.php';
                                 <i class="fas fa-user-edit"></i>
                                 <span>Edit Profile</span>
                             </a>
-                            <a href="logout.php" class="dropdown-item">
+                            <a href="../logout.php" class="dropdown-item">
                                 <i class="fas fa-sign-out-alt"></i>
                                 <span>Logout</span>
                             </a>

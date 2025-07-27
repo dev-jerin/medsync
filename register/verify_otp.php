@@ -1,5 +1,5 @@
 <?php
-// Include the configuration file to initialize session and CSRF token
+// config.php initializes the session and CSRF token
 require_once '../config.php';
 
 // If the user hasn't started the registration process, redirect them.
@@ -13,83 +13,73 @@ if (!isset($_SESSION['registration_data'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verify OTP - MedSync</title>
+    <title>Verify Your Account - MedSync</title>
     
-    <!-- Google Fonts: Poppins -->
+    <!-- Fonts, Favicon, Icons -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-
-    <!--Favicon-->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="apple-touch-icon" sizes="180x180" href="../images/favicon/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="../images/favicon/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="../images/favicon/favicon-16x16.png">
     <link rel="manifest" href="../images/favicon/site.webmanifest">
-    
-    <!-- Font Awesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-
-    <style>
-        /* Styles are consistent with register.php for a seamless user experience */
-        :root {
-            --primary-color: #007BFF;
-            --text-dark: #343a40;
-            --background-grey: #f1f5f9;
-            --shadow-md: 0 10px 15px rgba(0, 0, 0, 0.1);
-            --border-radius: 12px;
-            --error-color: #dc3545;
-            --success-color: #28a745;
-        }
-        body {
-            font-family: 'Poppins', sans-serif;
-            background-color: var(--background-grey);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-        }
-        .container { width: 90%; max-width: 450px; margin: auto; }
-        .verify-card { background: #fff; padding: 2.5rem; border-radius: var(--border-radius); box-shadow: var(--shadow-md); text-align: center; }
-        .verify-header h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
-        .verify-header p { margin-bottom: 2rem; color: #6c757d; }
-        .form-group { margin-bottom: 1.5rem; text-align: left; }
-        .form-group label { display: block; font-weight: 500; margin-bottom: 0.5rem; }
-        .form-group input { width: 100%; padding: 0.8rem 1rem; border: 1px solid #ced4da; border-radius: 8px; font-size: 1.5rem; text-align: center; letter-spacing: 5px; }
-        .form-group input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.2); }
-        .btn { padding: 0.75rem 1.5rem; border-radius: var(--border-radius); text-decoration: none; font-weight: 600; transition: all 0.3s ease; border: none; cursor: pointer; width: 100%; }
-        .btn-primary { background: linear-gradient(90deg, #007BFF, #17a2b8); color: #fff; box-shadow: 0 4px 15px rgba(0, 123, 255, 0.2); }
-        .message-box { padding: 1rem; border-radius: var(--border-radius); margin-bottom: 1rem; border: 1px solid transparent; }
-        .error-message { background-color: rgba(220, 53, 69, 0.1); color: var(--error-color); border-color: rgba(220, 53, 69, 0.2); }
-    </style>
+    
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="../main/styles.css"> <!-- Main styles for header/footer -->
+    <link rel="stylesheet" href="styles.css"> <!-- Page-specific styles -->
 </head>
 <body>
-    <div class="container">
-        <div class="verify-card">
-            <div class="verify-header">
+
+    <!-- Header -->
+    <header class="header" id="header">
+        <nav class="container navbar">
+            <a href="../index.php" class="logo">
+                <img src="../images/logo.png" alt="MedSync Logo" class="logo-img">
+                <span>MedSync</span>
+            </a>
+        </nav>
+    </header>
+
+    <main class="auth-page-centered">
+        <div class="auth-form-container" style="max-width: 500px;">
+            <div class="auth-header">
                 <h1>Email Verification</h1>
                 <p>An OTP has been sent to <strong><?php echo htmlspecialchars($_SESSION['registration_data']['email']); ?></strong>. Please enter it below.</p>
             </div>
 
             <?php
-            // Display any verification error messages
             if (isset($_SESSION['verify_error'])) {
                 echo '<div class="message-box error-message">' . htmlspecialchars($_SESSION['verify_error']) . '</div>';
                 unset($_SESSION['verify_error']);
             }
             ?>
 
-            <form action="../register/verify_process.php" method="POST">
-                <!-- CSRF Token for security -->
+            <form action="verify_process.php" method="POST">
                 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+                <input type="hidden" id="otp" name="otp">
                 
                 <div class="form-group">
-                    <label for="otp">Enter 6-Digit OTP</label>
-                    <input type="text" id="otp" name="otp" maxlength="6" pattern="\d{6}" inputmode="numeric" required>
+                    <label for="otp-1">Enter 6-Digit OTP</label>
+                    <div class="otp-input-container">
+                        <input type="text" id="otp-1" class="otp-input" maxlength="1" inputmode="numeric">
+                        <input type="text" id="otp-2" class="otp-input" maxlength="1" inputmode="numeric">
+                        <input type="text" id="otp-3" class="otp-input" maxlength="1" inputmode="numeric">
+                        <input type="text" id="otp-4" class="otp-input" maxlength="1" inputmode="numeric">
+                        <input type="text" id="otp-5" class="otp-input" maxlength="1" inputmode="numeric">
+                        <input type="text" id="otp-6" class="otp-input" maxlength="1" inputmode="numeric">
+                    </div>
                 </div>
 
-                <button type="submit" class="btn btn-primary">Verify & Register</button>
+                <button type="submit" class="btn btn-primary btn-full-width">Verify & Register</button>
             </form>
+            <div class="resend-otp-link">
+                <p>Didn't receive the code? <a href="#">Resend OTP</a></p>
+                <!-- Note: Resend OTP functionality requires backend logic -->
+            </div>
         </div>
-    </div>
+    </main>
+    
+    <script src="script.js"></script>
 </body>
 </html>

@@ -8,16 +8,16 @@ if (isset($_SESSION['user_id'])) {
     // Redirect based on user role
     switch ($_SESSION['role']) {
         case 'admin':
-            header("Location: admin_dashboard.php");
+            header("Location: admin/dashboard.php");
             break;
         case 'doctor':
-            header("Location: doctor_dashboard.php");
+            header("Location: doctor/dashboard.php");
             break;
         case 'staff':
-            header("Location: staff_dashboard.php");
+            header("Location: staff/dashboard.php");
             break;
         case 'user':
-            header("Location: user_dashboard.php");
+            header("Location: user/dashboard.php");
             break;
         default:
             // If role is not set or unknown, logout to be safe
@@ -37,671 +37,33 @@ if (empty($_SESSION['csrf_token'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MedSync - Calysta Health Institute</title>
+    <title>MedSync - Your Health, Synchronized</title>
     
-    <!-- Google Fonts: Poppins for a modern, clean look -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!--Favicon-->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <link rel="apple-touch-icon" sizes="180x180" href="images/favicon/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="images/favicon/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="images/favicon/favicon-16x16.png">
     <link rel="manifest" href="images/favicon/site.webmanifest">
-    <!-- Font Awesome for Icons -->
+    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
-    <!-- GSAP for Animations -->
+    <link rel="stylesheet" href="main/styles.css">
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
-
-    <style>
-        /* --- Base Styles & Variables --- */
-        :root {
-            --primary-color: #007BFF; /* A professional and calming blue */
-            --primary-dark: #0056b3;
-            --secondary-color: #17a2b8; /* A complementary teal */
-            --text-dark: #343a40;
-            --text-light: #f8f9fa;
-            --background-light: #ffffff;
-            --background-grey: #f1f5f9;
-            --success-color: #28a745;
-            --error-color: #dc3545;
-            --shadow-sm: 0 4px 6px rgba(0, 0, 0, 0.05);
-            --shadow-md: 0 10px 15px rgba(0, 0, 0, 0.1);
-            --border-radius: 12px;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Poppins', sans-serif;
-            background-color: var(--background-light);
-            color: var(--text-dark);
-            line-height: 1.7;
-            overflow-x: hidden; /* Prevent horizontal scroll */
-        }
-        
-        html {
-            scroll-behavior: smooth;
-        }
-
-        /* --- Utility Classes --- */
-        .container {
-            width: 90%;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 15px;
-        }
-
-        section {
-            padding: 6rem 0;
-        }
-        
-        /* --- Header & Navigation --- */
-        .header {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            padding: 1rem 0;
-            background-color: rgba(255, 255, 255, 0.8);
-            backdrop-filter: blur(10px);
-            z-index: 1000;
-            transition: all 0.3s ease;
-            box-shadow: var(--shadow-sm);
-        }
-
-        .navbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .logo {
-            font-size: 1.8rem;
-            font-weight: 700;
-            color: var(--primary-color);
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-        }
-
-        .logo-img {
-            height: 40px; /* Adjust as needed */
-            width: auto;
-            margin-right: 8px; /* Match original spacing */
-        }
-
-        .nav-links {
-            list-style: none;
-            display: flex;
-            gap: 2rem;
-        }
-
-        .nav-links a {
-            text-decoration: none;
-            color: var(--text-dark);
-            font-weight: 500;
-            position: relative;
-            transition: color 0.3s ease;
-        }
-
-        .nav-links a::after {
-            content: '';
-            position: absolute;
-            width: 0;
-            height: 2px;
-            bottom: -5px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: var(--primary-color);
-            transition: width 0.3s ease;
-        }
-
-        .nav-links a:hover {
-            color: var(--primary-color);
-        }
-        
-        .nav-links a:hover::after {
-            width: 100%;
-        }
-        
-        .nav-actions {
-            display: flex;
-            gap: 1rem;
-        }
-        
-        .btn {
-            padding: 0.75rem 1.5rem;
-            border-radius: var(--border-radius);
-            text-decoration: none;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            border: 2px solid transparent;
-            cursor: pointer;
-            text-align: center;
-        }
-
-        .btn-primary {
-            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
-            color: var(--text-light);
-            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.2);
-            opacity: 1; /* Ensure button is visible by default */
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 6px 20px rgba(0, 123, 255, 0.3);
-        }
-        
-        .btn-secondary {
-            background-color: transparent;
-            color: var(--primary-color);
-            border-color: var(--primary-color);
-        }
-
-        .btn-secondary:hover {
-            background-color: var(--primary-color);
-            color: var(--text-light);
-            transform: translateY(-3px);
-        }
-
-        /* --- Hamburger Menu (Mobile Only) --- */
-        .hamburger {
-            display: none;
-            font-size: 1.5rem;
-            cursor: pointer;
-            z-index: 1001; /* Above mobile menu background */
-            color: var(--text-dark); /* Default color */
-        }
-        
-        .mobile-nav {
-            position: fixed;
-            top: 0;
-            right: 0;
-            width: 70%;
-            height: 100vh;
-            background-color: var(--background-light);
-            z-index: 1000;
-            transform: translateX(100%);
-            transition: transform 0.3s ease-in-out;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 1.5rem;
-        }
-        
-        .mobile-nav.active {
-            transform: translateX(0);
-            box-shadow: -10px 0 30px rgba(0,0,0,0.1);
-        }
-        
-        .mobile-nav .nav-links {
-            display: flex; 
-            flex-direction: column;
-            align-items: center;
-            font-size: 1.5rem;
-            gap: 2rem;
-        }
-        
-        .mobile-nav .btn {
-            width: 80%;
-            text-align: center;
-        }
-        
-        .mobile-nav .nav-actions-mobile {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            width: 80%;
-            margin-top: 1rem;
-        }
-        
-        .mobile-nav .close-btn {
-            position: absolute;
-            top: 1.5rem;
-            right: 1.5rem;
-            font-size: 2rem;
-            cursor: pointer;
-            color: var(--text-dark);
-        }
-
-        /* --- Hero Section --- */
-        .hero {
-            background: linear-gradient(rgba(241, 245, 249, 0.1), rgba(241, 245, 249, 0.1)), url('https://placehold.co/1920x1080/e0f7fa/e0f7fa?text=') no-repeat center center/cover;
-            background-color: #e0f7fa; /* Fallback color */
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            padding-top: 80px; /* Offset for fixed header */
-        }
-        
-        .hero-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            width: 100%;
-            gap: 3rem;
-        }
-        
-        .hero-text {
-            flex-basis: 50%;
-        }
-
-        .hero-image-container {
-            flex-basis: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        
-        .hero-image {
-            max-width: 650px;
-            height: auto;
-            border-radius: 20px;
-            transform: scale(0.9); /* Initial scale for zoom animation */
-            opacity: 0; /* Initial opacity for fade animation */
-        }
-
-        .hero-text h1 {
-            font-size: 3.5rem;
-            font-weight: 700;
-            line-height: 1.2;
-            color: var(--text-dark);
-            margin-bottom: 1rem;
-        }
-        
-        .hero-text .highlight {
-            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .hero-text p {
-            font-size: 1.1rem;
-            margin-bottom: 2rem;
-            max-width: 500px;
-        }
-        
-        /* --- About Us Section --- */
-        .about-content {
-            display: flex;
-            align-items: center;
-            gap: 4rem;
-        }
-        
-        .about-text, .about-values {
-            flex: 1;
-        }
-        
-        .about-text h3 {
-            font-size: 2rem;
-            margin-bottom: 1rem;
-            color: var(--primary-color);
-        }
-
-        .about-values ul {
-            list-style: none;
-        }
-        
-        .about-values li {
-            font-size: 1.1rem;
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: flex-start;
-        }
-        
-        .about-values .icon {
-            color: var(--success-color);
-            margin-right: 1rem;
-            font-size: 1.5rem;
-        }
-
-        /* --- Contact Section --- */
-        #contact {
-            background-color: var(--background-grey);
-        }
-
-        .contact-layout {
-            display: flex;
-            gap: 3rem;
-            align-items: flex-start;
-            background-color: var(--background-light);
-            padding: 3rem;
-            border-radius: var(--border-radius);
-            box-shadow: var(--shadow-md);
-        }
-
-        .contact-info, .contact-form-wrapper {
-            flex: 1;
-        }
-        
-        .form-group {
-            margin-bottom: 1.5rem;
-            position: relative;
-        }
-        
-        .form-group input {
-            width: 100%;
-            padding: 0.8rem 1rem;
-            border: 1px solid #ced4da;
-            border-radius: 8px;
-            font-size: 1rem;
-            transition: border-color 0.3s ease;
-        }
-        
-        .form-group input:focus {
-            outline: none;
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.2);
-        }
-
-        .contact-info h3 {
-            font-size: 1.8rem;
-            color: var(--primary-color);
-            margin-bottom: 1rem;
-        }
-        .contact-info p {
-            margin-bottom: 2rem;
-        }
-
-        .contact-info ul {
-            list-style: none;
-            padding: 0;
-        }
-        .contact-info li {
-            display: flex;
-            align-items: center;
-            margin-bottom: 1rem;
-            font-size: 1rem;
-        }
-        .contact-info li i {
-            font-size: 1.2rem;
-            color: var(--primary-color);
-            width: 30px;
-        }
-
-        .contact-form-wrapper h4 {
-            font-size: 1.5rem;
-            margin-bottom: 1.5rem;
-            font-weight: 600;
-        }
-        
-        /* --- Services Section --- */
-        #services {
-            background-color: var(--background-grey);
-        }
-
-        .section-title {
-            text-align: center;
-            margin-bottom: 4rem;
-        }
-        
-        .section-title h2 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-        }
-        
-        .section-title p {
-            font-size: 1.1rem;
-            color: #6c757d;
-            max-width: 600px;
-            margin: 0 auto;
-        }
-
-        .services-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 2rem;
-        }
-
-        .service-card {
-            background-color: var(--background-light);
-            padding: 2.5rem 2rem;
-            border-radius: var(--border-radius);
-            box-shadow: var(--shadow-sm);
-            text-align: center;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            opacity: 0; /* Initially hidden for animation */
-            transform: translateY(50px);
-        }
-
-        .service-card:hover {
-            transform: translateY(-10px);
-            box-shadow: var(--shadow-md);
-        }
-
-        .service-card .icon {
-            font-size: 3rem;
-            color: var(--primary-color);
-            margin-bottom: 1.5rem;
-            display: inline-block;
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        
-        .service-card h3 {
-            font-size: 1.4rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
-        }
-
-        .service-card p {
-            color: #6c757d;
-        }
-
-        /* --- FAQ Section --- */
-        .faq-section {
-             background-color: var(--background-light);
-        }
-
-        .faq-container {
-            max-width: 800px;
-            margin: 0 auto;
-            border: 1px solid #e0e0e0;
-            border-radius: var(--border-radius);
-            overflow: hidden;
-        }
-        .faq-item {
-            border-bottom: 1px solid #e0e0e0;
-        }
-        .faq-item:last-child {
-            border-bottom: none;
-        }
-        .faq-question {
-            width: 100%;
-            background: none;
-            border: none;
-            text-align: left;
-            padding: 1.5rem;
-            font-size: 1.1rem;
-            font-weight: 600;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            color: var(--text-dark);
-            transition: background-color 0.3s ease;
-        }
-        .faq-question:hover {
-            background-color: #f8f9fa;
-        }
-        .faq-question::after {
-            content: '\f078'; /* Font Awesome down arrow */
-            font-family: 'Font Awesome 6 Free';
-            font-weight: 900;
-            transition: transform 0.3s ease;
-        }
-        .faq-question.active::after {
-            transform: rotate(-180deg);
-        }
-
-        .faq-answer {
-            max-height: 0;
-            overflow: hidden;
-            transition: max-height 0.4s ease-out, padding 0.4s ease-out;
-            background-color: #f8f9fa;
-        }
-
-        .faq-answer p {
-            padding: 0 1.5rem 1.5rem 1.5rem;
-            color: #6c757d;
-        }
-        
-        /* --- Footer --- */
-        .footer {
-            background-color: var(--text-dark);
-            color: var(--text-light);
-            padding: 4rem 0 2rem;
-        }
-        
-        .footer-content {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 2rem;
-            margin-bottom: 3rem;
-        }
-        
-        .footer-col h4 {
-            font-size: 1.2rem;
-            margin-bottom: 1.5rem;
-            position: relative;
-        }
-        
-        .footer-col h4::after {
-            content: '';
-            position: absolute;
-            left: 0;
-            bottom: -8px;
-            width: 50px;
-            height: 2px;
-            background: var(--primary-color);
-        }
-
-        .footer-col p, .footer-col ul li {
-            color: #adb5bd;
-        }
-        
-        .footer-col ul {
-            list-style: none;
-        }
-        
-        .footer-col ul li {
-            margin-bottom: 0.75rem;
-        }
-        
-        .footer-col ul a {
-            color: #adb5bd;
-            text-decoration: none;
-            transition: color 0.3s ease, padding-left 0.3s ease;
-        }
-        
-        .footer-col ul a:hover {
-            color: var(--text-light);
-            padding-left: 5px;
-        }
-        
-        .social-links a {
-            display: inline-block;
-            height: 40px;
-            width: 40px;
-            background-color: rgba(255,255,255,0.2);
-            margin: 0 10px 10px 0;
-            text-align: center;
-            line-height: 40px;
-            border-radius: 50%;
-            color: var(--text-light);
-            transition: all 0.5s ease;
-        }
-        
-        .social-links a:hover {
-            color: #24262b;
-            background-color: var(--text-light);
-        }
-        
-        .footer-bottom {
-            text-align: center;
-            padding-top: 2rem;
-            border-top: 1px solid #495057;
-        }
-
-        /* --- Responsive Design --- */
-        @media (max-width: 992px) {
-            .hero-content {
-                flex-direction: column;
-                text-align: center;
-            }
-            .hero-text {
-                order: 1; /* Text comes first on mobile */
-                margin-bottom: 2rem;
-            }
-            .hero-text p {
-                margin-left: auto;
-                margin-right: auto;
-            }
-
-            @media (max-width: 992px) {
-    .hero-image {
-        width: 550%; /* Or a smaller fixed width, e.g., 500px */
-    }
-}
-            .hero-image-container {
-                order: 2; /* Image comes after text on mobile */
-                margin-bottom: 2rem;
-            }
-            .hero-text h1 {
-                font-size: 3rem;
-            }
-            
-            .header .navbar > .nav-links, .header .navbar > .nav-actions {
-                display: none;
-            }
-            .hamburger {
-                display: block;
-            }
-
-            .about-content {
-                flex-direction: column;
-                text-align: center;
-            }
-
-            .contact-layout {
-                flex-direction: column;
-                padding: 2rem;
-            }
-        }
-        
-        @media (max-width: 576px) {
-            .hero-text h1 {
-                font-size: 2.5rem;
-            }
-            .btn {
-                width: 100%;
-            }
-            section {
-                padding: 4rem 0;
-            }
-        }
-    </style>
 </head>
 <body>
 
-    <!-- Header -->
-    <header class="header">
+    <header class="header" id="header">
         <nav class="container navbar">
             <a href="index.php" class="logo">
-                <img src="images/logo.png" alt="MedSync Logo" class="logo-img">MedSync
+                <img src="images/logo.png" alt="MedSync Logo" class="logo-img">
+                <span>MedSync</span>
             </a>
             
-            <!-- Desktop Navigation -->
             <ul class="nav-links">
                 <li><a href="#home">Home</a></li>
                 <li><a href="#services">Services</a></li>
@@ -709,23 +71,20 @@ if (empty($_SESSION['csrf_token'])) {
                 <li><a href="#contact">Contact</a></li>
                 <li><a href="#faq">FAQ</a></li>
             </ul>
+
             <div class="nav-actions">
                 <a href="login.php" class="btn btn-secondary">Login</a>
                 <a href="register.php" class="btn btn-primary">Register</a>
             </div>
 
-            <!-- Hamburger Icon -->
             <div class="hamburger">
                 <i class="fas fa-bars"></i>
             </div>
         </nav>
     </header>
 
-    <!-- Mobile Navigation -->
     <div class="mobile-nav">
-        <div class="close-btn">
-            <i class="fas fa-times"></i>
-        </div>
+        <div class="close-btn"><i class="fas fa-times"></i></div>
         <ul class="nav-links">
             <li><a href="#home">Home</a></li>
             <li><a href="#services">Services</a></li>
@@ -739,56 +98,55 @@ if (empty($_SESSION['csrf_token'])) {
         </div>
     </div>
 
-    <!-- Main Content -->
     <main>
-        <!-- Hero Section -->
         <section id="home" class="hero">
             <div class="container hero-content">
-                <div class="hero-text"><br>
-                    <h1 class="main-headline">
-                        Seamless Healthcare
+                <div class="hero-text">
+                    <h1 class="anim-fade-up">
+                        Seamless Healthcare,
                         <span class="highlight">Perfectly in Sync.</span>
                     </h1>
-                    <p class="sub-headline">
-                        Welcome to Calysta Health Institute. Your journey to better health management starts here.
-                        Schedule appointments, track your queue, and manage records effortlessly.
-                    </p><br>
-                    <a href="#services" class="btn btn-primary">Explore Services</a>
+                    <p class="anim-fade-up" style="--delay: 0.2s;">
+                        Welcome to MedSync by Calysta Health Institute. Your journey to effortless health management starts here.
+                    </p>
+                    <div class="anim-fade-up" style="--delay: 0.4s;">
+                        <a href="register.php" class="btn btn-primary">Get Started Now</a>
+                    </div>
                 </div>
 
-                <!-- Hero Image -->
-                <div class="hero-image-container">
-                    <div class="hero-image-container">
-    <img src="images/health.png" alt="Modern Healthcare Illustration" class="hero-image">
-</div>
+                <div class="hero-image-container anim-fade-up" style="--delay: 0.3s;">
+                    <div class="hero-image-bg"></div>
+                    <img src="https://images.unsplash.com/photo-1576091160550-2173dba999ef?q=80&w=2070&auto=format&fit=crop" 
+                         alt="Doctor using a tablet for patient records" 
+                         class="hero-image"
+                         onerror="this.onerror=null;this.src='https://placehold.co/600x400/e2e8f0/333?text=MedSync+Platform';">
                 </div>
             </div>
         </section>
 
-        <!-- Services Section -->
         <section id="services">
             <div class="container">
                 <div class="section-title">
-                    <h2>Our Core Features</h2>
-                    <p>We provide a comprehensive suite of tools to make your healthcare experience smooth and efficient.</p>
+                    <h2 class="anim-fade-up">Our Core Features</h2>
+                    <p class="anim-fade-up" style="--delay: 0.2s;">We provide a comprehensive suite of tools to make your healthcare experience smooth, efficient, and patient-centric.</p>
                 </div>
                 <div class="services-grid">
-                    <div class="service-card">
+                    <div class="service-card anim-fade-up" style="--delay: 0s;">
                         <span class="icon"><i class="fas fa-calendar-check"></i></span>
                         <h3>Appointment Scheduling</h3>
                         <p>Easily book and manage your appointments with our specialists anytime, anywhere.</p>
                     </div>
-                    <div class="service-card">
+                    <div class="service-card anim-fade-up" style="--delay: 0.2s;">
                         <span class="icon"><i class="fas fa-ticket-alt"></i></span>
                         <h3>Live Token Tracking</h3>
                         <p>No more long waits. Track your queue status in real-time from the comfort of your home.</p>
                     </div>
-                    <div class="service-card">
+                    <div class="service-card anim-fade-up" style="--delay: 0.4s;">
                         <span class="icon"><i class="fas fa-file-prescription"></i></span>
                         <h3>Digital Prescriptions</h3>
                         <p>Access your prescriptions online securely and get notified when they are ready.</p>
                     </div>
-                    <div class="service-card">
+                    <div class="service-card anim-fade-up" style="--delay: 0.6s;">
                         <span class="icon"><i class="fas fa-procedures"></i></span>
                         <h3>Automated Discharge</h3>
                         <p>A streamlined and transparent discharge process, keeping you informed at every step.</p>
@@ -797,40 +155,107 @@ if (empty($_SESSION['csrf_token'])) {
             </div>
         </section>
         
-        <!-- About Us Section -->
         <section id="about">
             <div class="container">
-                <div class="section-title">
-                    <h2>About Calysta Health Institute</h2>
-                </div>
                 <div class="about-content">
-                    <div class="about-text">
-                        <h3>Our Mission</h3>
-                        <p>At Calysta Health Institute, our mission is to provide compassionate, accessible, and high-quality healthcare to our community. We believe in leveraging cutting-edge technology to create a seamless and patient-centric experience. Through our MedSync platform, we aim to empower patients by giving them control over their healthcare journey, from scheduling to recovery.</p>
+                    <div class="about-image anim-fade-up">
+                        <img src="https://images.unsplash.com/photo-1538108149393-fbbd81895907?q=80&w=2128&auto=format&fit=crop" 
+                             alt="The dedicated medical team at Calysta Health Institute"
+                             onerror="this.onerror=null;this.src='https://placehold.co/600x400/e2e8f0/333?text=Our+Team';">
                     </div>
-                    <div class="about-values">
-                        <h3>Our Core Values</h3>
-                        <ul>
-                            <li><span class="icon"><i class="fas fa-check-circle"></i></span><div><strong>Patient-First:</strong> Every decision we make is centered around the well-being and convenience of our patients.</div></li>
-                            <li><span class="icon"><i class="fas fa-check-circle"></i></span><div><strong>Innovation:</strong> We continuously innovate to improve healthcare delivery and operational efficiency.</div></li>
-                            <li><span class="icon"><i class="fas fa-check-circle"></i></span><div><strong>Integrity:</strong> We adhere to the highest standards of ethics and professionalism in all our interactions.</div></li>
-                        </ul>
+                    <div class="about-text anim-fade-up" style="--delay: 0.2s;">
+                        <h3>Our Mission at Calysta Health Institute</h3>
+                        <p>To provide compassionate, accessible, and high-quality healthcare by leveraging cutting-edge technology. MedSync empowers patients by giving them control over their healthcare journey, from scheduling to recovery.</p>
+                        <div class="about-values">
+                            <ul>
+                                <li><span class="icon"><i class="fas fa-check-circle"></i></span><div><strong>Patient-First:</strong> Your well-being and convenience are at the core of every decision we make.</div></li>
+                                <li><span class="icon"><i class="fas fa-check-circle"></i></span><div><strong>Innovation:</strong> We continuously innovate to improve healthcare delivery and efficiency.</div></li>
+                                <li><span class="icon"><i class="fas fa-check-circle"></i></span><div><strong>Integrity:</strong> We adhere to the highest standards of ethics and professionalism.</div></li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- Contact Section -->
-        <section id="contact">
+        <section id="impact" class="impact-section">
             <div class="container">
                 <div class="section-title">
-                    <h2>Get in Touch</h2>
-                    <p>Have questions or need assistance? We're here to help.</p>
+                    <h2 class="anim-fade-up">Our Impact in Numbers</h2>
+                    <p class="anim-fade-up" style="--delay: 0.2s;">We are proud of the positive change we bring to our community's health and well-being.</p>
                 </div>
-                <div class="contact-layout">
+                <div class="impact-grid">
+                    <div class="impact-card anim-fade-up" style="--delay: 0s;">
+                        <h3 class="counter" data-target="20000" data-suffix="+">0</h3>
+                        <p>Happy Patients</p>
+                    </div>
+                    <div class="impact-card anim-fade-up" style="--delay: 0.2s;">
+                        <h3 class="counter" data-target="25" data-suffix="+">0</h3>
+                        <p>Specialist Doctors</p>
+                    </div>
+                    <div class="impact-card anim-fade-up" style="--delay: 0.4s;">
+                        <h3 class="counter" data-target="98" data-suffix="%">0</h3>
+                        <p>Patient Satisfaction</p>
+                    </div>
+                    <div class="impact-card anim-fade-up" style="--delay: 0.6s;">
+                        <h3 class="counter" data-target="40" data-suffix="%">0</h3>
+                        <p>Reduction in Wait Times</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="testimonials" class="testimonials-section">
+            <div class="container">
+                <div class="section-title">
+                    <h2 class="anim-fade-up">What Our Patients Say</h2>
+                    <p class="anim-fade-up" style="--delay: 0.2s;">Their words are a testament to the care and dedication we provide every day.</p>
+                </div>
+                <div class="testimonial-grid">
+                    <div class="testimonial-card anim-fade-up" style="--delay: 0s;">
+                        <div class="stars">
+                            <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i>
+                        </div>
+                        <p>"The MedSync platform is a game-changer. Tracking my appointment token live from my phone saved me hours of waiting. The entire process was so smooth!"</p>
+                        <div class="author">
+                            <strong>Priya S.</strong>
+                            <span>Thiruvananthapuram</span>
+                        </div>
+                    </div>
+                    <div class="testimonial-card anim-fade-up" style="--delay: 0.2s;">
+                        <div class="stars">
+                            <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i>
+                        </div>
+                        <p>"Booking an appointment for my father was incredibly easy. The doctors are professional and the staff is very helpful. Highly recommend Calysta Health Institute."</p>
+                        <div class="author">
+                            <strong>Anil Kumar</strong>
+                            <span>Kochi</span>
+                        </div>
+                    </div>
+                    <div class="testimonial-card anim-fade-up" style="--delay: 0.4s;">
+                        <div class="stars">
+                            <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i>
+                        </div>
+                        <p>"I received my lab results and discharge summary directly on my phone. The level of transparency and efficiency is something I've never seen before in a hospital."</p>
+                        <div class="author">
+                            <strong>Fatima R.</strong>
+                            <span>Kozhikode</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="contact">
+            <div class="container">
+                <div class="section-title anim-fade-up">
+                    <h2>Get in Touch</h2>
+                    <p>Have questions or need assistance? Our team is here to help you.</p>
+                </div>
+                <div class="contact-layout anim-fade-up" style="--delay: 0.2s;">
                     <div class="contact-info">
                         <h3>Contact Information</h3>
-                        <p>Feel free to reach out to us through any of the following methods. Our team is available to assist you during business hours.</p>
+                        <p>Reach out to us through any of the following methods. Our team is available to assist you during business hours.</p>
                         <ul>
                             <li><i class="fas fa-map-marker-alt"></i><div><strong>Address:</strong><br>Calysta Health Institute, Kerala, India</div></li>
                             <li><i class="fas fa-phone"></i><div><strong>Phone:</strong><br><a href="tel:+914523531245">+91 45235 31245</a></div></li>
@@ -840,79 +265,61 @@ if (empty($_SESSION['csrf_token'])) {
                     </div>
                     <div class="contact-form-wrapper">
                          <h4>Request a Call Back</h4>
-                         <p>Leave your details below, and one of our patient coordinators will call you back shortly.</p>
-    <?php
-    // Display callback request status messages
-    if (isset($_SESSION['callback_message'])) {
-        $message = $_SESSION['callback_message'];
-        $message_type = $message['type'] === 'success' ? 'var(--success-color)' : 'var(--error-color)';
-        echo '<div style="padding: 1rem; margin-bottom: 1rem; border-radius: 8px; color: #fff; background-color:' . $message_type . ';">' . htmlspecialchars($message['text']) . '</div>';
-        // Unset the session message so it doesn't show again on refresh
-        unset($_SESSION['callback_message']);
-    }
-    ?>
-                        <form action="callback_request.php" method="POST" style="margin-top: 1.5rem;">
+                         <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Leave your details below, and a patient coordinator will call you shortly.</p>
+                        <?php
+                        // Display callback request status messages
+                        if (isset($_SESSION['callback_message'])) {
+                            $message = $_SESSION['callback_message'];
+                            $message_type = $message['type'] === 'success' ? 'var(--success-color)' : 'var(--error-color)';
+                            echo '<div class="callback-message" style="background-color:' . $message_type . ';">' . htmlspecialchars($message['text']) . '</div>';
+                            unset($_SESSION['callback_message']);
+                        }
+                        ?>
+                        <form action="callback_request.php" method="POST">
                             <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                             <div class="form-group">
-                                <label for="name">Full Name</label>
-                                <input type="text" id="name" name="name" required>
+                                <input type="text" id="name" name="name" class="form-control" placeholder=" " required>
+                                <label for="name" class="form-label">Full Name</label>
                             </div>
                             <div class="form-group">
-                                <label for="phone">Phone Number</label>
-                                <input type="tel" id="phone" name="phone" required>
+                                <input type="tel" id="phone" name="phone" class="form-control" placeholder=" " required>
+                                <label for="phone" class="form-label">Phone Number</label>
                             </div>
-                            <button type="submit" class="btn btn-primary" style="width:100%">Request Call</button>
+                            <button type="submit" class="btn btn-primary" style="width:100%; padding: 1rem;">Request Call</button>
                         </form>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- FAQ Section -->
-        <section id="faq" class="faq-section">
+        <section id="faq">
             <div class="container">
-                <div class="section-title">
+                <div class="section-title anim-fade-up">
                     <h2>Frequently Asked Questions</h2>
                     <p>Find answers to common questions about our services and platform.</p>
                 </div>
-                <div class="faq-container">
+                <div class="faq-container anim-fade-up" style="--delay: 0.2s;">
                     <div class="faq-item">
-                        <button class="faq-question">How do I book an appointment?</button>
-                        <div class="faq-answer">
-                            <p>You can book an appointment by logging into your MedSync account, navigating to the 'Book Appointment' tab, searching for a doctor by specialty, and selecting an available time slot that suits you. The system will guide you through the process.</p>
-                        </div>
+                        <button class="faq-question">How do I book an appointment?<span class="icon"><i class="fas fa-chevron-down"></i></span></button>
+                        <div class="faq-answer"><p>You can book an appointment by logging into your MedSync account, navigating to the 'Book Appointment' tab, searching for a doctor by specialty, and selecting an available time slot that suits you.</p></div>
                     </div>
                     <div class="faq-item">
-                        <button class="faq-question">Can I track my queue position online?</button>
-                        <div class="faq-answer">
-                            <p>Yes! Our 'Live Token Tracking' feature allows you to see your token number and the current token being served in real-time. You can monitor your position from home or on the go, reducing your waiting time at the institute.</p>
-                        </div>
+                        <button class="faq-question">Can I track my queue position online?<span class="icon"><i class="fas fa-chevron-down"></i></span></button>
+                        <div class="faq-answer"><p>Yes! Our 'Live Token Tracking' feature allows you to see your token number and the current token being served in real-time. You can monitor your position from home or on the go, reducing your waiting time at the institute.</p></div>
                     </div>
                     <div class="faq-item">
-                        <button class="faq-question">How do I access my medical records and prescriptions?</button>
-                        <div class="faq-answer">
-                            <p>Once you log in, you will find dedicated sections for 'Prescriptions' and 'Lab Results' on your dashboard. All your records are stored securely and can be accessed or downloaded anytime.</p>
-                        </div>
+                        <button class="faq-question">How do I access my medical records?<span class="icon"><i class="fas fa-chevron-down"></i></span></button>
+                        <div class="faq-answer"><p>Once you log in, you will find dedicated sections for 'Prescriptions' and 'Lab Results' on your dashboard. All your records are stored securely and can be accessed or downloaded anytime.</p></div>
                     </div>
                      <div class="faq-item">
-                        <button class="faq-question">Is my personal information secure on MedSync?</button>
-                        <div class="faq-answer">
-                            <p>Absolutely. We prioritize your privacy and data security. Our platform uses advanced encryption, CSRF protection, and secure session management to protect your personal and medical information at all times, in compliance with industry standards.</p>
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <button class="faq-question">What if I forget my password?</button>
-                        <div class="faq-answer">
-                            <p>You can easily reset your password by clicking the "Forgot Password?" link on the login page. An OTP (One-Time Password) will be sent to your registered email address to help you set a new password securely.</p>
-                        </div>
+                        <button class="faq-question">Is my personal information secure?<span class="icon"><i class="fas fa-chevron-down"></i></span></button>
+                        <div class="faq-answer"><p>Absolutely. We prioritize your privacy and data security. Our platform uses advanced encryption, CSRF protection, and secure session management to protect your personal and medical information at all times.</p></div>
                     </div>
                 </div>
             </div>
         </section>
-
     </main>
 
-    <!-- Footer -->
     <footer class="footer">
         <div class="container">
             <div class="footer-content">
@@ -927,7 +334,7 @@ if (empty($_SESSION['csrf_token'])) {
                         <li><a href="#services">Services</a></li>
                         <li><a href="register.php">Register</a></li>
                         <li><a href="privacy_policy.php">Privacy Policy</a></li>
-                        <li><a href="termsandconditions.php">Terms and Conditions</a></li>
+                        <li><a href="termsandconditions.php">Terms & Conditions</a></li>
                     </ul>
                 </div>
                 <div class="footer-col">
@@ -941,10 +348,18 @@ if (empty($_SESSION['csrf_token'])) {
                 <div class="footer-col">
                     <h4>Follow Us</h4>
                     <div class="social-links">
-                        <a href="#"><i class="fab fa-facebook-f"></i></a>
-                        <a href="#"><i class="fa-brands fa-x-twitter"></i></a>
-                        <a href="#"><i class="fab fa-instagram"></i></a>
-                        <a href="#"><i class="fab fa-linkedin-in"></i></a>
+                        <a href="#" aria-label="Facebook">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" role="img"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"></path></svg>
+                        </a>
+                        <a href="#" aria-label="Twitter">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" role="img"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
+                        </a>
+                        <a href="#" aria-label="Instagram">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" role="img"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.85s-.011 3.584-.069 4.85c-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07s-3.584-.012-4.85-.07c-3.252-.148-4.771-1.691-4.919-4.919-.058-1.265-.069-1.645-.069-4.85s.011-3.584.069-4.85c.149-3.225 1.664-4.771 4.919-4.919C8.416 2.175 8.796 2.163 12 2.163zm0 1.441c-3.117 0-3.482.01-4.694.063-2.433.11-3.58 1.1-3.69 3.69-.052 1.21-.062 1.556-.062 4.634s.01 3.424.062 4.634c.11 2.59 1.257 3.58 3.69 3.69 1.212.053 1.577.063 4.694.063s3.482-.01 4.694-.063c2.433-.11 3.58-1.1 3.69-3.69.052-1.21.062-1.556.062-4.634s-.01-3.424-.062-4.634c-.11-2.59-1.257-3.58-3.69-3.69C15.482 3.613 15.117 3.604 12 3.604zM12 8.25c-2.071 0-3.75 1.679-3.75 3.75s1.679 3.75 3.75 3.75 3.75-1.679 3.75-3.75S14.071 8.25 12 8.25zm0 6c-1.24 0-2.25-1.01-2.25-2.25S10.76 9.75 12 9.75s2.25 1.01 2.25 2.25S13.24 14.25 12 14.25zm6.36-7.18c-.414 0-.75.336-.75.75s.336.75.75.75.75-.336.75-.75-.336-.75-.75-.75z"></path></svg>
+                        </a>
+                        <a href="#" aria-label="LinkedIn">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" role="img"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"></path></svg>
+                        </a>
                     </div>
                 </div>
             </div>
@@ -954,118 +369,6 @@ if (empty($_SESSION['csrf_token'])) {
         </div>
     </footer>
 
-    <script>
-        document.addEventListener("DOMContentLoaded", function() {
-            // --- Mobile Navigation Logic ---
-            const hamburger = document.querySelector('.hamburger');
-            const mobileNav = document.querySelector('.mobile-nav');
-            const closeBtn = document.querySelector('.mobile-nav .close-btn');
-            const mobileNavLinks = document.querySelectorAll('.mobile-nav a'); // Select all links to close nav
-
-            if (hamburger) {
-                hamburger.addEventListener('click', () => {
-                    mobileNav.classList.add('active');
-                });
-            }
-            
-            if (closeBtn) {
-                closeBtn.addEventListener('click', () => {
-                    mobileNav.classList.remove('active');
-                });
-            }
-            
-            mobileNavLinks.forEach(link => {
-                link.addEventListener('click', () => {
-                    mobileNav.classList.remove('active');
-                });
-            });
-
-            // --- FAQ Accordion Logic ---
-            const faqQuestions = document.querySelectorAll('.faq-question');
-            faqQuestions.forEach(question => {
-                question.addEventListener('click', () => {
-                    const answer = question.nextElementSibling;
-                    const isActive = question.classList.contains('active');
-
-                    document.querySelectorAll('.faq-question.active').forEach(activeQuestion => {
-                        if(activeQuestion !== question) {
-                            activeQuestion.classList.remove('active');
-                            activeQuestion.nextElementSibling.style.maxHeight = null;
-                            activeQuestion.nextElementSibling.style.padding = '0 1.5rem';
-                        }
-                    });
-
-                    if (isActive) {
-                        question.classList.remove('active');
-                        answer.style.maxHeight = null;
-                        answer.style.padding = '0 1.5rem';
-                    } else {
-                        question.classList.add('active');
-                        answer.style.maxHeight = answer.scrollHeight + "px";
-                        answer.style.padding = '0 1.5rem 1.5rem 1.5rem';
-                    }
-                });
-            });
-
-            // --- GSAP Animations ---
-            gsap.registerPlugin(ScrollTrigger);
-            
-            // Animate hero text on page load
-            gsap.from(".main-headline", { duration: 1, y: 50, opacity: 0, ease: "power3.out", delay: 0.2 });
-            gsap.from(".sub-headline", { duration: 1, y: 50, opacity: 0, ease: "power3.out", delay: 0.4 });
-            gsap.from(".hero-text .btn-primary", { 
-                duration: 1, 
-                y: 50, 
-                opacity: 0, 
-                ease: "power3.out", 
-                delay: 0.6,
-                onComplete: function() {
-                    // Ensure the button is visible after animation
-                    document.querySelector(".hero-text .btn-primary").style.opacity = "1";
-                }
-            });
-            
-            // Animate hero image with subtle zoom and fade
-            gsap.to(".hero-image", {
-                scale: 1,
-                opacity: 1,
-                duration: 1.5,
-                ease: "power2.out",
-                delay: 0.8
-            });
-            
-            // Animate service cards on scroll
-            const serviceCards = document.querySelectorAll('.service-card');
-            serviceCards.forEach(card => {
-                gsap.to(card, {
-                    scrollTrigger: {
-                        trigger: card,
-                        start: "top 85%",
-                        toggleActions: "play none none none"
-                    },
-                    opacity: 1,
-                    y: 0,
-                    duration: 0.8,
-                    ease: "power3.out"
-                });
-            });
-
-            // Animate other sections on scroll
-            const sectionsToAnimate = ['#about', '#contact', '#faq'];
-            sectionsToAnimate.forEach(selector => {
-                gsap.from(selector + " .container", {
-                    scrollTrigger: {
-                        trigger: selector,
-                        start: "top 80%",
-                        toggleActions: "play none none none"
-                    },
-                    opacity: 0,
-                    y: 50,
-                    duration: 1,
-                    ease: 'power3.out'
-                });
-            });
-        });
-    </script>
+    <script src="main/script.js"></script>
 </body>
 </html>

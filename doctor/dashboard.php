@@ -1,6 +1,6 @@
 <?php
 // Include the backend logic for session management and data retrieval.
-require_once 'doctor/doctor.php';
+require_once 'doctor.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -14,13 +14,13 @@ require_once 'doctor/doctor.php';
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
     <!-- Paths to favicons are relative to the root where this file is located -->
-    <link rel="apple-touch-icon" sizes="180x180" href="images/favicon/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="images/favicon/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="images/favicon/favicon-16x16.png">
-    <link rel="manifest" href="images/favicon/site.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="../images/favicon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="../images/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../images/favicon/favicon-16x16.png">
+    <link rel="manifest" href="../images/favicon/site.webmanifest">
 
     <!-- Path to stylesheet is relative to the root -->
-    <link rel="stylesheet" href="doctor/styles.css">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="dashboard-layout">
@@ -45,7 +45,7 @@ require_once 'doctor/doctor.php';
                 </ul>
             </nav>
             <div class="sidebar-footer">
-                 <a href="logout.php" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
+                 <a href="../logout.php" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
             </div>
         </aside>
 
@@ -897,6 +897,6 @@ require_once 'doctor/doctor.php';
 
     </div>
     <!-- Path to script is relative to the root -->
-    <script src="doctor/script.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
