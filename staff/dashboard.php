@@ -110,7 +110,7 @@ require_once 'staff.php';
                         </div>
                     </div>
                     <div class="user-profile-widget" id="user-profile-widget">
-                        <img src="../images/staff-avatar.jpg" alt="Staff Avatar" class="profile-picture">
+                        <img src="<?php echo $profile_picture_path; ?>?v=<?php echo time(); ?>" alt="Staff Avatar" class="profile-picture">
                         <div class="profile-info">
                             <strong><?php echo $username; ?></strong>
                             <span>Hospital Staff</span>
@@ -303,76 +303,38 @@ require_once 'staff.php';
             <div id="messenger-page" class="page">
                 <div class="page-header"><h3><i class="fas fa-paper-plane"></i> Messenger</h3></div>
                 <div class="messenger-layout">
-                    <div class="conversation-list">
+                    <div class="conversation-list" id="conversation-list">
                         <div class="conversation-search">
-                            <input type="text" placeholder="Search users...">
+                            <input type="text" id="messenger-user-search" placeholder="Search for staff, doctors, admins...">
                         </div>
-                        <div class="conversation-item active" data-user-name="Dr. Emily Carter">
-                            <i class="fas fa-user-doctor user-avatar"></i>
-                            <div class="user-details">
-                                <div class="user-name">Dr. Emily Carter</div>
-                                <div class="last-message">Bed 105-A is ready for your patient.</div>
-                            </div>
-                            <div class="message-meta">
-                                <div class="message-time">2:15 PM</div>
-                                <span class="unread-indicator"></span>
-                            </div>
-                        </div>
-                        <div class="conversation-item" data-user-name="John (Billing)">
-                            <i class="fas fa-user-tie user-avatar"></i>
-                            <div class="user-details">
-                                <div class="user-name">John (Billing)</div>
-                                <div class="last-message">Please confirm the final charges for P003.</div>
-                            </div>
-                            <div class="message-meta">
-                                <div class="message-time">1:45 PM</div>
-                            </div>
-                        </div>
-                        <div class="conversation-item" data-user-name="Sarah (Head Nurse)">
-                            <i class="fas fa-user-nurse user-avatar"></i>
-                            <div class="user-details">
-                                <div class="user-name">Sarah (Head Nurse)</div>
-                                <div class="last-message">We need more saline drips on Floor 2.</div>
-                            </div>
-                             <div class="message-meta">
-                                <div class="message-time">Yesterday</div>
-                            </div>
+                        <div class="scrollable-area" id="conversation-list-items">
+                            <p class="no-items-message">Loading conversations...</p>
                         </div>
                     </div>
-                    <div class="chat-window">
-                        <div class="chat-header">
-                            <span id="chat-with-user">Dr. Emily Carter</span>
+
+                    <div class="chat-area">
+                        <div class="chat-window" id="chat-window" style="display: none;">
+                            <div class="chat-header">
+                                <div class="user-info">
+                                    <img src="../images/staff-avatar.jpg" alt="Avatar" class="chat-avatar" id="chat-header-avatar">
+                                    <div>
+                                        <span class="chat-user-name" id="chat-with-user-name"></span>
+                                        <span class="chat-user-id" id="chat-with-user-id"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chat-messages" id="chat-messages-container">
+                                </div>
+                            <form class="chat-input" id="message-form" novalidate>
+                                <input type="text" id="message-input" placeholder="Type your message..." autocomplete="off" disabled>
+                                <button type="submit" class="send-btn" disabled><i class="fas fa-paper-plane"></i></button>
+                            </form>
                         </div>
-                        <div class="chat-messages" id="chat-messages-container">
-                            <div class="message received">
-                                <div class="message-content">
-                                    <p>Hi Alice, has the cleaning for Bed 105-A been completed yet?</p>
-                                    <span class="message-timestamp">2:14 PM</span>
-                                </div>
-                            </div>
-                            <div class="message sent">
-                                <div class="message-content">
-                                    <p>Yes, Dr. Carter. I've just updated its status to Available.</p>
-                                    <span class="message-timestamp">2:14 PM</span>
-                                </div>
-                            </div>
-                             <div class="message received">
-                                <div class="message-content">
-                                    <p>Excellent, thank you. I'm admitting a new patient there shortly.</p>
-                                    <span class="message-timestamp">2:15 PM</span>
-                                </div>
-                            </div>
-                            <div class="message sent">
-                                <div class="message-content">
-                                    <p>Bed 105-A is ready for your patient.</p>
-                                    <span class="message-timestamp">2:15 PM</span>
-                                </div>
-                            </div>
+                        <div class="no-chat-selected" id="no-chat-placeholder">
+                            <i class="fas fa-comments"></i>
+                            <h3>MedSync Messenger</h3>
+                            <p>Select a conversation or search for a user to begin chatting.</p>
                         </div>
-                        <form class="chat-input" id="message-form">
-                            <input type="text" id="message-input" placeholder="Type your message..." autocomplete="off">
-                            <button type="submit" class="send-btn"><i class="fas fa-paper-plane"></i></button>
-                        </form>
                     </div>
                 </div>
             </div>
@@ -420,17 +382,16 @@ require_once 'staff.php';
                     <div class="profile-tabs">
                         <button class="profile-tab-link active" data-tab="personal-info"><i class="fas fa-user-edit"></i> Personal Information</button>
                         <button class="profile-tab-link" data-tab="security"><i class="fas fa-shield-alt"></i> Security</button>
-                        <button class="profile-tab-link" data-tab="notifications"><i class="fas fa-bell"></i> Notifications</button>
                         <button class="profile-tab-link" data-tab="audit-log"><i class="fas fa-history"></i> Audit Log</button>
                     </div>
                     <div id="personal-info-tab" class="profile-tab-content active">
-                        <form id="personal-info-form" class="settings-form">
+                        <form id="personal-info-form" class="settings-form" novalidate>
                             <h4>Edit Your Personal Details</h4>
                             <div class="profile-picture-editor">
-                                 <img src="../images/staff-avatar.jpg" alt="Staff Avatar" class="editable-profile-picture">
-                                 <label for="profile-picture-upload" class="edit-picture-btn">
+                                 <img src="<?php echo $profile_picture_path; ?>?v=<?php echo time(); ?>" alt="Staff Avatar" class="editable-profile-picture">
+                                 <label for="profile-picture-upload" class="edit-picture-btn" title="Upload new picture">
                                      <i class="fas fa-camera"></i>
-                                     <input type="file" id="profile-picture-upload" accept="image/*">
+                                     <input type="file" id="profile-picture-upload" accept="image/jpeg, image/png, image/gif">
                                  </label>
                             </div>
                             <div class="form-grid">
@@ -443,16 +404,35 @@ require_once 'staff.php';
                                     <input type="text" id="profile-id" name="display_id" value="<?php echo $display_user_id; ?>" readonly>
                                 </div>
                                 <div class="form-group">
+                                    <label for="profile-username">Username</label>
+                                    <input type="text" id="profile-username" name="username" value="<?php echo $raw_username; ?>" readonly>
+                                </div>
+                                <div class="form-group">
+                                    <label for="profile-dob">Date of Birth</label>
+                                    <input type="date" id="profile-dob" name="date_of_birth" value="<?php echo $date_of_birth; ?>">
+                                </div>
+                                <div class="form-group">
                                     <label for="profile-email">Email Address</label>
-                                    <input type="email" id="profile-email" name="email" value="a.johnson@medsync.com">
+                                    <input type="email" id="profile-email" name="email" value="<?php echo $email; ?>">
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-phone">Phone Number</label>
-                                    <input type="tel" id="profile-phone" name="phone" value="+1-202-555-0199">
+                                    <input type="tel" id="profile-phone" name="phone" value="<?php echo $phone; ?>">
                                 </div>
-                                <div class="form-group full-width">
+                                <div class="form-group">
                                     <label for="profile-department">Department</label>
-                                    <input type="text" id="profile-department" name="department" value="Administrative Staff">
+                                    <select id="profile-department" name="department">
+                                        <option value="">-- Select Department --</option>
+                                        <?php foreach ($departments as $dept): ?>
+                                            <option value="<?php echo htmlspecialchars($dept['name']); ?>" <?php echo ($dept['name'] === $assigned_department) ? 'selected' : ''; ?>>
+                                                <?php echo htmlspecialchars($dept['name']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="profile-shift">Shift</label>
+                                    <input type="text" id="profile-shift" name="shift" value="<?php echo ucfirst($shift); ?>" readonly>
                                 </div>
                             </div>
                             <div class="form-actions">
@@ -461,74 +441,33 @@ require_once 'staff.php';
                         </form>
                     </div>
                     <div id="security-tab" class="profile-tab-content">
-                        <form id="security-form" class="settings-form">
+                        <form id="security-form" class="settings-form" novalidate>
                             <h4>Change Your Password</h4>
                             <div class="form-grid">
                                 <div class="form-group full-width">
                                     <label for="current-password">Current Password</label>
                                     <div class="password-wrapper">
-                                        <input type="password" id="current-password" name="current_password" required>
+                                        <input type="password" id="current-password" name="current_password" required autocomplete="current-password">
                                         <i class="fas fa-eye-slash toggle-password"></i>
                                     </div>
                                 </div>
                                 <div class="form-group">
                                     <label for="new-password">New Password</label>
                                     <div class="password-wrapper">
-                                        <input type="password" id="new-password" name="new_password" required>
+                                        <input type="password" id="new-password" name="new_password" required autocomplete="new-password">
                                         <i class="fas fa-eye-slash toggle-password"></i>
                                     </div>
                                 </div>
                                 <div class="form-group">
                                     <label for="confirm-password">Confirm New Password</label>
                                     <div class="password-wrapper">
-                                        <input type="password" id="confirm-password" name="confirm_password" required>
+                                        <input type="password" id="confirm-password" name="confirm_password" required autocomplete="new-password">
                                         <i class="fas fa-eye-slash toggle-password"></i>
                                     </div>
                                 </div>
                             </div>
                             <div class="form-actions">
                                 <button type="submit" class="btn btn-primary"><i class="fas fa-key"></i> Update Password</button>
-                            </div>
-                        </form>
-                    </div>
-                    <div id="notifications-tab" class="profile-tab-content">
-                        <form id="notifications-form" class="settings-form">
-                            <h4>Manage Email Notifications</h4>
-                            <p class="form-description">Control which email notifications you want to receive.</p>
-                            <div class="notification-options">
-                                <div class="notification-item">
-                                    <div class="label-group">
-                                        <label for="notif-discharge-req">Discharge Requests</label>
-                                        <span>For new discharge requests needing clearance.</span>
-                                    </div>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="notif-discharge-req" name="discharge_requests" checked>
-                                        <span class="slider"></span>
-                                    </label>
-                                </div>
-                                <div class="notification-item">
-                                    <div class="label-group">
-                                        <label for="notif-inventory">Inventory Alerts</label>
-                                        <span>When medicine or blood stock is critically low.</span>
-                                    </div>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="notif-inventory" name="inventory_alerts" checked>
-                                        <span class="slider"></span>
-                                    </label>
-                                </div>
-                                <div class="notification-item">
-                                    <div class="label-group">
-                                        <label for="notif-system">System Announcements</label>
-                                        <span>For important updates, maintenance, and new features.</span>
-                                    </div>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="notif-system" name="system_announcements" checked>
-                                        <span class="slider"></span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="form-actions">
-                                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Preferences</button>
                             </div>
                         </form>
                     </div>
@@ -552,24 +491,6 @@ require_once 'staff.php';
                                             <td data-label="Action"><span class="log-action-update">Bed Status Updated</span></td>
                                             <td data-label="Target">Bed 105-A</td>
                                             <td data-label="Details">Status changed to 'Available'</td>
-                                        </tr>
-                                        <tr>
-                                            <td data-label="Date & Time">2025-07-26 11:15 AM</td>
-                                            <td data-label="Action"><span class="log-action-create">User Added</span></td>
-                                            <td data-label="Target">Patient: John Appleseed</td>
-                                            <td data-label="Details">Patient ID: MED-PAT-092</td>
-                                        </tr>
-                                        <tr>
-                                            <td data-label="Date & Time">2025-07-25 04:00 PM</td>
-                                            <td data-label="Action"><span class="log-action-update">Inventory Updated</span></td>
-                                            <td data-label="Target">Lisinopril (MED102)</td>
-                                            <td data-label="Details">Stock set to 200 units</td>
-                                        </tr>
-                                        <tr>
-                                            <td data-label="Date & Time">2025-07-25 09:05 AM</td>
-                                            <td data-label="Action"><span class="log-action-auth">Logged In</span></td>
-                                            <td data-label="Target">Self</td>
-                                            <td data-label="Details">IP: 192.168.1.15</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -626,46 +547,9 @@ require_once 'staff.php';
             </div>
         </div>
 
-        <div class="modal-overlay" id="create-invoice-modal-overlay">
-            <div class="modal-container">
-                <div class="modal-header">
-                    <h4>Create New Invoice</h4>
-                    <button class="modal-close-btn" data-modal-id="create-invoice-modal-overlay">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <form id="create-invoice-form">
-                        <div class="form-grid">
-                            <div class="form-group full-width">
-                                <label for="invoice-patient">Select Patient</label>
-                                <select id="invoice-patient" name="patient_id" required>
-                                    <option value="">-- Choose a patient --</option>
-                                    <option value="P001">P001 - Michael Brown</option>
-                                    <option value="P003">P003 - Emily Davis</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="invoice-service">Service / Item</label>
-                                <input type="text" id="invoice-service" name="service" placeholder="e.g., Consultation Fee" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="invoice-amount">Amount ($)</label>
-                                <input type="number" id="invoice-amount" name="amount" placeholder="e.g., 150" required>
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="invoice-notes">Notes</label>
-                                <textarea id="invoice-notes" name="notes" placeholder="Additional details..."></textarea>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary modal-close-btn" data-modal-id="create-invoice-modal-overlay">Cancel</button>
-                    <button class="btn btn-primary" id="modal-save-btn-invoice">Generate Invoice</button>
-                </div>
-            </div>
-        </div>
-        </div>
+    </div>
     <input type="hidden" id="csrf-token" value="<?php echo $_SESSION['csrf_token']; ?>">
+    <input type="hidden" id="current-user-id" value="<?php echo $_SESSION['user_id']; ?>">
     <script src="script.js"></script>
 </body>
 </html>
