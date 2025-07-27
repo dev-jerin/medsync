@@ -24,12 +24,13 @@ require_once 'staff.php';
     <div class="dashboard-layout">
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <img src="images/logo.png" alt="MedSync Logo" class="logo-img">
+                <img src="../images/logo.png" alt="MedSync Logo" class="logo-img">
                 <span class="logo-text">MedSync</span>
             </div>
             <nav class="sidebar-nav">
                 <ul>
                     <li><a href="#" class="nav-link active" data-page="dashboard"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                    <li><a href="#" class="nav-link" data-page="callbacks"><i class="fas fa-phone-volume"></i> Callback Requests</a></li>
                     <li><a href="#" class="nav-link" data-page="bed-management"><i class="fas fa-bed-pulse"></i> Bed Management</a></li>
                     <li><a href="#" class="nav-link" data-page="inventory"><i class="fas fa-boxes-stacked"></i> Inventory</a></li>
                     <li><a href="#" class="nav-link" data-page="billing"><i class="fas fa-file-invoice-dollar"></i> Billing</a></li>
@@ -119,8 +120,7 @@ require_once 'staff.php';
             </header>
 
             <div id="dashboard-page" class="page active">
-                <!-- Dashboard content -->
-                 <div class="content-panel">
+                <div class="content-panel">
                     <div class="welcome-message">
                         <h2>Welcome back, <?php echo $username; ?>!</h2>
                         <p>Here’s a real-time overview of hospital resources and patient flow. Let's make today efficient.</p>
@@ -152,6 +152,29 @@ require_once 'staff.php';
                                  <a href="#" class="action-card" id="quick-action-add-bed"><i class="fas fa-bed-pulse"></i><span>Add New Bed</span></a>
                              </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="callbacks-page" class="page">
+                <div class="content-panel">
+                    <div class="page-header">
+                        <h3><i class="fas fa-phone-volume"></i> Callback Requests</h3>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Phone Number</th>
+                                    <th>Requested At</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="callbacks-table-body">
+                                </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -390,8 +413,7 @@ require_once 'staff.php';
             </div>
 
             <div id="profile-page" class="page">
-                <!-- Profile content -->
-                 <div class="content-panel">
+                <div class="content-panel">
                     <div class="page-header">
                         <h3><i class="fas fa-user-cog"></i> Profile Settings</h3>
                     </div>
@@ -559,7 +581,6 @@ require_once 'staff.php';
 
         </main>
 
-        <!-- MODALS -->
         <div class="modal-overlay" id="add-bed-modal-overlay">
             <div class="modal-container">
                 <div class="modal-header">
@@ -643,9 +664,8 @@ require_once 'staff.php';
                 </div>
             </div>
         </div>
-        <!-- End Modals -->
-
-    </div>
+        </div>
+    <input type="hidden" id="csrf-token" value="<?php echo $_SESSION['csrf_token']; ?>">
     <script src="script.js"></script>
 </body>
 </html>

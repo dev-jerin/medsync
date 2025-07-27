@@ -1,4 +1,7 @@
 document.addEventListener("DOMContentLoaded", function() {
+    // --- CSRF Token for AJAX ---
+    const csrfToken = document.getElementById('csrf-token').value;
+
     const hamburgerBtn = document.getElementById('hamburger-btn');
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('overlay');
@@ -21,6 +24,12 @@ document.addEventListener("DOMContentLoaded", function() {
         link.addEventListener('click', (e) => {
             e.preventDefault();
             const pageId = link.getAttribute('data-page');
+            
+            // Fetch data for the specific page when it's clicked
+            if (pageId === 'callbacks') {
+                fetchCallbackRequests();
+            }
+
             const pageTitleLink = link.querySelector('i').nextSibling;
             const pageTitle = pageTitleLink ? pageTitleLink.textContent.trim() : 'Dashboard';
             mainHeaderTitle.textContent = pageTitle;
@@ -107,6 +116,89 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
     
+    // --- CALLBACK REQUESTS LOGIC ---
+    const callbacksTableBody = document.getElementById('callbacks-table-body');
+
+    async function fetchCallbackRequests() {
+        callbacksTableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">Loading requests...</td></tr>`;
+        try {
+            const response = await fetch('staff.php?fetch=callbacks');
+            if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+            const result = await response.json();
+
+            if (result.success) {
+                renderCallbackRequests(result.data);
+            } else {
+                throw new Error(result.message);
+            }
+        } catch (error) {
+            console.error('Fetch error:', error);
+            callbacksTableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--danger-color);">Failed to load requests.</td></tr>`;
+        }
+    }
+
+    function renderCallbackRequests(data) {
+        if (data.length === 0) {
+            callbacksTableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">No pending callback requests found.</td></tr>`;
+            return;
+        }
+
+        callbacksTableBody.innerHTML = data.map(req => `
+            <tr data-request-id="${req.id}">
+                <td data-label="Name">${req.name}</td>
+                <td data-label="Phone Number">${req.phone}</td>
+                <td data-label="Requested At">${new Date(req.created_at).toLocaleString()}</td>
+                <td data-label="Status">
+                    ${req.is_contacted == 1 
+                        ? '<span class="status completed">Contacted</span>' 
+                        : '<span class="status pending">Pending</span>'
+                    }
+                </td>
+                <td data-label="Action">
+                    ${req.is_contacted == 0 
+                        ? `<button class="action-btn mark-contacted-btn" data-id="${req.id}"><i class="fas fa-check"></i> Mark as Contacted</button>`
+                        : `<button class="action-btn" disabled><i class="fas fa-check-double"></i> Done</button>`
+                    }
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    callbacksTableBody.addEventListener('click', async function(e) {
+        const button = e.target.closest('.mark-contacted-btn');
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+
+            const requestId = button.dataset.id;
+            const formData = new FormData();
+            formData.append('action', 'markCallbackContacted');
+            formData.append('id', requestId);
+            formData.append('csrf_token', csrfToken);
+
+            try {
+                const response = await fetch('staff.php', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    // Refresh the list to show the updated status
+                    fetchCallbackRequests();
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                console.error('Update error:', error);
+                alert('Failed to update request status. Please try again.');
+                button.disabled = false;
+                button.innerHTML = '<i class="fas fa-check"></i> Mark as Contacted';
+            }
+        }
+    });
+
+
     // --- Modal Logic ---
     function setupModal(openBtnId, modalId) {
         const modal = document.getElementById(modalId);
