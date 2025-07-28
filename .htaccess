@@ -1,0 +1,51 @@
+# ----------------------------------------------------------------------
+# MedSync Apache Configuration
+# ----------------------------------------------------------------------
+
+# Turn on the rewrite engine
+RewriteEngine On
+
+# ----------------------------------------------------------------------
+# # Section 1: Set the base path for rewrite rules
+# ----------------------------------------------------------------------
+# This tells Apache the root folder of your project, which is crucial
+# for making rewrites work correctly inside a subfolder.
+RewriteBase /jerin-s05/medsync/jerin-s05-medsync-e1909df0cd4937c9243b498204e29d07/
+
+
+# ----------------------------------------------------------------------
+# # Section 2: PHP Error Logging
+# ----------------------------------------------------------------------
+# Turn off displaying errors to the public for security.
+php_flag display_errors off
+
+# Turn on logging of errors.
+php_flag log_errors on
+
+# Specify the name of the file where errors should be logged.
+php_value error_log log.txt
+
+# ----------------------------------------------------------------------
+# # Section 3: Secure Log File
+# ----------------------------------------------------------------------
+# This prevents anyone from viewing your error log file via a browser.
+<Files "log.txt">
+    Require all denied
+</Files>
+
+# ----------------------------------------------------------------------
+# # Section 4: URL Rewriting (Clean URLs)
+# ----------------------------------------------------------------------
+# Prevent directory listing for security
+Options -Indexes
+
+# Rule 1: Remove index.php from the URL
+# Redirects "http://yourdomain.com/index.php" to "http://yourdomain.com/"
+RewriteCond %{THE_REQUEST} ^[A-Z]{3,}\s(.*)/index\.php [NC]
+RewriteRule ^ %1/ [R=301,L]
+
+# Rule 2: Remove .php extension from files
+# This internally rewrites "page" to "page.php"
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}\.php -f
+RewriteRule ^(.*)$ $1.php [L]

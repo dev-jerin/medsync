@@ -1,0 +1,1 @@
+[28-Jul-2025 17:32:59 Europe/Berlin] PHP Parse error:  syntax error, unexpected variable "$dbhost" in C:\xampp\htdocs\medsync\config.php on line 8
