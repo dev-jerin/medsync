@@ -98,12 +98,13 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             u.display_user_id,
                             u.name AS other_user_name,
                             u.profile_picture AS other_user_profile_picture,
-                            u.role AS other_user_role,
+                            r.role_name AS other_user_role,
                             (SELECT message_text FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message,
                             (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message_time,
                             (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id AND receiver_id = ? AND is_read = 0) AS unread_count
                         FROM conversations c
                         JOIN users u ON u.id = IF(c.user_one_id = ?, c.user_two_id, c.user_one_id)
+                        JOIN roles r ON u.role_id = r.id
                         WHERE c.user_one_id = ? OR c.user_two_id = ?
                         ORDER BY last_message_time DESC
                     ");
@@ -178,15 +179,16 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $search_query = $_GET['search'] ?? '';
                     $allowed_roles = ['user', 'doctor'];
 
-                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, u.role, u.email, u.phone, u.date_of_birth, u.active, u.created_at, d.specialty 
+                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, r.role_name as role, u.email, u.phone, u.date_of_birth, u.is_active as active, u.created_at, d.specialty 
                             FROM users u
+                            JOIN roles r ON u.role_id = r.id
                             LEFT JOIN doctors d ON u.id = d.user_id
-                            WHERE u.role IN ('user', 'doctor')";
+                            WHERE r.role_name IN ('user', 'doctor')";
                     $params = [];
                     $types = "";
 
                     if ($role_filter !== 'all' && in_array($role_filter, $allowed_roles)) {
-                        $sql .= " AND u.role = ?";
+                        $sql .= " AND r.role_name = ?";
                         $params[] = $role_filter;
                         $types .= "s";
                     }
@@ -214,9 +216,10 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $stmt = $conn->prepare(
                         "SELECT 
                             n.id, n.message, n.is_read, n.created_at, 
-                            u.name as sender_name, u.role as sender_role
+                            u.name as sender_name, r.role_name as sender_role
                          FROM notifications n
                          LEFT JOIN users u ON n.sender_id = u.id
+                         LEFT JOIN roles r ON u.role_id = r.id
                          WHERE (n.recipient_user_id = ? OR n.recipient_role = ? OR n.recipient_role = 'all')
                          ORDER BY n.created_at DESC
                          LIMIT ?"
@@ -279,48 +282,35 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $wards_stmt->execute();
                     $wards = $wards_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     $wards_stmt->close();
-
-                    // Fetch all beds with ward and patient details
-                    $beds_stmt = $conn->prepare("
+                
+                    // Fetch all accommodations with details
+                    $accommodations_stmt = $conn->prepare("
                         SELECT 
-                            b.id, b.ward_id, w.name AS ward_name, b.bed_number, b.status, b.price_per_day,
+                            a.id, a.type, a.ward_id, w.name AS ward_name, a.number, a.status, a.price_per_day,
                             p.id as patient_id, p.display_user_id as patient_display_id, p.name as patient_name,
                             d.id as doctor_id, doc_user.name as doctor_name
-                        FROM beds b
-                        JOIN wards w ON b.ward_id = w.id
-                        LEFT JOIN users p ON b.patient_id = p.id
-                        LEFT JOIN doctors d ON b.doctor_id = d.user_id
+                        FROM accommodations a
+                        LEFT JOIN wards w ON a.ward_id = w.id
+                        LEFT JOIN users p ON a.patient_id = p.id
+                        LEFT JOIN doctors d ON a.doctor_id = d.user_id
                         LEFT JOIN users doc_user ON d.user_id = doc_user.id
-                        ORDER BY w.name, b.bed_number
+                        ORDER BY a.type, w.name, a.number
                     ");
-                    $beds_stmt->execute();
-                    $beds = $beds_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-                    $beds_stmt->close();
+                    $accommodations_stmt->execute();
+                    $accommodations_data = $accommodations_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $accommodations_stmt->close();
+                
+                    // Separate beds and rooms for frontend logic if needed
+                    $beds = array_filter($accommodations_data, function($item) { return $item['type'] === 'bed'; });
+                    $rooms = array_filter($accommodations_data, function($item) { return $item['type'] === 'room'; });
 
-                    // Fetch all rooms with patient details
-                    $rooms_stmt = $conn->prepare("
-                        SELECT 
-                            r.id, r.room_number, r.status, r.price_per_day,
-                            p.id as patient_id, p.display_user_id as patient_display_id, p.name as patient_name,
-                            d.id as doctor_id, doc_user.name as doctor_name
-                        FROM rooms r
-                        LEFT JOIN users p ON r.patient_id = p.id
-                        LEFT JOIN doctors d ON r.doctor_id = d.user_id
-                        LEFT JOIN users doc_user ON d.user_id = doc_user.id
-                        ORDER BY r.room_number
-                    ");
-                    $rooms_stmt->execute();
-                    $rooms = $rooms_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-                    $rooms_stmt->close();
-                    
                     // Fetch available patients (users with role 'user' not currently admitted)
                     $patients_stmt = $conn->prepare("
                         SELECT u.id, u.display_user_id, u.name 
                         FROM users u 
-                        WHERE u.role = 'user' AND u.active = 1 AND u.id NOT IN (
-                            SELECT patient_id FROM beds WHERE patient_id IS NOT NULL
-                            UNION
-                            SELECT patient_id FROM rooms WHERE patient_id IS NOT NULL
+                        JOIN roles r ON u.role_id = r.id
+                        WHERE r.role_name = 'user' AND u.is_active = 1 AND u.id NOT IN (
+                            SELECT patient_id FROM accommodations WHERE patient_id IS NOT NULL
                         )
                         ORDER BY u.name ASC
                     ");
@@ -333,19 +323,20 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         SELECT u.id, u.name
                         FROM users u
                         JOIN doctors d ON u.id = d.user_id
-                        WHERE u.role = 'doctor' AND u.active = 1
+                        JOIN roles r ON u.role_id = r.id
+                        WHERE r.role_name = 'doctor' AND u.is_active = 1
                         ORDER BY u.name ASC
                     ");
                     $doctors_stmt->execute();
                     $available_doctors = $doctors_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     $doctors_stmt->close();
-
+                
                     $response = [
                         'success' => true, 
                         'data' => [
                             'wards' => $wards, 
-                            'beds' => $beds, 
-                            'rooms' => $rooms,
+                            'beds' => array_values($beds), // Re-index arrays
+                            'rooms' => array_values($rooms),
                             'available_patients' => $available_patients,
                             'available_doctors' => $available_doctors
                         ]
@@ -363,18 +354,17 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             doc_user.name AS doctor_name,
                             a.admission_date,
                             a.discharge_date,
-                            COALESCE(b.bed_number, r.room_number) AS location,
+                            acc.number AS location,
                             CASE 
-                                WHEN a.bed_id IS NOT NULL THEN w.name 
-                                WHEN a.room_id IS NOT NULL THEN 'Private Room' 
+                                WHEN acc.type = 'bed' THEN w.name 
+                                WHEN acc.type = 'room' THEN 'Private Room' 
                                 ELSE 'N/A' 
                             END AS location_type
                         FROM admissions a
                         JOIN users p ON a.patient_id = p.id
                         LEFT JOIN users doc_user ON a.doctor_id = doc_user.id
-                        LEFT JOIN beds b ON a.bed_id = b.id
-                        LEFT JOIN rooms r ON a.room_id = r.id
-                        LEFT JOIN wards w ON b.ward_id = w.id
+                        LEFT JOIN accommodations acc ON a.accommodation_id = acc.id
+                        LEFT JOIN wards w ON acc.ward_id = w.id
                     ";
                     
                     $params = [];
@@ -401,7 +391,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     
                     $response = ['success' => true, 'data' => $admissions];
                     break;
-                
+
                 case 'lab_results':
                     $search_query = $_GET['search'] ?? '';
                     
@@ -447,7 +437,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
 
                 case 'lab_form_data':
                     // Fetch only doctors, as patients will be handled by search
-                    $doctors_stmt = $conn->prepare("SELECT u.id, u.name FROM users u JOIN doctors d ON u.id = d.user_id WHERE u.role = 'doctor' AND u.active = 1 ORDER BY u.name ASC");
+                    $doctors_stmt = $conn->prepare("SELECT u.id, u.name FROM users u JOIN doctors d ON u.id = d.user_id JOIN roles r ON u.role_id = r.id WHERE r.role_name = 'doctor' AND u.is_active = 1 ORDER BY u.name ASC");
                     $doctors_stmt->execute();
                     $doctors = $doctors_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     $doctors_stmt->close();
@@ -463,7 +453,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     }
 
                     $search_term = "%{$query}%";
-                    $stmt = $conn->prepare("SELECT id, display_user_id, name FROM users WHERE role = 'user' AND active = 1 AND (name LIKE ? OR display_user_id LIKE ?) LIMIT 10");
+                    $stmt = $conn->prepare("SELECT u.id, u.display_user_id, u.name FROM users u JOIN roles r ON u.role_id = r.id WHERE r.role_name = 'user' AND u.is_active = 1 AND (u.name LIKE ? OR u.display_user_id LIKE ?) LIMIT 10");
                     $stmt->bind_param("ss", $search_term, $search_term);
                     $stmt->execute();
                     $patients = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -489,11 +479,21 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $name = trim($_POST['name']);
                     $email = trim($_POST['email']);
                     $phone = trim($_POST['phone']);
-                    $department = trim($_POST['department']);
+                    $department_name = trim($_POST['department']);
                     $date_of_birth = !empty($_POST['date_of_birth']) ? trim($_POST['date_of_birth']) : null;
 
-                    if (empty($name) || empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL) || empty($department)) {
+                    if (empty($name) || empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL) || empty($department_name)) {
                         throw new Exception('Invalid input. Please check all fields.');
+                    }
+                    
+                    // Get department ID from name
+                    $dept_stmt = $conn->prepare("SELECT id FROM departments WHERE name = ?");
+                    $dept_stmt->bind_param("s", $department_name);
+                    $dept_stmt->execute();
+                    $department_id = $dept_stmt->get_result()->fetch_assoc()['id'];
+                    $dept_stmt->close();
+                    if (!$department_id) {
+                        throw new Exception('Invalid department selected.');
                     }
 
                     $stmt_check = $conn->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
@@ -511,8 +511,8 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $user_updated = $stmt_user->execute();
                     $stmt_user->close();
 
-                    $stmt_staff = $conn->prepare("UPDATE staff SET assigned_department = ? WHERE user_id = ?");
-                    $stmt_staff->bind_param("si", $department, $user_id);
+                    $stmt_staff = $conn->prepare("UPDATE staff SET assigned_department_id = ? WHERE user_id = ?");
+                    $stmt_staff->bind_param("ii", $department_id, $user_id);
                     $staff_updated = $stmt_staff->execute();
                     $stmt_staff->close();
 
@@ -641,11 +641,12 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
 
                     // Staff can search for admins, doctors, and other staff to message them
                     $stmt = $conn->prepare("
-                        SELECT id, display_user_id, name, role, profile_picture 
-                        FROM users 
-                        WHERE (name LIKE ? OR display_user_id LIKE ?) 
-                        AND role IN ('admin', 'doctor', 'staff') 
-                        AND id != ?
+                        SELECT u.id, u.display_user_id, u.name, r.role_name as role, u.profile_picture 
+                        FROM users u
+                        JOIN roles r ON u.role_id = r.id
+                        WHERE (u.name LIKE ? OR u.display_user_id LIKE ?) 
+                        AND r.role_name IN ('admin', 'doctor', 'staff') 
+                        AND u.id != ?
                     ");
                     $stmt->bind_param("ssi", $search_term, $search_term, $user_id);
                     $stmt->execute();
@@ -721,9 +722,20 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $conn->begin_transaction();
                     $transaction_active = true;
                     try {
-                        $role = $_POST['role'];
-                        if ($role !== 'user' && $role !== 'doctor') {
-                             throw new Exception("You are not authorized to create users with the role '{$role}'.");
+                        $role_name = $_POST['role'];
+                        
+                        // Get role ID from role name
+                        $role_stmt = $conn->prepare("SELECT id FROM roles WHERE role_name = ?");
+                        $role_stmt->bind_param("s", $role_name);
+                        $role_stmt->execute();
+                        $role_id = $role_stmt->get_result()->fetch_assoc()['id'];
+                        $role_stmt->close();
+                        if (!$role_id) {
+                            throw new Exception("Invalid role specified.");
+                        }
+
+                        if ($role_name !== 'user' && $role_name !== 'doctor') {
+                             throw new Exception("You are not authorized to create users with the role '{$role_name}'.");
                         }
                         
                         $name = trim($_POST['name']);
@@ -750,10 +762,10 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $stmt_check->close();
 
                         // Generate Display ID before inserting
-                        $display_user_id = generateDisplayId($role, $conn);
+                        $display_user_id = generateDisplayId($role_name, $conn);
                         
-                        $stmt = $conn->prepare("INSERT INTO users (display_user_id, name, username, email, password, role, phone, date_of_birth) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-                        $stmt->bind_param("ssssssss", $display_user_id, $name, $username, $email, $password, $role, $phone, $date_of_birth);
+                        $stmt = $conn->prepare("INSERT INTO users (display_user_id, name, username, email, password, role_id, phone, date_of_birth) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                        $stmt->bind_param("sssssiss", $display_user_id, $name, $username, $email, $password, $role_id, $phone, $date_of_birth);
                         $stmt->execute();
                         
                         // Get the newly created user's ID
@@ -763,7 +775,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         }
                         $stmt->close();
 
-                        if ($role === 'doctor') {
+                        if ($role_name === 'doctor') {
                             $specialty = trim($_POST['specialty']);
                             $stmt_doctor = $conn->prepare("INSERT INTO doctors (user_id, specialty) VALUES (?, ?)");
                             $stmt_doctor->bind_param("is", $new_user_id, $specialty);
@@ -771,11 +783,11 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $stmt_doctor->close();
                         }
                         
-                        log_activity($conn, $user_id, 'create_user', $new_user_id, "Staff member created a new {$role}: {$username}");
+                        log_activity($conn, $user_id, 'create_user', $new_user_id, "Staff member created a new {$role_name}: {$username}");
 
                         $conn->commit();
                         $transaction_active = false;
-                        $response = ['success' => true, 'message' => ucfirst($role) . ' added successfully.'];
+                        $response = ['success' => true, 'message' => ucfirst($role_name) . ' added successfully.'];
                     } catch (Exception $e) {
                         if ($transaction_active) $conn->rollback();
                         throw $e;
@@ -788,10 +800,10 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     try {
                         $target_user_id = (int)$_POST['id'];
                         
-                        $stmt_role_check = $conn->prepare("SELECT role FROM users WHERE id = ?");
+                        $stmt_role_check = $conn->prepare("SELECT r.role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?");
                         $stmt_role_check->bind_param("i", $target_user_id);
                         $stmt_role_check->execute();
-                        $target_role = $stmt_role_check->get_result()->fetch_assoc()['role'];
+                        $target_role = $stmt_role_check->get_result()->fetch_assoc()['role_name'];
                         $stmt_role_check->close();
 
                         if ($target_role !== 'user' && $target_role !== 'doctor') {
@@ -808,7 +820,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             throw new Exception("Name and Email fields are required.");
                         }
 
-                        $stmt_update = $conn->prepare("UPDATE users SET name = ?, email = ?, phone = ?, date_of_birth = ?, active = ? WHERE id = ?");
+                        $stmt_update = $conn->prepare("UPDATE users SET name = ?, email = ?, phone = ?, date_of_birth = ?, is_active = ? WHERE id = ?");
                         $stmt_update->bind_param("ssssii", $name, $email, $phone, $date_of_birth, $active, $target_user_id);
                         $stmt_update->execute();
                         $stmt_update->close();
@@ -836,17 +848,17 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 case 'removeUser':
                     $target_user_id = (int)$_POST['id'];
                     
-                    $stmt_role_check = $conn->prepare("SELECT role, username FROM users WHERE id = ?");
+                    $stmt_role_check = $conn->prepare("SELECT r.role_name, u.username FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?");
                     $stmt_role_check->bind_param("i", $target_user_id);
                     $stmt_role_check->execute();
                     $target_user = $stmt_role_check->get_result()->fetch_assoc();
                     $stmt_role_check->close();
                     
-                    if (!$target_user || ($target_user['role'] !== 'user' && $target_user['role'] !== 'doctor')) {
+                    if (!$target_user || ($target_user['role_name'] !== 'user' && $target_user['role_name'] !== 'doctor')) {
                         throw new Exception("You are not authorized to remove this user.");
                     }
                     
-                    $stmt = $conn->prepare("UPDATE users SET active = 0 WHERE id = ?");
+                    $stmt = $conn->prepare("UPDATE users SET is_active = 0 WHERE id = ?");
                     $stmt->bind_param("i", $target_user_id);
                     $stmt->execute();
 
@@ -892,39 +904,30 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $type = $_POST['type'];
                         $number = trim($_POST['number']);
                         $price = filter_var($_POST['price'], FILTER_VALIDATE_FLOAT);
+                        $ward_id = ($type === 'bed' && !empty($_POST['ward_id'])) ? (int)$_POST['ward_id'] : null;
 
                         if (empty($number) || $price === false || $price < 0) {
                             throw new Exception("Valid number and non-negative price are required.");
                         }
+                        if ($type === 'bed' && empty($ward_id)) {
+                            throw new Exception("Ward is required for a new bed.");
+                        }
+
+                        $stmt = $conn->prepare("INSERT INTO accommodations (type, number, ward_id, price_per_day) VALUES (?, ?, ?, ?)");
+                        $stmt->bind_param("ssid", $type, $number, $ward_id, $price);
+                        $stmt->execute();
+                        $stmt->close();
 
                         if ($type === 'bed') {
-                            $ward_id = (int)$_POST['ward_id'];
-                            if (empty($ward_id)) throw new Exception("Ward is required for a new bed.");
-                            
-                            $stmt = $conn->prepare("INSERT INTO beds (ward_id, bed_number, price_per_day) VALUES (?, ?, ?)");
-                            $stmt->bind_param("isd", $ward_id, $number, $price);
-                            $stmt->execute();
-                            $stmt->close();
-                            
                             $stmt_ward = $conn->prepare("UPDATE wards SET capacity = capacity + 1 WHERE id = ?");
                             $stmt_ward->bind_param("i", $ward_id);
                             $stmt_ward->execute();
                             $stmt_ward->close();
-
-                            log_activity($conn, $user_id, 'add_bed', null, "Added Bed {$number} with price {$price}");
-                            $response = ['success' => true, 'message' => 'Bed added successfully.'];
-                        } elseif ($type === 'room') {
-                            $stmt = $conn->prepare("INSERT INTO rooms (room_number, price_per_day) VALUES (?, ?)");
-                            $stmt->bind_param("sd", $number, $price);
-                            $stmt->execute();
-                            $stmt->close();
-
-                            log_activity($conn, $user_id, 'add_room', null, "Added Room {$number} with price {$price}");
-                            $response = ['success' => true, 'message' => 'Room added successfully.'];
-                        } else {
-                            throw new Exception("Invalid type specified.");
                         }
-                        
+
+                        log_activity($conn, $user_id, "add_{$type}", null, "Added {$type} {$number} with price {$price}");
+                        $response = ['success' => true, 'message' => ucfirst($type) . ' added successfully.'];
+
                         $conn->commit();
                         $transaction_active = false;
                     } catch (Exception $e) {
@@ -933,28 +936,30 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     }
                     break;
 
+
                 case 'updateBedOrRoom':
                     $conn->begin_transaction();
                     $transaction_active = true;
                     try {
-                        $type = $_POST['type']; // 'bed' or 'room'
                         $id = (int)$_POST['id'];
                         
                         $updates = [];
                         $params = [];
                         $types = "";
 
-                        $table_name = $type === 'bed' ? 'beds' : 'rooms';
-                        $log_type = $type === 'bed' ? 'update_bed' : 'update_room';
-                        
-                        // Handle status update
-                        if (isset($_POST['status'])) {
-                            $updates[] = "status = ?";
-                            $params[] = $_POST['status'];
-                            $types .= "s";
+                        // Fetch current accommodation details to handle admission/discharge logic
+                        $stmt_current = $conn->prepare("SELECT type, patient_id FROM accommodations WHERE id = ? FOR UPDATE");
+                        $stmt_current->bind_param("i", $id);
+                        $stmt_current->execute();
+                        $current_accommodation = $stmt_current->get_result()->fetch_assoc();
+                        $stmt_current->close();
+                        if (!$current_accommodation) {
+                            throw new Exception("Accommodation not found.");
                         }
-                        
-                        // Handle price update
+                        $type = $current_accommodation['type'];
+                        $old_patient_id = $current_accommodation['patient_id'];
+
+                        // Handle simple updates
                         if (isset($_POST['price'])) {
                             $price = filter_var($_POST['price'], FILTER_VALIDATE_FLOAT);
                             if ($price === false || $price < 0) throw new Exception("Invalid price format.");
@@ -962,38 +967,43 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $params[] = $price;
                             $types .= "d";
                         }
-
-                        // Handle patient and doctor assignment/discharge
+                        
+                        // Handle complex patient assignment/discharge
                         if (isset($_POST['patient_id'])) {
-                            $patient_id = empty($_POST['patient_id']) ? null : (int)$_POST['patient_id'];
-                            $doctor_id = empty($_POST['doctor_id']) ? null : (int)$_POST['doctor_id'];
-                            
-                            $updates[] = "patient_id = ?";
-                            $params[] = $patient_id;
-                            $types .= "i";
-                            
-                            $updates[] = "doctor_id = ?";
-                            $params[] = $doctor_id;
-                            $types .= "i";
-                            
-                            if ($patient_id !== null) { // Assigning a patient
-                                $updates[] = "status = 'occupied'";
-                                $updates[] = "occupied_since = NOW()";
-                                $updates[] = "reserved_since = NULL";
+                            $new_patient_id = empty($_POST['patient_id']) ? null : (int)$_POST['patient_id'];
+                            $new_doctor_id = empty($_POST['doctor_id']) ? null : (int)$_POST['doctor_id'];
 
-                                // Create or update admission record
-                                $adm_stmt = $conn->prepare("INSERT INTO admissions (patient_id, doctor_id, admission_date, " . ($type === 'bed' ? "bed_id" : "room_id") . ") VALUES (?, ?, NOW(), ?) ON DUPLICATE KEY UPDATE discharge_date = NULL");
-                                $adm_stmt->bind_param("iii", $patient_id, $doctor_id, $id);
-                                $adm_stmt->execute();
-
-                            } else { // Discharging patient
-                                $updates[] = "status = 'cleaning'";
-                                $updates[] = "occupied_since = NULL";
-
-                                // Update discharge date on admission record
-                                $dis_stmt = $conn->prepare("UPDATE admissions SET discharge_date = NOW() WHERE " . ($type === 'bed' ? "bed_id" : "room_id") . " = ? AND discharge_date IS NULL");
-                                $dis_stmt->bind_param("i", $id);
-                                $dis_stmt->execute();
+                            if ($new_patient_id !== $old_patient_id) {
+                                // Discharging old patient if there was one
+                                if ($old_patient_id) {
+                                    $dis_stmt = $conn->prepare("UPDATE admissions SET discharge_date = NOW() WHERE accommodation_id = ? AND patient_id = ? AND discharge_date IS NULL");
+                                    $dis_stmt->bind_param("ii", $id, $old_patient_id);
+                                    $dis_stmt->execute();
+                                    $dis_stmt->close();
+                                }
+                                
+                                // Admitting new patient
+                                if ($new_patient_id) {
+                                    $adm_stmt = $conn->prepare("INSERT INTO admissions (patient_id, doctor_id, accommodation_id, admission_date) VALUES (?, ?, ?, NOW())");
+                                    $adm_stmt->bind_param("iii", $new_patient_id, $new_doctor_id, $id);
+                                    $adm_stmt->execute();
+                                    $adm_stmt->close();
+                                    
+                                    $updates[] = "status = 'occupied'";
+                                    $updates[] = "occupied_since = NOW()";
+                                    $updates[] = "reserved_since = NULL";
+                                } else {
+                                    // No new patient, so it's a discharge or status change
+                                    $updates[] = "status = 'cleaning'"; // Default status after discharge
+                                    $updates[] = "occupied_since = NULL";
+                                }
+                                $updates[] = "patient_id = ?";
+                                $params[] = $new_patient_id;
+                                $types .= "i";
+                                
+                                $updates[] = "doctor_id = ?";
+                                $params[] = $new_doctor_id;
+                                $types .= "i";
                             }
                         }
 
@@ -1001,7 +1011,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             throw new Exception("No data provided to update.");
                         }
 
-                        $sql = "UPDATE {$table_name} SET " . implode(", ", $updates) . " WHERE id = ?";
+                        $sql = "UPDATE accommodations SET " . implode(", ", $updates) . " WHERE id = ?";
                         $params[] = $id;
                         $types .= "i";
                         
@@ -1010,7 +1020,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $stmt->execute();
                         $stmt->close();
                         
-                        log_activity($conn, $user_id, $log_type, null, "Updated details for {$type} ID {$id}");
+                        log_activity($conn, $user_id, "update_{$type}", null, "Updated details for {$type} ID {$id}");
                         
                         $conn->commit();
                         $transaction_active = false;
@@ -1183,12 +1193,19 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-if (!in_array($_SESSION['role'], ['staff', 'admin'])) {
+$role_check_stmt = $conn->prepare("SELECT r.role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?");
+$role_check_stmt->bind_param("i", $_SESSION['user_id']);
+$role_check_stmt->execute();
+$current_user_role = $role_check_stmt->get_result()->fetch_assoc()['role_name'];
+$role_check_stmt->close();
+
+if (!in_array($current_user_role, ['staff', 'admin'])) {
     session_unset();
     session_destroy();
     header("Location: ../login.php?error=unauthorized");
     exit();
 }
+$_SESSION['role'] = $current_user_role;
 
 
 $session_timeout = 1800; // 30 minutes
@@ -1206,10 +1223,11 @@ $conn = getDbConnection();
 $stmt = $conn->prepare("
     SELECT 
         u.username, u.display_user_id, u.email, u.phone, u.profile_picture, u.name, u.date_of_birth,
-        s.shift, s.assigned_department
+        s.shift, d.name as assigned_department
     FROM users u
     LEFT JOIN staff s ON u.id = s.user_id
-    WHERE u.id = ? AND u.role IN ('staff', 'admin')
+    LEFT JOIN departments d ON s.assigned_department_id = d.id
+    WHERE u.id = ?
 ");
 $stmt->bind_param("i", $_SESSION['user_id']);
 $stmt->execute();

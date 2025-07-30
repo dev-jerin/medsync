@@ -1,1 +1,1 @@
-[28-Jul-2025 17:32:59 Europe/Berlin] PHP Parse error:  syntax error, unexpected variable "$dbhost" in C:\xampp\htdocs\medsync\config.php on line 8
+[2025-07-30 15:04:22] Severity: 2 | Message: Undefined array key "role" | File: C:\xampp\htdocs\medsync\register\verify_process.php | Line: 76

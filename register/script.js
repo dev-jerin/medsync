@@ -81,7 +81,8 @@ function handleRegistrationForm() {
             return;
         }
 
-        fetch('check_availability.php', {
+        // CORRECTED: The path now correctly points to the validation script
+        fetch('register/check_availability.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: `${type}=` + encodeURIComponent(value)

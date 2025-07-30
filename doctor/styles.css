@@ -658,6 +658,10 @@ input:checked + .theme-slider:before {
     display: flex;
     flex-direction: column;
 }
+/* Style for informational text in modals */
+.modal-body p {
+    margin-bottom: 1rem;
+}
 .form-group.full-width {
     grid-column: 1 / -1;
 }
@@ -1104,6 +1108,19 @@ input:checked + .slider:before {
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 1.5rem;
 }
+
+/* NEW: Loading Placeholder Style */
+.loading-placeholder {
+    grid-column: 1 / -1; /* Span full width */
+    text-align: center;
+    padding: 3rem;
+    font-size: 1.2rem;
+    color: var(--text-muted);
+}
+.loading-placeholder i {
+    margin-right: 0.5rem;
+}
+
 .bed-card {
     background-color: var(--background-panel);
     border: 1px solid var(--border-color);
@@ -1112,15 +1129,23 @@ input:checked + .slider:before {
     padding: 1rem;
     transition: all 0.3s ease;
     box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    cursor: pointer; /* MODIFIED: Make cards feel clickable */
 }
 .bed-card:hover {
     transform: translateY(-5px);
     box-shadow: var(--shadow-md);
 }
+
+/* MODIFIED: Add styles for different statuses */
 .bed-card.status-available { border-left-color: var(--secondary-color); }
-.bed-card.status-occupied { border-left-color: var(--danger-color); }
+.bed-card.status-occupied { 
+    border-left-color: var(--danger-color);
+    cursor: not-allowed; /* MODIFIED: Not clickable */
+    opacity: 0.8;
+}
 .bed-card.status-cleaning { border-left-color: var(--warning-color); }
 .bed-card.status-reserved { border-left-color: var(--info-color); }
+
 
 .bed-id {
     font-size: 1.2rem;

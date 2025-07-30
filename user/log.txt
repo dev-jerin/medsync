@@ -1,0 +1,6 @@
+[30-Jul-2025 15:13:52 Europe/Berlin] PHP Warning:  require_once(config.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\medsync\user\user.php on line 11
+[30-Jul-2025 15:13:52 Europe/Berlin] PHP Fatal error:  Uncaught Error: Failed opening required 'config.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\medsync\user\user.php:11
+Stack trace:
+#0 C:\xampp\htdocs\medsync\user\dashboard.php(3): require_once()
+#1 {main}
+  thrown in C:\xampp\htdocs\medsync\user\user.php on line 11

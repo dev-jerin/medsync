@@ -8,7 +8,7 @@
  * - Manages session timeout for security.
  */
 
-require_once 'config.php';
+require_once '../config.php';
 
 // 2. Verify that the user has the correct role ('user').
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'user') {

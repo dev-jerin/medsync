@@ -35,8 +35,20 @@ if (empty($login_identifier) || empty($password)) {
 // --- Database Authentication ---
 $conn = getDbConnection();
 
-// Prepare a statement to fetch user data based on username, email, OR display_user_id.
-$sql = "SELECT id, username, password, role, display_user_id, active FROM users WHERE username = ? OR email = ? OR display_user_id = ? LIMIT 1";
+// Prepare a statement to fetch user data by joining the users and roles tables.
+// This query is updated for the new schema.
+$sql = "SELECT 
+            u.id, 
+            u.username, 
+            u.password, 
+            r.role_name AS role, 
+            u.display_user_id, 
+            u.is_active 
+        FROM users u 
+        JOIN roles r ON u.role_id = r.id 
+        WHERE u.username = ? OR u.email = ? OR u.display_user_id = ? 
+        LIMIT 1";
+
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("sss", $login_identifier, $login_identifier, $login_identifier);
 $stmt->execute();
@@ -49,7 +61,7 @@ if ($result->num_rows === 1) {
     if (password_verify($password, $user['password'])) {
 
         // --- Check if the account is active ---
-        if ($user['active'] == 0) {
+        if ($user['is_active'] == 0) {
             $_SESSION['login_message'] = [
                 'type' => 'error',
                 'text' => 'Your account is currently inactive. Please contact support for assistance.'

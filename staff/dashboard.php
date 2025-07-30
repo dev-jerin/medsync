@@ -354,7 +354,7 @@ require_once 'staff.php';
                             <tr>
                                 <th>Adm. ID</th>
                                 <th>Patient Name</th>
-                                <th>Room/Bed</th>
+                                <th>Location</th>
                                 <th>Admitted On</th>
                                 <th>Status</th>
                             </tr>

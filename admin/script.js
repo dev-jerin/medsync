@@ -17,6 +17,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const panelTitle = document.getElementById('panel-title');
     const welcomeMessage = document.getElementById('welcome-message');
     let currentRole = 'user';
+    let currentAccommodationType = 'bed'; // 'bed' or 'room'
     let userRolesChart = null;
     let reportChart = null;
 
@@ -104,19 +105,17 @@ document.addEventListener("DOMContentLoaded", function () {
         // Update active link styling in the sidebar
         document.querySelectorAll('.sidebar-nav a.active, .sidebar-nav .nav-dropdown-toggle.active').forEach(a => a.classList.remove('active'));
 
-        // Find the corresponding sidebar link and activate it
         const sidebarLink = document.querySelector(`.sidebar .nav-link[data-target="${targetId}"]`);
         if (sidebarLink) {
             sidebarLink.classList.add('active');
-            let parentDropdown = sidebarLink.closest('.nav-dropdown');
-            if (parentDropdown) {
-                let parentDropdownToggle = parentDropdown.previousElementSibling;
-                if (parentDropdownToggle) {
-                    parentDropdownToggle.classList.add('active');
+            let parent = sidebarLink.closest('.nav-dropdown');
+            if(parent) {
+                let toggle = parent.previousElementSibling;
+                if(toggle && toggle.classList.contains('nav-dropdown-toggle')) {
+                    toggle.classList.add('active');
                 }
             }
         }
-
 
         let panelToShowId = 'dashboard-panel';
         let title = 'Dashboard';
@@ -130,25 +129,29 @@ document.addEventListener("DOMContentLoaded", function () {
             fetchUsers(role);
         } else if (targetId.startsWith('inventory-')) {
             panelToShowId = targetId + '-panel';
-            title = sidebarLink ? sidebarLink.innerText : 'Inventory';
+            title = sidebarLink ? sidebarLink.innerText.trim() : 'Inventory';
             welcomeMessage.style.display = 'none';
             const inventoryType = targetId.split('-')[1];
             if (inventoryType === 'blood') fetchBloodInventory();
             else if (inventoryType === 'medicine') fetchMedicineInventory();
             else if (inventoryType === 'departments') fetchDepartmentsManagement();
             else if (inventoryType === 'wards') fetchWards();
-            else if (inventoryType === 'beds') fetchWardsAndBeds();
-            else if (inventoryType === 'rooms') fetchRooms();
+        } else if (targetId.startsWith('accommodations-')) {
+            panelToShowId = 'accommodations-panel';
+            const type = targetId.split('-')[1]; // 'bed' or 'room'
+            currentAccommodationType = type;
+            title = `${type.charAt(0).toUpperCase() + type.slice(1)} Management`;
+            welcomeMessage.style.display = 'none';
+            fetchAccommodations(type);
         } else if (document.getElementById(targetId + '-panel')) {
             panelToShowId = targetId + '-panel';
-            title = sidebarLink ? sidebarLink.innerText : 'Admin Panel';
+            title = sidebarLink ? sidebarLink.innerText.trim() : 'Admin Panel';
             welcomeMessage.style.display = (targetId === 'dashboard') ? 'block' : 'none';
 
             if (targetId === 'settings') fetchMyProfile();
-
             if (targetId === 'appointments') {
                 fetchDoctorsForAppointmentFilter();
-                fetchAppointments(); // Load all appointments initially
+                fetchAppointments();
             }
             if (targetId === 'reports') generateReport();
             if (targetId === 'activity') fetchActivityLogs();
@@ -162,14 +165,10 @@ document.addEventListener("DOMContentLoaded", function () {
         if (window.innerWidth <= 992 && sidebar.classList.contains('active')) toggleMenu();
     };
 
-    // Use event delegation on the body to handle all clicks on '.nav-link'
     document.body.addEventListener('click', function (e) {
         const link = e.target.closest('.nav-link');
         if (link) {
-            e.preventDefault(); // Prevent default link behavior for all nav-links
-
-            // The special logic for the bell is handled by its own listener now,
-            // so we just need to call the generic panel switcher.
+            e.preventDefault();
             if (link.id !== 'notification-bell-wrapper') {
                 handlePanelSwitch(link);
             }
@@ -202,8 +201,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             const lowMedicineStat = document.getElementById('low-medicine-stat');
             const lowBloodStat = document.getElementById('low-blood-stat');
-
-            // FIX: Reset visibility before updating
+            
             lowMedicineStat.style.display = 'none';
             lowBloodStat.style.display = 'none';
 
@@ -256,11 +254,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const fetchDoctorsForAppointmentFilter = async () => {
         const doctorFilterSelect = document.getElementById('appointment-doctor-filter');
-        // Prevent re-populating if already filled
         if (doctorFilterSelect.options.length > 1) return;
 
         try {
-            const response = await fetch('admin.php?fetch=doctors_for_scheduling'); // Reusing existing API endpoint
+            const response = await fetch('admin.php?fetch=doctors_for_scheduling');
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
 
@@ -308,27 +305,10 @@ document.addEventListener("DOMContentLoaded", function () {
     const userDetailModal = document.getElementById('user-detail-modal');
     const addUserBtn = document.getElementById('add-user-btn');
     const quickAddUserBtn = document.getElementById('quick-add-user-btn');
-    const quickSendNotificationBtn = document.querySelector('.quick-actions .action-btn[href="#"] i.fa-bullhorn').parentElement;
-
-    quickSendNotificationBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        // Find and click the sidebar link for notifications
-        document.querySelector('.nav-link[data-target="notifications"]').click();
-    });
-    // Restrict year in Date of Birth to 4 digits
-    const dobInput = document.getElementById('date_of_birth');
-    dobInput.addEventListener('input', function () {
-        // The value is in 'YYYY-MM-DD' format. We check the year part.
-        if (this.value.length > 0) {
-            const year = this.value.split('-')[0];
-            if (year.length > 4) {
-                this.value = year.slice(0, 4) + this.value.substring(year.length);
-            }
-        }
-    });
+    
     const modalTitle = document.getElementById('modal-title');
     const passwordGroup = document.getElementById('password-group');
-    const activeGroup = document.getElementById('active-group');
+    const activeGroup = document.getElementById('is_active-group');
     const roleSelect = document.getElementById('role');
     const doctorFields = document.getElementById('doctor-fields');
     const staffFields = document.getElementById('staff-fields');
@@ -348,11 +328,11 @@ document.addEventListener("DOMContentLoaded", function () {
             let roleSpecificTabs = '';
             let roleSpecificContent = '';
 
-            if (user.role === 'doctor') {
+            if (user.role_name === 'doctor') {
                 roleSpecificTabs = `<button class="detail-tab-button" data-tab="patients">Assigned Patients</button>`;
                 roleSpecificContent = `<div id="patients-tab" class="detail-tab-content">
                         <h3>Assigned Patients</h3>
-                        ${assigned_patients.length > 0 ? assigned_patients.map(p => `<p>${p.name} (${p.display_user_id}) - Last Appointment: ${new Date(p.appointment_date).toLocaleDateString()}</p>`).join('') : '<p>No patients assigned.</p>'}
+                        ${assigned_patients && assigned_patients.length > 0 ? assigned_patients.map(p => `<p>${p.name} (${p.display_user_id}) - Last Appointment: ${new Date(p.appointment_date).toLocaleDateString()}</p>`).join('') : '<p>No patients assigned.</p>'}
                     </div>`;
             }
 
@@ -389,12 +369,10 @@ document.addEventListener("DOMContentLoaded", function () {
                     ${roleSpecificContent}
                 `;
 
-            // Add event listeners for the new tabs
             contentDiv.querySelectorAll('.detail-tab-button').forEach(button => {
                 button.addEventListener('click', () => {
                     const tabId = button.dataset.tab;
-                    contentDiv.querySelectorAll('.detail-tab-button').forEach(btn => btn.classList.remove('active'));
-                    contentDiv.querySelectorAll('.detail-tab-content').forEach(content => content.classList.remove('active'));
+                    contentDiv.querySelectorAll('.detail-tab-button, .detail-tab-content').forEach(el => el.classList.remove('active'));
                     button.classList.add('active');
                     document.getElementById(`${tabId}-tab`).classList.add('active');
                 });
@@ -418,13 +396,12 @@ document.addEventListener("DOMContentLoaded", function () {
             const result = await response.json();
             if (result.success) {
                 const departmentSelect = document.getElementById('department_id');
-                const staffDepartmentSelect = document.getElementById('assigned_department');
-                departmentSelect.innerHTML = '<option value="">Select Department</option>'; // Reset
-                staffDepartmentSelect.innerHTML = '<option value="">Select Department</option>'; // Reset
+                const staffDepartmentSelect = document.getElementById('assigned_department_id');
+                departmentSelect.innerHTML = '<option value="">Select Department</option>';
+                staffDepartmentSelect.innerHTML = '<option value="">Select Department</option>';
                 result.data.forEach(dept => {
-                    const option = `<option value="${dept.id}">${dept.name}</option>`;
-                    departmentSelect.innerHTML += option;
-                    staffDepartmentSelect.innerHTML += `<option value="${dept.name}">${dept.name}</option>`;
+                    departmentSelect.innerHTML += `<option value="${dept.id}">${dept.name}</option>`;
+                    staffDepartmentSelect.innerHTML += `<option value="${dept.id}">${dept.name}</option>`;
                 });
             }
         } catch (error) {
@@ -444,26 +421,20 @@ document.addEventListener("DOMContentLoaded", function () {
             passwordGroup.style.display = 'block';
             activeGroup.style.display = 'none';
         } else { // edit mode
-
-            // At the top of the edit mode block
             const removePfpBtn = document.getElementById('remove-pfp-btn');
-            removePfpBtn.style.display = 'none'; // Hide by default
+            removePfpBtn.style.display = (user.profile_picture && user.profile_picture !== 'default.png') ? 'block' : 'none';
+            removePfpBtn.onclick = async () => {
+                const confirmed = await showConfirmation('Remove Picture', `Are you sure you want to remove the profile picture for ${user.username}?`);
+                if (confirmed) {
+                    const formData = new FormData();
+                    formData.append('action', 'removeProfilePicture');
+                    formData.append('id', user.id);
+                    formData.append('csrf_token', csrfToken);
+                    handleFormSubmit(formData, `users-${currentRole}`);
+                    closeModal(userModal);
+                }
+            };
 
-            // ... inside the edit block ...
-            if (user.profile_picture && user.profile_picture !== 'default.png') {
-                removePfpBtn.style.display = 'block';
-                removePfpBtn.onclick = async () => {
-                    const confirmed = await showConfirmation('Remove Picture', `Are you sure you want to remove the profile picture for ${user.username}?`);
-                    if (confirmed) {
-                        const formData = new FormData();
-                        formData.append('action', 'removeProfilePicture');
-                        formData.append('id', user.id);
-                        formData.append('csrf_token', csrfToken);
-                        handleFormSubmit(formData, `users-${currentRole}`);
-                        closeModal(userModal); // Close the modal after action
-                    }
-                };
-            }
             modalTitle.textContent = `Edit ${user.username}`;
             document.getElementById('form-action').value = 'updateUser';
             document.getElementById('user-id').value = user.id;
@@ -476,16 +447,16 @@ document.addEventListener("DOMContentLoaded", function () {
             document.getElementById('password').required = false;
             passwordGroup.style.display = 'block';
             activeGroup.style.display = 'block';
-            document.getElementById('active').value = user.active;
+            document.getElementById('is_active').value = user.active;
 
             if (user.role === 'doctor') {
                 document.getElementById('specialty').value = user.specialty || '';
                 document.getElementById('qualifications').value = user.qualifications || '';
                 document.getElementById('department_id').value = user.department_id || '';
-                document.getElementById('availability').value = user.availability !== null ? user.availability : 1;
+                document.getElementById('is_available').value = user.availability !== null ? user.availability : 1;
             } else if (user.role === 'staff') {
                 document.getElementById('shift').value = user.shift || 'day';
-                document.getElementById('assigned_department').value = user.assigned_department || '';
+                document.getElementById('assigned_department_id').value = user.assigned_department_id || '';
             }
         }
         toggleRoleFields();
@@ -512,11 +483,7 @@ document.addEventListener("DOMContentLoaded", function () {
         tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Loading...</td></tr>`;
 
         try {
-            let fetchUrl = `admin.php?fetch=users&role=${role}`;
-            if (searchTerm) {
-                fetchUrl += `&search=${encodeURIComponent(searchTerm)}`;
-            }
-            const response = await fetch(fetchUrl);
+            const response = await fetch(`admin.php?fetch=users&role=${role}&search=${encodeURIComponent(searchTerm)}`);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
@@ -560,14 +527,14 @@ document.addEventListener("DOMContentLoaded", function () {
         const deleteBtn = e.target.closest('.btn-delete');
 
         if (editBtn) {
-            e.stopPropagation(); // Prevent row click from triggering
+            e.stopPropagation();
             const user = JSON.parse(editBtn.dataset.user);
             openUserModal('edit', user);
             return;
         }
 
         if (deleteBtn) {
-            e.stopPropagation(); // Prevent row click from triggering
+            e.stopPropagation();
             const user = JSON.parse(deleteBtn.dataset.user);
             const confirmed = await showConfirmation('Deactivate User', `Are you sure you want to deactivate ${user.username}?`);
             if (confirmed) {
@@ -579,11 +546,9 @@ document.addEventListener("DOMContentLoaded", function () {
             }
             return;
         }
-
-        // If no button was clicked, it's a row click
+        
         if (row.classList.contains('clickable-row')) {
-            const userId = row.dataset.userId;
-            openDetailedProfileModal(userId);
+            openDetailedProfileModal(row.dataset.userId);
         }
     });
 
@@ -594,28 +559,26 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (result.success) {
                 showNotification(result.message, 'success');
-
-                // Check if a notification was sent and update the count immediately
+                
                 const action = formData.get('action');
                 if (action === 'sendNotification' || action === 'sendIndividualNotification') {
                     updateNotificationCount();
                 }
 
-                if (formData.get('action') === 'addUser' || formData.get('action') === 'updateUser') closeModal(userModal);
-                else if (formData.get('action').toLowerCase().includes('medicine')) closeModal(medicineModal);
-                else if (formData.get('action').toLowerCase().includes('blood')) closeModal(bloodModal);
-                else if (formData.get('action').toLowerCase().includes('ward')) closeModal(wardFormModal);
-                else if (formData.get('action').toLowerCase().includes('bed')) closeModal(bedModal);
-                else if (formData.get('action').toLowerCase().includes('room')) closeModal(document.getElementById('room-modal'));
+                if (action.toLowerCase().includes('user')) closeModal(userModal);
+                else if (action.toLowerCase().includes('medicine')) closeModal(medicineModal);
+                else if (action.toLowerCase().includes('blood')) closeModal(bloodModal);
+                else if (action.toLowerCase().includes('ward')) closeModal(wardFormModal);
+                else if (action.toLowerCase().includes('accommodation')) closeModal(document.getElementById('accommodation-modal'));
+                else if (action.toLowerCase().includes('department')) closeModal(departmentModal);
 
                 if (refreshTarget) {
                     if (refreshTarget.startsWith('users-')) fetchUsers(refreshTarget.split('-')[1]);
+                    else if (refreshTarget.startsWith('accommodations-')) fetchAccommodations(refreshTarget.split('-')[1]);
                     else if (refreshTarget === 'blood') fetchBloodInventory();
-                    else if (refreshTarget === 'departments_management') { closeModal(departmentModal); fetchDepartmentsManagement(); }
+                    else if (refreshTarget === 'departments_management') fetchDepartmentsManagement();
                     else if (refreshTarget === 'medicine') fetchMedicineInventory();
-                    else if (refreshTarget === 'wards') { fetchWards(); }
-                    else if (refreshTarget === 'beds') fetchWardsAndBeds();
-                    else if (refreshTarget === 'rooms') fetchRooms();
+                    else if (refreshTarget === 'wards') fetchWards();
                 }
                 updateDashboardStats();
             } else {
@@ -629,8 +592,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     userForm.addEventListener('submit', (e) => {
         e.preventDefault();
-        const formData = new FormData(userForm);
-        handleFormSubmit(formData, `users-${currentRole}`);
+        handleFormSubmit(new FormData(userForm), `users-${currentRole}`);
     });
 
     // --- ADMIN PROFILE EDIT ---
@@ -681,25 +643,24 @@ document.addEventListener("DOMContentLoaded", function () {
             if (confirmed) {
                 const formData = new FormData(systemSettingsForm);
                 handleFormSubmit(formData);
-                // Clear the password field for security after submission
                 document.getElementById('gmail_app_password').value = '';
             }
         });
     }
 
     // --- INVENTORY MANAGEMENT ---
-
-    // Medicine Inventory
     const medicineModal = document.getElementById('medicine-modal');
     const medicineForm = document.getElementById('medicine-form');
     const addMedicineBtn = document.getElementById('add-medicine-btn');
     const medicineTableBody = document.getElementById('medicine-table-body');
-
-
     const departmentModal = document.getElementById('department-modal');
     const departmentForm = document.getElementById('department-form');
     const addDepartmentBtn = document.getElementById('add-department-btn');
     const departmentTableBody = document.getElementById('department-table-body');
+    const bloodModal = document.getElementById('blood-modal');
+    const bloodForm = document.getElementById('blood-form');
+    const addBloodBtn = document.getElementById('add-blood-btn');
+    const bloodTableBody = document.getElementById('blood-table-body');
 
     const openMedicineModal = (mode, medicine = {}) => {
         medicineForm.reset();
@@ -723,7 +684,6 @@ document.addEventListener("DOMContentLoaded", function () {
     addMedicineBtn.addEventListener('click', () => openMedicineModal('add'));
     medicineModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(medicineModal));
     medicineModal.addEventListener('click', (e) => { if (e.target === medicineModal) closeModal(medicineModal); });
-
     medicineForm.addEventListener('submit', (e) => {
         e.preventDefault();
         handleFormSubmit(new FormData(medicineForm), 'medicine');
@@ -783,12 +743,6 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         }
     });
-
-    // Blood Inventory
-    const bloodModal = document.getElementById('blood-modal');
-    const bloodForm = document.getElementById('blood-form');
-    const addBloodBtn = document.getElementById('add-blood-btn');
-    const bloodTableBody = document.getElementById('blood-table-body');
 
     const openBloodModal = (blood = {}) => {
         bloodForm.reset();
@@ -851,7 +805,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
-    // --- Department Management ---
     const openDepartmentModal = (mode, department = {}) => {
         departmentForm.reset();
         if (mode === 'add') {
@@ -950,7 +903,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     addWardBtn.addEventListener('click', () => openWardForm('add'));
     wardFormModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(wardFormModal));
-
     wardForm.addEventListener('submit', (e) => {
         e.preventDefault();
         handleFormSubmit(new FormData(wardForm), 'wards');
@@ -1002,343 +954,182 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
-    // --- Bed Management ---
-    const bedModal = document.getElementById('bed-modal');
-    const bedForm = document.getElementById('bed-form');
-    const addBedBtn = document.getElementById('add-bed-btn');
-    const bedsContainer = document.getElementById('beds-container');
-    const bedPatientGroup = document.getElementById('bed-patient-group');
-    const bedStatusSelect = document.getElementById('bed-status');
-    const bedPatientSelect = document.getElementById('bed-patient-id');
+    // --- UNIFIED ACCOMMODATION MANAGEMENT ---
+    const accommodationModal = document.getElementById('accommodation-modal');
+    const accommodationForm = document.getElementById('accommodation-form');
+    const addAccommodationBtn = document.getElementById('add-accommodation-btn');
+    const accommodationsContainer = document.getElementById('accommodations-container');
+    const accommodationStatusSelect = document.getElementById('accommodation-status');
+    const accommodationPatientGroup = document.getElementById('accommodation-patient-group');
+    const accommodationDoctorGroup = document.getElementById('accommodation-doctor-group');
 
-    const populateBedDropdowns = async () => {
+    const populateAccommodationDropdowns = async () => {
         try {
-            const [wardsRes, patientsRes] = await Promise.all([fetch('admin.php?fetch=wards'), fetch('admin.php?fetch=patients_for_beds')]);
+            const [wardsRes, patientsRes, doctorsRes] = await Promise.all([
+                fetch('admin.php?fetch=wards'),
+                fetch('admin.php?fetch=patients_for_accommodations'),
+                fetch('admin.php?fetch=doctors_for_scheduling')
+            ]);
             const wardsResult = await wardsRes.json();
             const patientsResult = await patientsRes.json();
-            const wardSelect = document.getElementById('bed-ward-id');
+            const doctorsResult = await doctorsRes.json();
+
+            const wardSelect = document.getElementById('accommodation-ward-id');
+            const patientSelect = document.getElementById('accommodation-patient-id');
+            const doctorSelect = document.getElementById('accommodation-doctor-id');
 
             wardSelect.innerHTML = '<option value="">Select Ward</option>';
             if (wardsResult.success) {
                 wardsResult.data.forEach(ward => wardSelect.innerHTML += `<option value="${ward.id}">${ward.name}</option>`);
             }
 
-            bedPatientSelect.innerHTML = '<option value="">Select Patient</option>';
+            patientSelect.innerHTML = '<option value="">Select Patient</option>';
             if (patientsResult.success) {
-                patientsResult.data.forEach(patient => bedPatientSelect.innerHTML += `<option value="${patient.id}">${patient.name} (${patient.display_user_id})</option>`);
+                patientsResult.data.forEach(p => patientSelect.innerHTML += `<option value="${p.id}">${p.name} (${p.display_user_id})</option>`);
+            }
+
+            doctorSelect.innerHTML = '<option value="">Select Doctor</option>';
+            if (doctorsResult.success) {
+                doctorsResult.data.forEach(d => doctorSelect.innerHTML += `<option value="${d.id}">${d.name} (${d.display_user_id})</option>`);
             }
         } catch (error) {
-            console.error('Failed to populate dropdowns:', error);
+            console.error('Failed to populate accommodation dropdowns:', error);
         }
     };
 
-    const populateDoctorDropdowns = async (selectElement) => {
-        try {
-            const response = await fetch('admin.php?fetch=doctors_for_scheduling');
-            const result = await response.json();
-
-            selectElement.innerHTML = '<option value="">Select Doctor</option>';
-            if (result.success) {
-                result.data.forEach(doctor => {
-                    selectElement.innerHTML += `<option value="${doctor.id}">${doctor.name} (${doctor.display_user_id})</option>`;
-                });
-            }
-        } catch (error) {
-            console.error('Failed to populate doctor dropdown:', error);
-        }
-    };
-
-    bedStatusSelect.addEventListener('change', () => {
-        const showPatient = bedStatusSelect.value === 'occupied' || bedStatusSelect.value === 'reserved';
-        bedPatientGroup.style.display = showPatient ? 'block' : 'none';
-        bedPatientSelect.required = showPatient;
+    accommodationStatusSelect.addEventListener('change', () => {
+        const showPatient = ['occupied', 'reserved'].includes(accommodationStatusSelect.value);
+        const showDoctor = accommodationStatusSelect.value === 'occupied';
+        accommodationPatientGroup.style.display = showPatient ? 'block' : 'none';
+        accommodationDoctorGroup.style.display = showDoctor ? 'block' : 'none';
+        document.getElementById('accommodation-patient-id').required = showPatient;
+        document.getElementById('accommodation-doctor-id').required = showDoctor;
     });
 
-    const bedDoctorGroup = document.getElementById('bed-doctor-group');
-    const bedDoctorSelect = document.getElementById('bed-doctor-id');
+    const openAccommodationModal = async (mode, item = {}, type) => {
+        accommodationForm.reset();
+        await populateAccommodationDropdowns();
+        
+        const typeName = type.charAt(0).toUpperCase() + type.slice(1);
+        document.getElementById('accommodation-modal-title').textContent = mode === 'add' ? `Add New ${typeName}` : `Edit ${typeName} ${item.number}`;
+        document.getElementById('accommodation-form-action').value = mode === 'add' ? 'addAccommodation' : 'updateAccommodation';
+        document.getElementById('accommodation-type').value = type;
+        document.getElementById('accommodation-number-label').textContent = `${typeName} Number`;
 
-    bedStatusSelect.addEventListener('change', () => {
-        const showPatient = bedStatusSelect.value === 'occupied' || bedStatusSelect.value === 'reserved';
-        bedPatientGroup.style.display = showPatient ? 'block' : 'none';
-        bedPatientSelect.required = showPatient;
-        // Show doctor dropdown only when occupied
-        bedDoctorGroup.style.display = bedStatusSelect.value === 'occupied' ? 'block' : 'none';
-        bedDoctorSelect.required = bedStatusSelect.value === 'occupied';
-    });
+        const wardGroup = document.getElementById('accommodation-ward-group');
+        wardGroup.style.display = type === 'bed' ? 'block' : 'none';
+        document.getElementById('accommodation-ward-id').required = (type === 'bed');
 
-    const openBedModal = async (mode, bed = {}) => {
-        bedForm.reset();
-        await Promise.all([populateBedDropdowns(), populateDoctorDropdowns(bedDoctorSelect)]); // Fetch doctors
-        document.getElementById('bed-modal-title').textContent = mode === 'add' ? 'Add New Bed' : `Edit Bed ${bed.bed_number}`;
-        document.getElementById('bed-form-action').value = mode === 'add' ? 'addBed' : 'updateBed';
-
-        bedPatientGroup.style.display = 'none';
-        bedDoctorGroup.style.display = 'none';
-        bedPatientSelect.required = false;
-        bedDoctorSelect.required = false;
+        accommodationPatientGroup.style.display = 'none';
+        accommodationDoctorGroup.style.display = 'none';
 
         if (mode === 'edit') {
-            document.getElementById('bed-id').value = bed.id;
-            setTimeout(() => { // Use timeout to ensure dropdowns are populated
-                document.getElementById('bed-ward-id').value = bed.ward_id;
-                document.getElementById('bed-number').value = bed.bed_number;
-                document.getElementById('bed-status').value = bed.status;
-
-                const showPatient = bed.status === 'occupied' || bed.status === 'reserved';
-                if (showPatient) {
-                    bedPatientGroup.style.display = 'block';
-                    bedPatientSelect.required = true;
-                    document.getElementById('bed-patient-id').value = bed.patient_id || '';
+            document.getElementById('accommodation-id').value = item.id;
+            document.getElementById('accommodation-number').value = item.number;
+            document.getElementById('accommodation-price-per-day').value = item.price_per_day;
+            
+            setTimeout(() => { // Allow dropdowns to populate
+                document.getElementById('accommodation-status').value = item.status;
+                if (type === 'bed') {
+                    document.getElementById('accommodation-ward-id').value = item.ward_id;
                 }
-                if (bed.status === 'occupied') {
-                    bedDoctorGroup.style.display = 'block';
-                    bedDoctorSelect.required = true;
-                    document.getElementById('bed-doctor-id').value = bed.doctor_id || '';
-                }
+                accommodationStatusSelect.dispatchEvent(new Event('change')); // Trigger visibility change
+                document.getElementById('accommodation-patient-id').value = item.patient_id || '';
+                document.getElementById('accommodation-doctor-id').value = item.doctor_id || '';
             }, 150);
-        }
-        bedModal.classList.add('show');
-    };
-
-    addBedBtn.addEventListener('click', () => openBedModal('add'));
-    bedModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(bedModal));
-    bedModal.addEventListener('click', (e) => { if (e.target === bedModal) closeModal(bedModal); });
-
-    bedForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        handleFormSubmit(new FormData(bedForm), 'beds');
-    });
-
-    const fetchWardsAndBeds = async () => {
-        bedsContainer.innerHTML = `<p style="text-align:center;">Loading beds...</p>`;
-        try {
-            const response = await fetch('admin.php?fetch=beds');
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-
-            const bedsByWard = result.data.reduce((acc, bed) => {
-                (acc[bed.ward_name] = acc[bed.ward_name] || []).push(bed);
-                return acc;
-            }, {});
-
-            if (Object.keys(bedsByWard).length > 0) {
-                bedsContainer.innerHTML = Object.entries(bedsByWard).map(([wardName, beds]) => `
-                        <div class="ward-section">
-                            <div class="ward-header">
-                                <h3>${wardName}</h3>
-                            </div>
-                            <div class="ward-beds-container">
-                                ${beds.map(bed => {
-                    // PASTE YOUR SNIPPET HERE, REPLACING THE OLD ONE
-                    let patientInfo = '';
-                    if (bed.status === 'occupied' && bed.patient_name) {
-                        let doctorInfo = bed.doctor_name ? `<br><small>Doctor: ${bed.doctor_name}</small>` : '';
-                        patientInfo = `<div class="patient-info">Occupied by: ${bed.patient_name}${doctorInfo}</div>`;
-                    } else if (bed.status === 'reserved' && bed.patient_name) {
-                        patientInfo = `<div class="patient-info">Reserved for: ${bed.patient_name}</div>`;
-                    }
-
-                    // THIS IS THE CODE THAT COMES AFTER YOUR SNIPPET
-                    return `
-                                    <div class="bed-card ${bed.status}" data-bed='${JSON.stringify(bed)}'>
-                                        <div class="bed-icon"><i class="fas fa-bed"></i></div>
-                                        <div class="bed-number">Bed ${bed.bed_number}</div>
-                                        <div class="bed-status">${bed.status}</div>
-                                        ${patientInfo}
-                                        <div class="action-buttons">
-                                            <button class="btn-edit-bed btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
-                                            <button class="btn-delete-bed btn-delete" title="Delete"><i class="fas fa-trash-alt"></i></button>
-                                        </div>
-                                    </div>
-                                `}).join('')}
-                            </div>
-                        </div>
-                    `).join('');
-            } else {
-                bedsContainer.innerHTML = `<p style="text-align:center;">No beds found. Add wards and beds to get started.</p>`;
-            }
-        } catch (error) {
-            bedsContainer.innerHTML = `<p style="text-align:center;">Failed to load beds: ${error.message}</p>`;
-        }
-    };
-
-    bedsContainer.addEventListener('click', async (e) => {
-        const bedCard = e.target.closest('.bed-card');
-        if (!bedCard) return;
-
-        const bed = JSON.parse(bedCard.dataset.bed);
-        if (e.target.closest('.btn-edit-bed')) {
-            openBedModal('edit', bed);
-        }
-        if (e.target.closest('.btn-delete-bed')) {
-            const confirmed = await showConfirmation('Delete Bed', `Are you sure you want to delete Bed ${bed.bed_number} in ${bed.ward_name}?`);
-            if (confirmed) {
-                const formData = new FormData();
-                formData.append('action', 'deleteBed');
-                formData.append('id', bed.id);
-                formData.append('csrf_token', csrfToken);
-                handleFormSubmit(formData, 'beds');
-            }
-        }
-    });
-
-    // --- Room Management ---
-    const roomModal = document.getElementById('room-modal');
-    const roomForm = document.getElementById('room-form');
-    const addRoomBtn = document.getElementById('add-room-btn');
-    const roomsContainer = document.getElementById('rooms-container');
-    const roomPatientGroup = document.getElementById('room-patient-group');
-    const roomStatusSelect = document.getElementById('room-status');
-    const roomPatientSelect = document.getElementById('room-patient-id');
-
-    const populateRoomDropdowns = async () => {
-        try {
-            const response = await fetch('admin.php?fetch=patients_for_beds'); // Reusing the same patient fetcher
-            const result = await response.json();
-
-            roomPatientSelect.innerHTML = '<option value="">Select Patient</option>';
-            if (result.success) {
-                result.data.forEach(patient => roomPatientSelect.innerHTML += `<option value="${patient.id}">${patient.name} (${patient.display_user_id})</option>`);
-            }
-        } catch (error) {
-            console.error('Failed to populate patient dropdown for rooms:', error);
-        }
-    };
-
-    roomStatusSelect.addEventListener('change', () => {
-        const showPatient = roomStatusSelect.value === 'occupied' || roomStatusSelect.value === 'reserved';
-        roomPatientGroup.style.display = showPatient ? 'block' : 'none';
-        roomPatientSelect.required = showPatient;
-    });
-
-    const roomDoctorGroup = document.getElementById('room-doctor-group');
-    const roomDoctorSelect = document.getElementById('room-doctor-id');
-
-    roomStatusSelect.addEventListener('change', () => {
-        const showPatient = roomStatusSelect.value === 'occupied' || roomStatusSelect.value === 'reserved';
-        roomPatientGroup.style.display = showPatient ? 'block' : 'none';
-        roomPatientSelect.required = showPatient;
-        // Show doctor dropdown only when occupied
-        roomDoctorGroup.style.display = roomStatusSelect.value === 'occupied' ? 'block' : 'none';
-        roomDoctorSelect.required = roomStatusSelect.value === 'occupied';
-    });
-
-    const openRoomModal = async (mode, room = {}) => {
-        roomForm.reset();
-        await Promise.all([populateRoomDropdowns(), populateDoctorDropdowns(roomDoctorSelect)]); // Fetch doctors
-        document.getElementById('room-modal-title').textContent = mode === 'add' ? 'Add New Room' : `Edit Room ${room.room_number}`;
-        document.getElementById('room-form-action').value = mode === 'add' ? 'addRoom' : 'updateRoom';
-
-        roomPatientGroup.style.display = 'none';
-        roomDoctorGroup.style.display = 'none';
-        roomPatientSelect.required = false;
-        roomDoctorSelect.required = false;
-
-        if (mode === 'edit') {
-            document.getElementById('room-id').value = room.id;
-            document.getElementById('room-number').value = room.room_number;
-            document.getElementById('room-price-per-day').value = room.price_per_day;
-            document.getElementById('room-status').value = room.status;
-
-            const showPatient = room.status === 'occupied' || room.status === 'reserved';
-            if (showPatient) {
-                roomPatientGroup.style.display = 'block';
-                roomPatientSelect.required = true;
-                document.getElementById('room-patient-id').value = room.patient_id || '';
-            }
-            if (room.status === 'occupied') {
-                roomDoctorGroup.style.display = 'block';
-                roomDoctorSelect.required = true;
-                document.getElementById('room-doctor-id').value = room.doctor_id || '';
-            }
         } else {
-            document.getElementById('room-price-per-day').value = '0.00';
+            document.getElementById('accommodation-price-per-day').value = '0.00';
         }
-        roomModal.classList.add('show');
+        
+        accommodationModal.classList.add('show');
     };
 
-    addRoomBtn.addEventListener('click', () => openRoomModal('add'));
-    roomModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(roomModal));
-    roomModal.addEventListener('click', (e) => { if (e.target === roomModal) closeModal(roomModal); });
-
-    roomForm.addEventListener('submit', (e) => {
+    addAccommodationBtn.addEventListener('click', () => openAccommodationModal('add', {}, currentAccommodationType));
+    accommodationModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(accommodationModal));
+    accommodationForm.addEventListener('submit', (e) => {
         e.preventDefault();
-        handleFormSubmit(new FormData(roomForm), 'rooms');
+        handleFormSubmit(new FormData(accommodationForm), `accommodations-${currentAccommodationType}`);
     });
 
-    const fetchRooms = async () => {
-        roomsContainer.innerHTML = `<p style="text-align:center;">Loading rooms...</p>`;
+    const fetchAccommodations = async (type) => {
+        accommodationsContainer.innerHTML = `<p style="text-align:center;">Loading ${type}s...</p>`;
+        const typeName = type.charAt(0).toUpperCase() + type.slice(1);
+        document.getElementById('accommodations-title').textContent = `${typeName} Management`;
+        addAccommodationBtn.innerHTML = `<i class="fas fa-plus"></i> Add New ${typeName}`;
+
         try {
-            const response = await fetch('admin.php?fetch=rooms');
+            const response = await fetch(`admin.php?fetch=accommodations&type=${type}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
 
             if (result.data.length > 0) {
-                roomsContainer.innerHTML = result.data.map(room => {
-                    // PASTE YOUR SNIPPET HERE (adapted for rooms)
+                accommodationsContainer.innerHTML = result.data.map(item => {
                     let patientInfo = '';
-                    if (room.status === 'occupied' && room.patient_name) {
-                        let doctorInfo = room.doctor_name ? `<br><small>Doctor: ${room.doctor_name}</small>` : '';
-                        patientInfo = `<div class="patient-info">Occupied by: ${room.patient_name}${doctorInfo}</div>`;
-                    } else if (room.status === 'reserved' && room.patient_name) {
-                        patientInfo = `<div class="patient-info">Reserved for: ${room.patient_name}</div>`;
+                    if (item.status === 'occupied' && item.patient_name) {
+                        let doctorInfo = item.doctor_name ? `<br><small>Doctor: ${item.doctor_name}</small>` : '';
+                        patientInfo = `<div class="patient-info">Occupied by: ${item.patient_name}${doctorInfo}</div>`;
+                    } else if (item.status === 'reserved' && item.patient_name) {
+                        patientInfo = `<div class="patient-info">Reserved for: ${item.patient_name}</div>`;
                     }
 
-                    // THIS IS THE CODE THAT COMES AFTER YOUR SNIPPET
+                    const cardClass = type === 'bed' ? 'bed-card' : 'room-card';
+                    const iconClass = type === 'bed' ? 'fa-bed' : 'fa-door-closed';
+
                     return `
-                        <div class="room-card ${room.status}" data-room='${JSON.stringify(room)}'>
-                            <div class="room-icon"><i class="fas fa-door-closed"></i></div>
-                            <div class="room-number">Room ${room.room_number}</div>
-                            <div class="room-status">${room.status}</div>
+                        <div class="${cardClass} ${item.status}" data-item='${JSON.stringify(item)}'>
+                            <div class="item-icon"><i class="fas ${iconClass}"></i></div>
+                            <div class="item-number">${typeName} ${item.number}</div>
+                            ${type === 'bed' ? `<div class="item-ward">${item.ward_name}</div>` : ''}
+                            <div class="item-status">${item.status}</div>
                             ${patientInfo}
                             <div class="action-buttons">
-                                <button class="btn-edit-room btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
-                                <button class="btn-delete-room btn-delete" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                                <button class="btn-edit-item btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
+                                <button class="btn-delete-item btn-delete" title="Delete"><i class="fas fa-trash-alt"></i></button>
                             </div>
                         </div>
-                    `}).join('');
+                    `;
+                }).join('');
             } else {
-                roomsContainer.innerHTML = `<p style="text-align:center;">No rooms found. Add some to get started.</p>`;
+                accommodationsContainer.innerHTML = `<p style="text-align:center;">No ${type}s found. Add some to get started.</p>`;
             }
         } catch (error) {
-            roomsContainer.innerHTML = `<p style="text-align:center;">Failed to load rooms: ${error.message}</p>`;
+            accommodationsContainer.innerHTML = `<p style="text-align:center;">Failed to load ${type}s: ${error.message}</p>`;
         }
     };
 
-    roomsContainer.addEventListener('click', async (e) => {
-        const roomCard = e.target.closest('.room-card');
-        if (!roomCard) return;
+    accommodationsContainer.addEventListener('click', async (e) => {
+        const card = e.target.closest('.bed-card, .room-card');
+        if (!card) return;
 
-        const room = JSON.parse(roomCard.dataset.room);
-        if (e.target.closest('.btn-edit-room')) {
-            openRoomModal('edit', room);
+        const item = JSON.parse(card.dataset.item);
+        if (e.target.closest('.btn-edit-item')) {
+            openAccommodationModal('edit', item, item.type);
         }
-        if (e.target.closest('.btn-delete-room')) {
-            const confirmed = await showConfirmation('Delete Room', `Are you sure you want to delete Room ${room.room_number}?`);
+        if (e.target.closest('.btn-delete-item')) {
+            const typeName = item.type.charAt(0).toUpperCase() + item.type.slice(1);
+            const confirmed = await showConfirmation(`Delete ${typeName}`, `Are you sure you want to delete ${typeName} ${item.number}?`);
             if (confirmed) {
                 const formData = new FormData();
-                formData.append('action', 'deleteRoom');
-                formData.append('id', room.id);
+                formData.append('action', 'deleteAccommodation');
+                formData.append('id', item.id);
                 formData.append('csrf_token', csrfToken);
-                handleFormSubmit(formData, 'rooms');
+                handleFormSubmit(formData, `accommodations-${item.type}`);
             }
         }
     });
 
     // --- REPORTING ---
     const generateReportBtn = document.getElementById('generate-report-btn');
-    const downloadPdfForm = document.getElementById('download-pdf-form');
     const summaryCardsContainer = document.getElementById('report-summary-cards');
 
     const generateReport = async () => {
         const reportType = document.getElementById('report-type').value;
         const period = document.getElementById('report-period').value;
 
-        // Update PDF download form
         document.getElementById('pdf-report-type').value = reportType;
         document.getElementById('pdf-period').value = period;
         summaryCardsContainer.innerHTML = '<p>Loading summary...</p>';
-        document.getElementById('report-table-container').innerHTML = ''; // Clear old table
+        document.getElementById('report-table-container').innerHTML = '';
 
         try {
             const response = await fetch(`admin.php?fetch=report&type=${reportType}&period=${period}`);
@@ -1347,8 +1138,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             const { summary, chartData, tableData } = result.data;
 
-            // Update Summary Cards
-            summaryCardsContainer.innerHTML = ''; // Clear previous cards
+            summaryCardsContainer.innerHTML = '';
             if (reportType === 'financial') {
                 summaryCardsContainer.innerHTML = `
                         <div class="summary-card"><span class="label">Total Revenue</span><span class="value">₹${parseFloat(summary.total_revenue || 0).toLocaleString('en-IN')}</span></div>
@@ -1363,100 +1153,50 @@ document.addEventListener("DOMContentLoaded", function () {
                         <div class="summary-card"><span class="label">Cancelled</span><span class="value">${summary.cancelled || 0}</span></div>
                     `;
             } else if (reportType === 'resource') {
-                const occupancy_rate = summary.total_beds > 0 ? ((summary.occupied_beds / summary.total_beds) * 100).toFixed(1) : 0;
+                const bed_occupancy_rate = summary.total_beds > 0 ? ((summary.occupied_beds / summary.total_beds) * 100).toFixed(1) : 0;
+                const room_occupancy_rate = summary.total_rooms > 0 ? ((summary.occupied_rooms / summary.total_rooms) * 100).toFixed(1) : 0;
                 summaryCardsContainer.innerHTML = `
-                        <div class="summary-card"><span class="label">Occupied Beds</span><span class="value">${summary.occupied_beds || 0} / ${summary.total_beds || 0}</span></div>
-                        <div class="summary-card"><span class="label">Bed Occupancy Rate</span><span class="value">${occupancy_rate}%</span></div>
-                        <div class="summary-card"><span class="label">Occupied Rooms</span><span class="value">${summary.occupied_rooms || 0} / ${summary.total_rooms || 0}</span></div>
+                        <div class="summary-card"><span class="label">Occupied Beds</span><span class="value">${summary.occupied_beds || 0} / ${summary.total_beds || 0} (${bed_occupancy_rate}%)</span></div>
+                        <div class="summary-card"><span class="label">Occupied Rooms</span><span class="value">${summary.occupied_rooms || 0} / ${summary.total_rooms || 0} (${room_occupancy_rate}%)</span></div>
                     `;
             }
 
-            // Render Chart
             const chartCtx = document.getElementById('report-chart').getContext('2d');
-            if (reportChart) {
-                reportChart.destroy();
-            }
-
-            const labels = chartData.map(item => item.label);
-            const data = chartData.map(item => item.value);
-            const chartLabel = reportType.charAt(0).toUpperCase() + reportType.slice(1) + ' Trend';
-
+            if (reportChart) reportChart.destroy();
             reportChart = new Chart(chartCtx, {
                 type: 'line',
                 data: {
-                    labels: labels,
+                    labels: chartData.map(item => item.label),
                     datasets: [{
-                        label: chartLabel,
-                        data: data,
+                        label: reportType.charAt(0).toUpperCase() + reportType.slice(1) + ' Trend',
+                        data: chartData.map(item => item.value),
                         borderColor: 'var(--primary-color)',
                         backgroundColor: 'rgba(59, 130, 246, 0.2)',
                         fill: true,
                         tension: 0.4
                     }]
                 },
-                options: {
-                    responsive: true,
-                    scales: {
-                        y: { beginAtZero: true },
-                    }
-                }
+                options: { responsive: true, scales: { y: { beginAtZero: true } } }
             });
 
-            // Render Table
             const tableContainer = document.getElementById('report-table-container');
             if (tableData.length > 0) {
                 const headers = Object.keys(tableData[0]);
-                const tableHTML = `
+                tableContainer.innerHTML = `
                             <h3 style="margin-top: 2.5rem; margin-bottom: 1.5rem;">Detailed Report Data</h3>
                             <div class="table-container">
                                 <table class="data-table">
-                                    <thead>
-                                        <tr>
-                                            ${headers.map(h => `<th>${h.replace(/_/g, ' ').toUpperCase()}</th>`).join('')}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${tableData.map(row => `
-                                            <tr>
-                                                ${headers.map(h => `<td>${row[h]}</td>`).join('')}
-                                            </tr>
-                                        `).join('')}
-                                    </tbody>
+                                    <thead><tr>${headers.map(h => `<th>${h.replace(/_/g, ' ').toUpperCase()}</th>`).join('')}</tr></thead>
+                                    <tbody>${tableData.map(row => `<tr>${headers.map(h => `<td>${row[h]}</td>`).join('')}</tr>`).join('')}</tbody>
                                 </table>
-                            </div>
-                        `;
-                tableContainer.innerHTML = tableHTML;
+                            </div>`;
             }
-
 
         } catch (error) {
             showNotification('Failed to generate report: ' + error.message, 'error');
             summaryCardsContainer.innerHTML = `<p style="color: var(--danger-color);">Could not load report summary.</p>`;
         }
     };
-
-    const reportPeriodSelect = document.getElementById('report-period');
-    const yearContainer = document.getElementById('report-year-container');
-    const monthContainer = document.getElementById('report-month-container');
-    const dayContainer = document.getElementById('report-day-container');
-
-    reportPeriodSelect.addEventListener('change', () => {
-        const period = reportPeriodSelect.value;
-        yearContainer.style.display = 'none';
-        monthContainer.style.display = 'none';
-        dayContainer.style.display = 'none';
-
-        if (period === 'yearly') {
-            yearContainer.style.display = 'block';
-        } else if (period === 'monthly') {
-            monthContainer.style.display = 'block';
-        } else if (period === 'daily') {
-            dayContainer.style.display = 'block';
-        }
-    });
-
-    // Trigger change event on load to set the initial correct view
-    reportPeriodSelect.dispatchEvent(new Event('change'));
 
     generateReportBtn.addEventListener('click', generateReport);
 
@@ -1474,59 +1214,48 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (result.data.length > 0) {
                 activityLogContainer.innerHTML = result.data.map(log => {
-                    let iconClass = 'fa-plus';
-                    let iconBgClass = 'create';
-                    if (log.action.includes('update')) {
-                        iconClass = 'fa-pencil-alt';
-                        iconBgClass = 'update';
-                    } else if (log.action.includes('delete') || log.action.includes('deactivate')) {
-                        iconClass = 'fa-trash-alt';
-                        iconBgClass = 'delete';
-                    }
-
-                    const time = new Date(log.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
-
+                    let iconClass = 'fa-plus', iconBgClass = 'create';
+                    if (log.action.includes('update')) { iconClass = 'fa-pencil-alt'; iconBgClass = 'update'; }
+                    else if (log.action.includes('delete') || log.action.includes('deactivate')) { iconClass = 'fa-trash-alt'; iconBgClass = 'delete'; }
                     return `
                         <div class="log-item">
                             <div class="log-icon ${iconBgClass}"><i class="fas ${iconClass}"></i></div>
                             <div class="log-details">
                                 <p>${log.details}</p>
-                                <div class="log-meta">
-                                    By: <strong>${log.admin_username}</strong> on ${time}
-                                </div>
+                                <div class="log-meta">By: <strong>${log.admin_username}</strong> on ${new Date(log.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</div>
                             </div>
-                        </div>
-                        `;
+                        </div>`;
                 }).join('');
             } else {
                 activityLogContainer.innerHTML = `<p style="text-align: center;">No recent activity found.</p>`;
             }
         } catch (error) {
-            console.error('Fetch error:', error);
             activityLogContainer.innerHTML = `<p style="text-align: center; color: var(--danger-color);">Failed to load activity logs.</p>`;
         }
     };
 
     refreshLogsBtn.addEventListener('click', fetchActivityLogs);
 
-    // --- SCHEDULES PANEL LOGIC ---
+    // --- SCHEDULES & NOTIFICATIONS PANELS ---
     const schedulesPanel = document.getElementById('schedules-panel');
     const doctorSelect = document.getElementById('doctor-select');
     const scheduleEditorContainer = document.getElementById('doctor-schedule-editor');
     const saveScheduleBtn = document.getElementById('save-schedule-btn');
+    const notificationsPanel = document.getElementById('notifications-panel');
+    const notificationForm = document.getElementById('notification-form');
+    const individualNotificationForm = document.getElementById('individual-notification-form');
+    const userSearch = document.getElementById('user-search');
+    const userSearchResults = document.getElementById('user-search-results');
+    const recipientUserIdInput = document.getElementById('recipient-user-id');
 
     const fetchDoctorsForScheduling = async () => {
         try {
             const response = await fetch('admin.php?fetch=doctors_for_scheduling');
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
-
             doctorSelect.innerHTML = '<option value="">Select a Doctor...</option>';
-            result.data.forEach(doctor => {
-                doctorSelect.innerHTML += `<option value="${doctor.id}">${doctor.name} (${doctor.display_user_id})</option>`;
-            });
+            result.data.forEach(d => doctorSelect.innerHTML += `<option value="${d.id}">${d.name} (${d.display_user_id})</option>`);
         } catch (error) {
-            console.error("Failed to fetch doctors:", error);
             doctorSelect.innerHTML = '<option value="">Could not load doctors</option>';
         }
     };
@@ -1534,22 +1263,17 @@ document.addEventListener("DOMContentLoaded", function () {
     const renderScheduleEditor = (slots) => {
         const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
         scheduleEditorContainer.innerHTML = days.map(day => `
-    <div class="day-schedule-card" data-day="${day}">
-        <h4>${day}</h4>
-        <div class="time-slots-grid">
-            ${(slots[day] || []).map(slot => `
-                <div class="time-slot">
-                    <label>From:</label>
-                    <input type="time" class="slot-from" value="${slot.from}" />
-                    <label>To:</label>
-                    <input type="time" class="slot-to" value="${slot.to}" />
-                    <button class="remove-slot-btn" title="Remove slot"><i class="fas fa-times"></i></button>
+            <div class="day-schedule-card" data-day="${day}">
+                <h4>${day}</h4>
+                <div class="time-slots-grid">${(slots[day] || []).map(slot => `
+                    <div class="time-slot">
+                        <label>From:</label><input type="time" class="slot-from" value="${slot.from}" />
+                        <label>To:</label><input type="time" class="slot-to" value="${slot.to}" />
+                        <button class="remove-slot-btn" title="Remove slot"><i class="fas fa-times"></i></button>
+                    </div>`).join('')}
                 </div>
-            `).join('')}
-        </div>
-        <button class="add-slot-btn"><i class="fas fa-plus"></i> Add Slot</button>
-    </div>
-`).join('');
+                <button class="add-slot-btn"><i class="fas fa-plus"></i> Add Slot</button>
+            </div>`).join('');
         document.querySelector('.schedule-actions').style.display = 'block';
     };
 
@@ -1570,22 +1294,14 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     };
 
-    doctorSelect.addEventListener('change', () => {
-        fetchDoctorSchedule(doctorSelect.value);
-    });
+    doctorSelect.addEventListener('change', () => fetchDoctorSchedule(doctorSelect.value));
 
     scheduleEditorContainer.addEventListener('click', (e) => {
         if (e.target.closest('.add-slot-btn')) {
             const grid = e.target.closest('.day-schedule-card').querySelector('.time-slots-grid');
             const slotDiv = document.createElement('div');
             slotDiv.className = 'time-slot';
-            slotDiv.innerHTML = `
-        <label>From:</label>
-        <input type="time" class="slot-from" value="09:00" />
-        <label>To:</label>
-        <input type="time" class="slot-to" value="13:00" />
-        <button class="remove-slot-btn" title="Remove slot"><i class="fas fa-times"></i></button>
-    `;
+            slotDiv.innerHTML = `<label>From:</label><input type="time" class="slot-from" value="09:00" /><label>To:</label><input type="time" class="slot-to" value="13:00" /><button class="remove-slot-btn" title="Remove slot"><i class="fas fa-times"></i></button>`;
             grid.appendChild(slotDiv);
         }
         if (e.target.closest('.remove-slot-btn')) {
@@ -1595,54 +1311,37 @@ document.addEventListener("DOMContentLoaded", function () {
 
     saveScheduleBtn.addEventListener('click', async () => {
         const doctorId = doctorSelect.value;
-        if (!doctorId) {
-            showNotification('Please select a doctor first.', 'error');
-            return;
-        }
-
+        if (!doctorId) return showNotification('Please select a doctor first.', 'error');
+        
         const scheduleData = {};
         let isValid = true;
         document.querySelectorAll('.day-schedule-card').forEach(dayCard => {
             const day = dayCard.dataset.day;
             const slots = [];
-            dayCard.querySelectorAll('.time-slot').forEach(slotElement => {
-                const from = slotElement.querySelector('.slot-from').value;
-                const to = slotElement.querySelector('.slot-to').value;
+            dayCard.querySelectorAll('.time-slot').forEach(slotEl => {
+                const from = slotEl.querySelector('.slot-from').value;
+                const to = slotEl.querySelector('.slot-to').value;
                 if (from && to) {
-                    if (to <= from) {
-                        showNotification(`'To' time must be after 'From' time for a slot on ${day}.`, 'error');
-                        isValid = false;
-                    }
+                    if (to <= from) { isValid = false; }
                     slots.push({ from, to });
                 }
             });
             scheduleData[day] = slots;
         });
 
-        if (!isValid) return; // Stop if there's a time validation error
+        if (!isValid) return showNotification(`'To' time must be after 'From' time.`, 'error');
 
         const formData = new FormData();
         formData.append('action', 'update_doctor_schedule');
         formData.append('doctor_id', doctorId);
         formData.append('slots', JSON.stringify(scheduleData));
         formData.append('csrf_token', csrfToken);
-
-        try {
-            const response = await fetch('admin.php', { method: 'POST', body: formData });
-            const result = await response.json();
-            if (result.success) {
-                showNotification(result.message, 'success');
-            } else {
-                throw new Error(result.message);
-            }
-        } catch (error) {
-            showNotification(`Error saving schedule: ${error.message}`, 'error');
-        }
+        handleFormSubmit(formData);
     });
 
     const fetchStaffShifts = async () => {
         const staffTableBody = document.getElementById('staff-shifts-table-body');
-        staffTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading staff shifts...</td></tr>';
+        staffTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading...</td></tr>';
         try {
             const response = await fetch('admin.php?fetch=staff_for_shifting');
             const result = await response.json();
@@ -1661,109 +1360,52 @@ document.addEventListener("DOMContentLoaded", function () {
                                 <option value="off" ${staff.shift === 'off' ? 'selected' : ''}>Off</option>
                             </select>
                         </td>
-                    </tr>
-                `).join('');
+                    </tr>`).join('');
             } else {
                 staffTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No active staff found.</td></tr>';
             }
         } catch (error) {
-            staffTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--danger-color);">Failed to load shifts: ${error.message}</td></tr>`;
+            staffTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--danger-color);">Failed to load shifts.</td></tr>`;
         }
     };
-
-    // Tab switching logic for the Schedules panel
-    schedulesPanel.querySelectorAll('.schedule-tab-button').forEach(button => {
-        button.addEventListener('click', function () {
-            const tabId = this.dataset.tab;
-
-            schedulesPanel.querySelectorAll('.schedule-tab-button').forEach(btn => btn.classList.remove('active'));
-            this.classList.add('active');
-
-            schedulesPanel.querySelectorAll('.schedule-tab-content').forEach(content => content.classList.remove('active'));
-            document.getElementById(`${tabId}-content`).classList.add('active');
-
-            // Fetch data if the tab is being opened for the first time or needs refresh
-            if (tabId === 'doctor-availability' && doctorSelect.options.length <= 1) {
-                fetchDoctorsForScheduling();
-            } else if (tabId === 'staff-shifts') {
-                // Future implementation: fetchStaffShifts();
-                fetchStaffShifts();
-            }
-        });
-    });
 
     document.getElementById('staff-shifts-table-body').addEventListener('change', async (e) => {
         if (e.target.classList.contains('shift-select')) {
             const staffId = e.target.dataset.id;
             const newShift = e.target.value;
-
             const formData = new FormData();
             formData.append('action', 'update_staff_shift');
             formData.append('staff_id', staffId);
             formData.append('shift', newShift);
             formData.append('csrf_token', csrfToken);
-
-            try {
-                const response = await fetch('admin.php', { method: 'POST', body: formData });
-                const result = await response.json();
-                if (result.success) {
-                    showNotification(result.message, 'success');
-                    document.getElementById(`shift-status-${staffId}`).textContent = newShift;
-                } else {
-                    throw new Error(result.message);
-                }
-            } catch (error) {
-                showNotification(`Error: ${error.message}`, 'error');
+            const result = await (await fetch('admin.php', { method: 'POST', body: formData })).json();
+            if (result.success) {
+                showNotification(result.message, 'success');
+                document.getElementById(`shift-status-${staffId}`).textContent = newShift;
+            } else {
+                showNotification(`Error: ${result.message}`, 'error');
                 fetchStaffShifts();
             }
         }
     });
 
-
-    // --- NOTIFICATIONS PANEL LOGIC ---
-    const notificationsPanel = document.getElementById('notifications-panel');
-    const notificationForm = document.getElementById('notification-form');
-    const individualNotificationForm = document.getElementById('individual-notification-form');
-    const recipientSelect = document.getElementById('recipient-user-id');
-
-    const fetchAllUsersForNotifications = async () => {
-        try {
-            const response = await fetch(`admin.php?fetch=users&role=all_users`);
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-
-            recipientSelect.innerHTML = '<option value="">Select a user...</option>';
-            result.data.forEach(user => {
-                recipientSelect.innerHTML += `<option value="${user.id}">${user.name} (${user.display_user_id}) - ${user.role}</option>`;
+    [schedulesPanel, notificationsPanel].forEach(panel => {
+        panel.querySelectorAll('.schedule-tab-button').forEach(button => {
+            button.addEventListener('click', function () {
+                const tabId = this.dataset.tab;
+                panel.querySelectorAll('.schedule-tab-button, .schedule-tab-content').forEach(el => el.classList.remove('active'));
+                this.classList.add('active');
+                document.getElementById(`${tabId}-content`).classList.add('active');
+                if (tabId === 'doctor-availability' && doctorSelect.options.length <= 1) fetchDoctorsForScheduling();
+                if (tabId === 'staff-shifts') fetchStaffShifts();
             });
-
-        } catch (error) {
-            recipientSelect.innerHTML = '<option value="">Failed to load users</option>';
-            console.error("Failed to fetch users for notifications:", error);
-        }
-    };
-
-    notificationsPanel.querySelectorAll('.schedule-tab-button').forEach(button => {
-        button.addEventListener('click', function () {
-            const tabId = this.dataset.tab;
-
-            notificationsPanel.querySelectorAll('.schedule-tab-button').forEach(btn => btn.classList.remove('active'));
-            this.classList.add('active');
-
-            notificationsPanel.querySelectorAll('.schedule-tab-content').forEach(content => content.classList.remove('active'));
-            document.getElementById(`${tabId}-content`).classList.add('active');
-
-            if (tabId === 'individual' && recipientSelect.options.length <= 1) {
-                fetchAllUsersForNotifications();
-            }
         });
     });
 
     notificationForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = new FormData(notificationForm);
-        const role = formData.get('role');
-        const confirmed = await showConfirmation('Send Notification', `Are you sure you want to send this broadcast message to all ${role}s?`);
+        const confirmed = await showConfirmation('Send Notification', `Send broadcast to all ${formData.get('role')}s?`);
         if (confirmed) {
             handleFormSubmit(formData);
             notificationForm.reset();
@@ -1773,17 +1415,14 @@ document.addEventListener("DOMContentLoaded", function () {
     individualNotificationForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = new FormData(individualNotificationForm);
-        const recipientName = document.getElementById('user-search').value;
-        if (!formData.get('recipient_user_id')) {
-            showNotification('Please select a valid user from the search results.', 'error');
-            return;
-        }
-        const confirmed = await showConfirmation('Send Message', `Are you sure you want to send this message to ${recipientName}?`);
+        if (!formData.get('recipient_user_id')) return showNotification('Please select a valid user.', 'error');
+        const confirmed = await showConfirmation('Send Message', `Send message to ${document.getElementById('user-search').value}?`);
         if (confirmed) {
             handleFormSubmit(formData);
             individualNotificationForm.reset();
         }
     });
+
     // --- NOTIFICATION CENTER LOGIC ---
     const notificationBell = document.getElementById('notification-bell-wrapper');
     const notificationCountBadge = document.getElementById('notification-count');
@@ -1791,8 +1430,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const updateNotificationCount = async () => {
         try {
-            const response = await fetch('admin.php?fetch=unread_notification_count');
-            const result = await response.json();
+            const result = await (await fetch('admin.php?fetch=unread_notification_count')).json();
             if (result.success && result.count > 0) {
                 notificationCountBadge.textContent = result.count;
                 notificationCountBadge.style.display = 'grid';
@@ -1807,31 +1445,19 @@ document.addEventListener("DOMContentLoaded", function () {
     const loadAllNotifications = async () => {
         allNotificationsPanel.innerHTML = '<p style="text-align: center; padding: 2rem;">Loading messages...</p>';
         try {
-            const response = await fetch('admin.php?fetch=all_notifications');
-            const result = await response.json();
+            const result = await (await fetch('admin.php?fetch=all_notifications')).json();
             if (!result.success) throw new Error(result.message);
 
-            let content = `
-                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding-bottom: 1rem; margin-bottom: 1rem;">
-                            <h2 style="margin: 0;">All Notifications</h2>
-                        </div>
-                    `;
-
+            let content = `<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding-bottom: 1rem; margin-bottom: 1rem;"><h2 style="margin: 0;">All Notifications</h2></div>`;
             if (result.data.length > 0) {
-                result.data.forEach(notif => {
-                    const isUnread = notif.is_read == 0;
-                    const itemStyle = isUnread ? 'background-color: var(--bg-grey);' : '';
-
-                    content += `
-                                <div class="notification-item" style="display: flex; gap: 1rem; padding: 1.5rem; border-bottom: 1px solid var(--border-light); ${itemStyle}">
-                                    <div style="font-size: 1.5rem; color: var(--primary-color); padding-top: 5px;"><i class="fas fa-envelope-open-text"></i></div>
-                                    <div style="flex-grow: 1;">
-                                        <p style="margin: 0 0 0.25rem 0; font-weight: ${isUnread ? '600' : '500'};">${notif.message}</p>
-                                        <small style="color: var(--text-muted);">From: ${notif.sender_name} on ${new Date(notif.created_at).toLocaleString()}</small>
-                                    </div>
-                                </div>
-                            `;
-                });
+                content += result.data.map(notif => `
+                    <div class="notification-item" style="display: flex; gap: 1rem; padding: 1.5rem; border-bottom: 1px solid var(--border-light); ${notif.is_read == 0 ? 'background-color: var(--bg-grey);' : ''}">
+                        <div style="font-size: 1.5rem; color: var(--primary-color); padding-top: 5px;"><i class="fas fa-envelope-open-text"></i></div>
+                        <div style="flex-grow: 1;">
+                            <p style="margin: 0 0 0.25rem 0; font-weight: ${notif.is_read == 0 ? '600' : '500'};">${notif.message}</p>
+                            <small style="color: var(--text-muted);">From: ${notif.sender_name} on ${new Date(notif.created_at).toLocaleString()}</small>
+                        </div>
+                    </div>`).join('');
             } else {
                 content += '<p style="text-align: center; padding: 2rem;">You have no notifications.</p>';
             }
@@ -1843,97 +1469,42 @@ document.addEventListener("DOMContentLoaded", function () {
 
     notificationBell.addEventListener('click', async (e) => {
         e.stopPropagation();
-
-        // Send the request to mark notifications as READ in the background
         try {
             const formData = new FormData();
             formData.append('action', 'mark_notifications_read');
             formData.append('csrf_token', csrfToken);
-
-            const response = await fetch('admin.php', { method: 'POST', body: formData });
-            const result = await response.json();
-
+            const result = await (await fetch('admin.php', { method: 'POST', body: formData })).json();
             if (result.success) {
-                // If the database is successfully updated, THEN update the UI
-                notificationCountBadge.textContent = '0';
                 notificationCountBadge.style.display = 'none';
-
-                // Switch to the panel and reload the list to show the new "read" styles
                 handlePanelSwitch(notificationBell);
                 loadAllNotifications();
             } else {
                 showNotification(result.message || 'Could not mark notifications as read.', 'error');
-                console.error('Server failed to mark notifications as read:', result.message);
             }
         } catch (error) {
-            showNotification('A network error occurred. Please try again.', 'error');
-            console.error('Error marking notifications as read:', error);
+            showNotification('A network error occurred.', 'error');
         }
     });
-
-    // Add this event listener to handle dismissing individual notifications
-    allNotificationsPanel.addEventListener('click', async (e) => {
-        const deleteButton = e.target.closest('.btn-delete-notification');
-        if (deleteButton) {
-            const notificationId = deleteButton.dataset.id;
-            const confirmed = await showConfirmation('Dismiss Notification', 'Are you sure you want to permanently dismiss this message?');
-            if (confirmed) {
-                const formData = new FormData();
-                formData.append('action', 'delete_notification');
-                formData.append('notification_id', notificationId);
-                formData.append('csrf_token', csrfToken);
-
-                // Optimistically remove from UI
-                deleteButton.closest('.notification-item').remove();
-                showNotification('Notification dismissed.', 'success');
-
-                // Send request to server
-                fetch('admin.php', { method: 'POST', body: formData })
-                    .then(res => res.json())
-                    .then(result => {
-                        if (!result.success) {
-                            showNotification('Failed to dismiss on server.', 'error');
-                            // If server fails, reload the list to be accurate
-                            loadAllNotifications();
-                        }
-                    });
-            }
-        }
-    });
-    // --- INDIVIDUAL NOTIFICATION SEARCH LOGIC ---
-    const userSearch = document.getElementById('user-search');
-    const userSearchResults = document.getElementById('user-search-results');
-    const recipientUserIdInput = document.getElementById('recipient-user-id');
 
     let searchTimeout;
     userSearch.addEventListener('keyup', () => {
         clearTimeout(searchTimeout);
         const searchTerm = userSearch.value.trim();
-
-        if (searchTerm.length < 2) {
-            userSearchResults.style.display = 'none';
-            return;
-        }
-
+        if (searchTerm.length < 2) { userSearchResults.style.display = 'none'; return; }
         searchTimeout = setTimeout(async () => {
             try {
-                const response = await fetch(`admin.php?fetch=search_users&term=${encodeURIComponent(searchTerm)}`);
-                const result = await response.json();
+                const result = await (await fetch(`admin.php?fetch=search_users&term=${encodeURIComponent(searchTerm)}`)).json();
                 if (!result.success) throw new Error(result.message);
-
                 if (result.data.length > 0) {
                     userSearchResults.innerHTML = result.data.map(user => `
-                                <div class="search-result-item" data-id="${user.id}" data-name="${user.name} (${user.display_user_id})">
-                                    <strong>${user.name}</strong> (${user.display_user_id}) - <small>${user.role}</small>
-                                </div>
-                            `).join('');
-                    userSearchResults.style.display = 'block';
+                        <div class="search-result-item" data-id="${user.id}" data-name="${user.name} (${user.display_user_id})">
+                            <strong>${user.name}</strong> (${user.display_user_id}) - <small>${user.role}</small>
+                        </div>`).join('');
                 } else {
                     userSearchResults.innerHTML = '<div class="search-result-item none">No users found.</div>';
-                    userSearchResults.style.display = 'block';
                 }
+                userSearchResults.style.display = 'block';
             } catch (error) {
-                console.error('User search failed:', error);
                 userSearchResults.innerHTML = '<div class="search-result-item none">Search error.</div>';
                 userSearchResults.style.display = 'block';
             }
@@ -1949,20 +1520,17 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
-    // Hide search results if clicking elsewhere
     document.addEventListener('click', (e) => {
         if (!userSearch.contains(e.target) && !userSearchResults.contains(e.target)) {
             userSearchResults.style.display = 'none';
         }
     });
 
-    document.getElementById('appointment-doctor-filter').addEventListener('change', (e) => {
-        fetchAppointments(e.target.value);
-    });
+    document.getElementById('appointment-doctor-filter').addEventListener('change', (e) => fetchAppointments(e.target.value));
 
     // --- INITIAL LOAD ---
     updateDashboardStats();
     updateNotificationCount();
     fetchDepartments();
-    generateReport(); // Generate default report on load
+    generateReport();
 });

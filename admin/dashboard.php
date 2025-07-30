@@ -40,9 +40,16 @@ $stmt->close();
 $csrf_token = bin2hex(random_bytes(32));
 $_SESSION['csrf_token'] = $csrf_token;
 
-$total_users = $conn->query("SELECT COUNT(*) as c FROM users")->fetch_assoc()['c'];
-$active_doctors = $conn->query("SELECT COUNT(*) as c FROM users WHERE role='doctor' AND active=1")->fetch_assoc()['c'];
-$pending_appointments = 0;
+// Updated queries to reflect new schema
+$total_users_stmt = $conn->prepare("SELECT COUNT(*) as c FROM users");
+$total_users_stmt->execute();
+$total_users = $total_users_stmt->get_result()->fetch_assoc()['c'];
+
+$active_doctors_stmt = $conn->prepare("SELECT COUNT(*) as c FROM users u JOIN roles r ON u.role_id = r.id WHERE r.role_name = 'doctor' AND u.is_active = 1");
+$active_doctors_stmt->execute();
+$active_doctors = $active_doctors_stmt->get_result()->fetch_assoc()['c'];
+
+$pending_appointments = 0; // This will be loaded dynamically via JS
 $conn->close();
 
 ?>
@@ -104,12 +111,19 @@ $conn->close();
                                         class="fas fa-pills"></i> Medicine Inventory</a></li>
                             <li><a href="#" class="nav-link" data-target="inventory-departments"><i
                                         class="fas fa-building"></i> Departments</a></li>
-                            <li><a href="#" class="nav-link" data-target="inventory-wards"><i
+                        </ul>
+                    </li>
+                    <li>
+                        <div class="nav-dropdown-toggle">
+                            <i class="fas fa-procedures"></i> Accommodations <i class="fas fa-chevron-right arrow"></i>
+                        </div>
+                        <ul class="nav-dropdown">
+                             <li><a href="#" class="nav-link" data-target="inventory-wards"><i
                                         class="fas fa-hospital"></i> Wards</a></li>
-                            <li><a href="#" class="nav-link" data-target="inventory-beds"><i class="fas fa-bed"></i>
+                            <li><a href="#" class="nav-link" data-target="accommodations-bed"><i class="fas fa-bed"></i>
                                     Beds</a></li>
-                            <li><a href="#" class="nav-link" data-target="inventory-rooms"><i
-                                        class="fas fa-door-closed"></i> Rooms</a></li><br>
+                            <li><a href="#" class="nav-link" data-target="accommodations-room"><i
+                                        class="fas fa-door-closed"></i> Rooms</a></li>
                         </ul>
                     </li>
                     <li><a href="#" class="nav-link" data-target="appointments"><i class="fas fa-calendar-check"></i>
@@ -391,25 +405,17 @@ $conn->close();
                 </div>
             </div>
 
-            <div id="inventory-beds-panel" class="content-panel">
-                <div
-                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
-                    <h2>Bed Management</h2>
-                    <button id="add-bed-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Bed</button>
+            <!-- Unified Accommodations Panel -->
+            <div id="accommodations-panel" class="content-panel">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+                    <h2 id="accommodations-title">Bed Management</h2> <!-- Title will be dynamic -->
+                    <button id="add-accommodation-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Bed</button> <!-- Button text will be dynamic -->
                 </div>
-                <div id="beds-container">
+                <div id="accommodations-container" class="resource-grid-container">
+                    <!-- Cards will be loaded here by JS -->
                 </div>
             </div>
 
-            <div id="inventory-rooms-panel" class="content-panel">
-                <div
-                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
-                    <h2>Room Management</h2>
-                    <button id="add-room-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Room</button>
-                </div>
-                <div id="rooms-container" class="resource-grid-container">
-                </div>
-            </div>
             <div id="reports-panel" class="content-panel">
                 <div class="report-controls">
                     <div class="form-group">
@@ -720,8 +726,8 @@ $conn->close();
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="availability">Availability</label>
-                        <select id="availability" name="availability">
+                        <label for="is_available">Availability</label>
+                        <select id="is_available" name="is_available">
                             <option value="1">Available</option>
                             <option value="0">On Leave</option>
                         </select>
@@ -739,16 +745,16 @@ $conn->close();
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="assigned_department">Assigned Department</label>
-                        <select id="assigned_department" name="assigned_department">
+                        <label for="assigned_department_id">Assigned Department</label>
+                        <select id="assigned_department_id" name="assigned_department_id">
                             <option value="">Select Department</option>
                         </select>
                     </div>
                 </div>
 
-                <div class="form-group" id="active-group" style="display: none;">
-                    <label for="active">Status</label>
-                    <select id="active" name="active">
+                <div class="form-group" id="is_active-group" style="display: none;">
+                    <label for="is_active">Status</label>
+                    <select id="is_active" name="is_active">
                         <option value="1">Active</option>
                         <option value="0">Inactive</option>
                     </select>
@@ -902,93 +908,55 @@ $conn->close();
         </div>
     </div>
 
-    <div id="bed-modal" class="modal">
+    <!-- Unified Accommodation Modal -->
+    <div id="accommodation-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 id="bed-modal-title">Add New Bed</h3>
+                <h3 id="accommodation-modal-title">Add New Bed</h3>
                 <button class="modal-close-btn">&times;</button>
             </div>
-            <form id="bed-form">
-                <input type="hidden" name="id" id="bed-id">
-                <input type="hidden" name="action" id="bed-form-action">
+            <form id="accommodation-form">
+                <input type="hidden" name="id" id="accommodation-id">
+                <input type="hidden" name="action" id="accommodation-form-action">
+                <input type="hidden" name="type" id="accommodation-type"> <!-- 'bed' or 'room' -->
                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
 
-                <div class="form-group">
-                    <label for="bed-ward-id">Ward</label>
-                    <select id="bed-ward-id" name="ward_id" required>
+                <div class="form-group" id="accommodation-ward-group"> <!-- Show only for beds -->
+                    <label for="accommodation-ward-id">Ward</label>
+                    <select id="accommodation-ward-id" name="ward_id">
+                        <!-- Options loaded by JS -->
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="bed-number">Bed Number</label>
-                    <input type="text" id="bed-number" name="bed_number" required>
+                    <label for="accommodation-number" id="accommodation-number-label">Bed Number</label>
+                    <input type="text" id="accommodation-number" name="number" required>
                 </div>
                 <div class="form-group">
-                    <label for="bed-status">Status</label>
-                    <select id="bed-status" name="status" required>
+                    <label for="accommodation-price-per-day">Price Per Day (₹)</label>
+                    <input type="number" id="accommodation-price-per-day" name="price_per_day" step="0.01" min="0" required>
+                </div>
+                <div class="form-group">
+                    <label for="accommodation-status">Status</label>
+                    <select id="accommodation-status" name="status" required>
                         <option value="available">Available</option>
                         <option value="occupied">Occupied</option>
                         <option value="reserved">Reserved</option>
                         <option value="cleaning">Cleaning</option>
                     </select>
                 </div>
-                <div class="form-group" id="bed-patient-group" style="display: none;">
-                    <label for="bed-patient-id">Patient</label>
-                    <select id="bed-patient-id" name="patient_id">
+                <div class="form-group" id="accommodation-patient-group" style="display: none;">
+                    <label for="accommodation-patient-id">Patient</label>
+                    <select id="accommodation-patient-id" name="patient_id">
                         <option value="">Select Patient</option>
                     </select>
                 </div>
-                <div class="form-group" id="bed-doctor-group" style="display: none;">
-                    <label for="bed-doctor-id">Assign Doctor</label>
-                    <select id="bed-doctor-id" name="doctor_id">
+                <div class="form-group" id="accommodation-doctor-group" style="display: none;">
+                    <label for="accommodation-doctor-id">Assign Doctor</label>
+                    <select id="accommodation-doctor-id" name="doctor_id">
                         <option value="">Select Doctor</option>
                     </select>
                 </div>
-                <button type="submit" class="btn btn-primary" style="width: 100%;">Save Bed</button>
-            </form>
-        </div>
-    </div>
-
-    <div id="room-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="room-modal-title">Add New Room</h3>
-                <button class="modal-close-btn">&times;</button>
-            </div>
-            <form id="room-form">
-                <input type="hidden" name="id" id="room-id">
-                <input type="hidden" name="action" id="room-form-action">
-                <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
-
-                <div class="form-group">
-                    <label for="room-number">Room Number</label>
-                    <input type="text" id="room-number" name="room_number" required>
-                </div>
-                <div class="form-group">
-                    <label for="room-price-per-day">Price Per Day (₹)</label>
-                    <input type="number" id="room-price-per-day" name="price_per_day" step="0.01" min="0" required>
-                </div>
-                <div class="form-group">
-                    <label for="room-status">Status</label>
-                    <select id="room-status" name="status" required>
-                        <option value="available">Available</option>
-                        <option value="occupied">Occupied</option>
-                        <option value="reserved">Reserved</option>
-                        <option value="cleaning">Cleaning</option>
-                    </select>
-                </div>
-                <div class="form-group" id="room-patient-group" style="display: none;">
-                    <label for="room-patient-id">Patient</label>
-                    <select id="room-patient-id" name="patient_id">
-                        <option value="">Select Patient</option>
-                    </select>
-                </div>
-                <div class="form-group" id="room-doctor-group" style="display: none;">
-                    <label for="room-doctor-id">Assign Doctor</label>
-                    <select id="room-doctor-id" name="doctor_id">
-                        <option value="">Select Doctor</option>
-                    </select>
-                </div>
-                <button type="submit" class="btn btn-primary" style="width: 100%;">Save Room</button>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Save</button>
             </form>
         </div>
     </div>

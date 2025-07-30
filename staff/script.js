@@ -1444,7 +1444,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 <tr>
                     <td data-label="Adm. ID">ADM-${String(adm.id).padStart(4, '0')}</td>
                     <td data-label="Patient Name">${adm.patient_name} (${adm.patient_display_id})</td>
-                    <td data-label="Room/Bed">${adm.location || 'N/A'} (${adm.location_type})</td>
+                    <td data-label="Location">${adm.location || 'N/A'} (${adm.location_type})</td>
                     <td data-label="Admitted On">${admissionDate}</td>
                     <td data-label="Status">${status}</td>
                 </tr>

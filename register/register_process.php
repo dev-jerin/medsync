@@ -1,17 +1,15 @@
 <?php
 /**
  * Processes registration, handles file upload, and sends OTP.
+ *
+ * UPDATED for new schema: Now prepares 'role_id' instead of a role string.
  */
 
 // --- PHPMailer Inclusion ---
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-require '../vendor/PHPMailer/PHPMailer/src/Exception.php';
-require '../vendor/PHPMailer/PHPMailer/src/PHPMailer.php';
-require '../vendor/PHPMailer/PHPMailer/src/SMTP.php';
-
-// Include the config file and the new OTP email template
+require '../vendor/autoload.php'; // Use Composer's autoload
 require_once '../config.php';
 require_once 'otp_email_template.php';
 
@@ -36,10 +34,11 @@ $date_of_birth = trim($_POST['date_of_birth']);
 $gender = trim($_POST['gender']);
 $password = $_POST['password'];
 $confirm_password = $_POST['confirm_password'];
-$role = 'user';
+
+// **MODIFICATION**: Set role_id directly. 'user' role has an ID of 1 in the new schema.
+$role_id = 1;
 
 // --- Server-Side Validation ---
-// (Error checking for empty fields, password match, etc.)
 if (empty($name) || empty($username) || empty($email) || empty($phone) || empty($date_of_birth) || empty($gender) || empty($password)) {
     $_SESSION['register_error'] = "All fields are required.";
     header("Location: ../register.php");
@@ -50,22 +49,27 @@ if ($password !== $confirm_password) {
     header("Location: ../register.php");
     exit();
 }
-// ... (other validations remain the same) ...
+if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $_SESSION['register_error'] = "Invalid email format.";
+    header("Location: ../register.php");
+    exit();
+}
 
 // --- Profile Picture Handling ---
 $profile_picture_filename = 'default.png'; // Default value
 
-if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == 0) {
+if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == UPLOAD_ERR_OK) {
     $upload_dir = '../uploads/profile_pictures/';
     $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
     $max_size = 2 * 1024 * 1024; // 2 MB
 
-    $file_type = $_FILES['profile_picture']['type'];
+    $file_info = new finfo(FILEINFO_MIME_TYPE);
+    $file_type = $file_info->file($_FILES['profile_picture']['tmp_name']);
     $file_size = $_FILES['profile_picture']['size'];
 
     if (in_array($file_type, $allowed_types) && $file_size <= $max_size) {
-        $file_extension = pathinfo($_FILES['profile_picture']['name'], PATHINFO_EXTENSION);
-        $new_filename = uniqid('user_', true) . '.' . $file_extension;
+        $file_extension = strtolower(pathinfo($_FILES['profile_picture']['name'], PATHINFO_EXTENSION));
+        $new_filename = 'user_' . uniqid('', true) . '.' . $file_extension;
         
         if (move_uploaded_file($_FILES['profile_picture']['tmp_name'], $upload_dir . $new_filename)) {
             $profile_picture_filename = $new_filename;
@@ -102,6 +106,7 @@ $stmt_check->close();
 $otp = random_int(100000, 999999);
 $hashed_password = password_hash($password, PASSWORD_BCRYPT);
 
+// **MODIFICATION**: Storing 'role_id' in the session for the verification step.
 $_SESSION['registration_data'] = [
     'name' => $name,
     'username' => $username,
@@ -110,8 +115,8 @@ $_SESSION['registration_data'] = [
     'date_of_birth' => $date_of_birth,
     'gender' => $gender,
     'password' => $hashed_password,
-    'role' => $role,
-    'profile_picture' => $profile_picture_filename, // Store filename in session
+    'role_id' => $role_id, // Storing role_id instead of role name
+    'profile_picture' => $profile_picture_filename,
     'otp' => $otp,
     'timestamp' => time()
 ];
@@ -120,7 +125,6 @@ $_SESSION['registration_data'] = [
 $mail = new PHPMailer(true);
 
 try {
-    // ... (PHPMailer setup remains the same) ...
     $system_email = get_system_setting($conn, 'system_email');
     $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
 
@@ -141,7 +145,7 @@ try {
 
     $mail->isHTML(true);
     $mail->Subject = 'Your Verification Code for MedSync';
-    $mail->Body    = getOtpEmailTemplate($name, $otp); // Use the new template function
+    $mail->Body    = getOtpEmailTemplate($name, $otp);
     $mail->AltBody = "Your OTP for MedSync is: $otp. It's valid for 10 minutes.";
 
     $mail->send();
@@ -149,8 +153,14 @@ try {
     exit();
 
 } catch (Exception $e) {
+    // Clean up uploaded file if email fails
+    if ($profile_picture_filename !== 'default.png') {
+        unlink('../uploads/profile_pictures/' . $profile_picture_filename);
+    }
     $_SESSION['register_error'] = "Could not send OTP. Mailer Error: {$mail->ErrorInfo}";
     header("Location: ../register.php");
     exit();
+} finally {
+    $conn->close();
 }
 ?>

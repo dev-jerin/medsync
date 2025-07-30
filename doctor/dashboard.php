@@ -13,20 +13,18 @@ require_once 'doctor.php';
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
-    <!-- Paths to favicons are relative to the root where this file is located -->
     <link rel="apple-touch-icon" sizes="180x180" href="../images/favicon/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="../images/favicon/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="../images/favicon/favicon-16x16.png">
     <link rel="manifest" href="../images/favicon/site.webmanifest">
 
-    <!-- Path to stylesheet is relative to the root -->
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="dashboard-layout">
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <img src="images/logo.png" alt="MedSync Logo" class="logo-img">
+                <img src="../images/logo.png" alt="MedSync Logo" class="logo-img">
                 <span class="logo-text">MedSync</span>
             </div>
             <nav class="sidebar-nav">
@@ -104,7 +102,7 @@ require_once 'doctor.php';
                         </div>
                     </div>
                     <div class="user-profile-widget" id="user-profile-widget">
-                        <img src="images/doctor-avatar.jpg" alt="Doctor Avatar" class="profile-picture">
+                        <img src="../images/doctor-avatar.jpg" alt="Doctor Avatar" class="profile-picture">
                         <div class="profile-info">
                             <strong>Dr. <?php echo $username; ?></strong>
                             <span>Cardiology</span>
@@ -228,11 +226,8 @@ require_once 'doctor.php';
                 <div class="content-panel">
                     <div class="page-header"><h3><i class="fas fa-bed-pulse"></i> Bed Management Overview</h3></div>
                     <div class="filters">
-                        <select id="bed-floor-filter">
-                            <option value="all">All Floors/Wards</option>
-                            <option value="floor1">Floor 1 (General)</option>
-                            <option value="floor2">Floor 2 (Cardiology)</option>
-                            <option value="floor3">Floor 3 (ICU)</option>
+                        <select id="bed-location-filter">
+                            <option value="all">All Wards & Rooms</option>
                         </select>
                         <select id="bed-status-filter">
                             <option value="all">All Statuses</option>
@@ -250,68 +245,14 @@ require_once 'doctor.php';
                         <div class="legend-item"><span class="legend-color reserved"></span> Reserved</div>
                     </div>
 
-                    <div class="bed-grid-container">
-                        <div class="bed-card status-occupied" data-status="occupied" data-floor="floor2">
-                            <div class="bed-id">Room 201-A</div>
-                            <div class="bed-details">Cardiology Wing</div>
-                            <div class="patient-info">
-                                <i class="fas fa-user-circle"></i>
-                                <span>Michael Brown (P001)</span>
-                            </div>
-                        </div>
-                         <div class="bed-card status-cleaning" data-status="cleaning" data-floor="floor2">
-                            <div class="bed-id">Room 202-A</div>
-                            <div class="bed-details">Cardiology Wing</div>
-                             <div class="patient-info">
-                                <i class="fas fa-pump-soap"></i>
-                                <span>Pending Sanitization</span>
-                            </div>
-                        </div>
-                        <div class="bed-card status-available" data-status="available" data-floor="floor2">
-                            <div class="bed-id">Room 202-B</div>
-                            <div class="bed-details">Cardiology Wing</div>
-                        </div>
-
-                        <div class="bed-card status-occupied" data-status="occupied" data-floor="floor3">
-                            <div class="bed-id">Room 305-B</div>
-                            <div class="bed-details">ICU</div>
-                             <div class="patient-info">
-                                <i class="fas fa-user-circle"></i>
-                                <span>David Wilson (P005)</span>
-                            </div>
-                        </div>
-                        <div class="bed-card status-reserved" data-status="reserved" data-floor="floor3">
-                            <div class="bed-id">Room 306-A</div>
-                            <div class="bed-details">ICU</div>
-                             <div class="patient-info">
-                                <i class="fas fa-user-clock"></i>
-                                <span>Reserved for E.R.</span>
-                            </div>
-                        </div>
-
-                        <div class="bed-card status-occupied" data-status="occupied" data-floor="floor1">
-                            <div class="bed-id">Ward B-05</div>
-                            <div class="bed-details">General Ward</div>
-                            <div class="patient-info">
-                                <i class="fas fa-user-circle"></i>
-                                <span>Emily Davis (P003)</span>
-                            </div>
-                        </div>
-                        <div class="bed-card status-available" data-status="available" data-floor="floor1">
-                            <div class="bed-id">Ward B-06</div>
-                            <div class="bed-details">General Ward</div>
-                        </div>
-                        <div class="bed-card status-available" data-status="available" data-floor="floor1">
-                            <div class="bed-id">Ward B-07</div>
-                            <div class="bed-details">General Ward</div>
-                        </div>
-                         <div class="bed-card status-available" data-status="available" data-floor="floor1">
-                            <div class="bed-id">Ward B-08</div>
-                            <div class="bed-details">General Ward</div>
+                    <div class="bed-grid-container" id="bed-grid-container">
+                        <div class="loading-placeholder">
+                            <i class="fas fa-spinner fa-spin"></i> Loading bed data...
                         </div>
                     </div>
                 </div>
             </div>
+
 
             <div id="messenger-page" class="page">
                 <div class="page-header"><h3><i class="fas fa-paper-plane"></i> Messenger</h3></div>
@@ -536,7 +477,7 @@ require_once 'doctor.php';
                         <form id="personal-info-form" class="settings-form">
                             <h4>Edit Your Personal Details</h4>
                             <div class="profile-picture-editor">
-                                 <img src="images/doctor-avatar.jpg" alt="Doctor Avatar" class="editable-profile-picture">
+                                 <img src="../images/doctor-avatar.jpg" alt="Doctor Avatar" class="editable-profile-picture">
                                  <label for="profile-picture-upload" class="edit-picture-btn">
                                      <i class="fas fa-camera"></i>
                                      <input type="file" id="profile-picture-upload" accept="image/*">
@@ -709,7 +650,6 @@ require_once 'doctor.php';
             
         </main>
         
-        <!-- All Modals remain here -->
         <div class="modal-overlay" id="prescription-modal-overlay">
             <div class="modal-container">
                 <div class="modal-header"><h4>Create New Prescription</h4><button class="modal-close-btn" data-modal-id="prescription-modal-overlay">&times;</button></div>
@@ -853,7 +793,7 @@ require_once 'doctor.php';
                 <div class="modal-body">
                     <div class="rx-header">
                         <div class="rx-hospital-details">
-                            <img src="images/logo.png" alt="MedSync Logo" class="rx-logo">
+                            <img src="../images/logo.png" alt="MedSync Logo" class="rx-logo">
                             <div>
                                 <strong>MedSync Hospital</strong><br>
                                 123 Health St, Wellness City<br>
@@ -895,8 +835,37 @@ require_once 'doctor.php';
             </div>
         </div>
 
+        <div class="modal-overlay" id="edit-bed-modal-overlay">
+            <div class="modal-container">
+                <div class="modal-header">
+                    <h4 id="edit-bed-modal-title">Update Location Status</h4>
+                    <button class="modal-close-btn" data-modal-id="edit-bed-modal-overlay">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="edit-bed-form">
+                        <input type="hidden" id="edit-location-id" name="id">
+                        <input type="hidden" id="edit-location-type" name="type">
+                        <p>You are editing location: <strong id="edit-location-identifier-text"></strong></p>
+                        <div class="form-group full-width">
+                            <label for="edit-location-status-select">New Status</label>
+                            <select id="edit-location-status-select" name="status" required>
+                                <option value="available">Available</option>
+                                <option value="cleaning">Cleaning</option>
+                                <option value="reserved">Reserved</option>
+                                <option value="occupied" disabled>Occupied (Assign from Admissions)</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" data-modal-id="edit-bed-modal-overlay">Cancel</button>
+                    <button class="btn btn-primary" id="save-location-changes-btn">Save Changes</button>
+                </div>
+            </div>
+        </div>
+
+
     </div>
-    <!-- Path to script is relative to the root -->
     <script src="script.js"></script>
 </body>
 </html>

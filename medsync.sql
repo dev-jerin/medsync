@@ -1,9 +1,35 @@
 -- This is the complete and updated database schema for MedSync.
--- It includes all tables and columns required for the latest features,
--- including the 'is_read' column for notifications and doctor_id in beds/rooms.
+-- Version 2.0
+-- This version includes improvements for data integrity, performance, and clarity.
+-- Key changes include:
+-- 1. Merged 'beds' and 'rooms' into a single 'accommodations' table.
+-- 2. Replaced ENUM for user roles with a dedicated 'roles' table.
+-- 3. Enforced foreign key for 'staff.assigned_department'.
+-- 4. Added performance-enhancing indexes on frequently queried columns.
+-- 5. Improved naming conventions for clarity (e.g., 'is_active', 'is_available').
 
 CREATE DATABASE IF NOT EXISTS `medsync` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE `medsync`;
+
+--
+-- Table structure for table `roles`
+-- Description: Replaces the ENUM in the users table for better scalability.
+--
+CREATE TABLE `roles` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `role_name` varchar(50) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `role_name` (`role_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Initialize roles
+--
+INSERT INTO `roles` (`id`, `role_name`) VALUES
+(1, 'user'),
+(2, 'doctor'),
+(3, 'staff'),
+(4, 'admin');
 
 --
 -- Table structure for table `users`
@@ -14,19 +40,22 @@ CREATE TABLE `users` (
   `username` varchar(50) NOT NULL,
   `email` varchar(100) NOT NULL,
   `password` varchar(255) NOT NULL,
-  `role` enum('user','doctor','staff','admin') NOT NULL DEFAULT 'user',
+  `role_id` int(11) NOT NULL DEFAULT 1,
   `name` varchar(100) DEFAULT NULL,
   `gender` enum('Male','Female','Other') DEFAULT NULL,
   `profile_picture` VARCHAR(255) NULL DEFAULT 'default.png',
   `phone` varchar(25) NULL DEFAULT NULL,
   `date_of_birth` date DEFAULT NULL,
-  `active` tinyint(1) NOT NULL DEFAULT 1,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `session_token` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`),
   UNIQUE KEY `email` (`email`),
-  UNIQUE KEY `display_user_id` (`display_user_id`)
+  UNIQUE KEY `display_user_id` (`display_user_id`),
+  KEY `name` (`name`), -- Index for faster name searches
+  KEY `fk_users_role` (`role_id`),
+  CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`) ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -75,7 +104,7 @@ CREATE TABLE `doctors` (
   `specialty` varchar(100) DEFAULT NULL,
   `qualifications` varchar(255) DEFAULT NULL COMMENT 'e.g., MBBS, MD',
   `department_id` int(11) DEFAULT NULL,
-  `availability` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1 = Available, 0 = On Leave',
+  `is_available` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1 = Available, 0 = On Leave',
   `slots` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'JSON array of available time slots',
   PRIMARY KEY (`id`),
   UNIQUE KEY `user_id` (`user_id`),
@@ -91,10 +120,12 @@ CREATE TABLE `staff` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `user_id` int(11) NOT NULL,
   `shift` enum('day','night','off') NOT NULL DEFAULT 'day',
-  `assigned_department` varchar(100) DEFAULT NULL,
+  `assigned_department_id` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `user_id` (`user_id`),
-  CONSTRAINT `staff_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+  KEY `fk_staff_department` (`assigned_department_id`),
+  CONSTRAINT `staff_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_staff_department` FOREIGN KEY (`assigned_department_id`) REFERENCES `departments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -114,14 +145,15 @@ CREATE TABLE `callback_requests` (
 --
 CREATE TABLE `medicines` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
-  `name` VARCHAR(255) NOT NULL UNIQUE,
+  `name` VARCHAR(255) NOT NULL,
   `description` TEXT DEFAULT NULL,
   `quantity` INT(11) NOT NULL DEFAULT 0,
   `unit_price` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
   `low_stock_threshold` INT(11) NOT NULL DEFAULT 10,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -129,11 +161,12 @@ CREATE TABLE `medicines` (
 --
 CREATE TABLE `blood_inventory` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
-  `blood_group` ENUM('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-') NOT NULL UNIQUE,
+  `blood_group` ENUM('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-') NOT NULL,
   `quantity_ml` INT(11) NOT NULL DEFAULT 0 COMMENT 'Quantity in milliliters',
   `low_stock_threshold_ml` INT(11) NOT NULL DEFAULT 5000 COMMENT 'Threshold in milliliters',
   `last_updated` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `blood_group` (`blood_group`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -141,20 +174,23 @@ CREATE TABLE `blood_inventory` (
 --
 CREATE TABLE `wards` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
-  `name` VARCHAR(100) NOT NULL UNIQUE COMMENT 'e.g., General Ward, ICU, Pediatric Ward',
+  `name` VARCHAR(100) NOT NULL COMMENT 'e.g., General Ward, ICU, Pediatric Ward',
   `capacity` INT(11) NOT NULL DEFAULT 0,
   `description` TEXT DEFAULT NULL,
   `is_active` TINYINT(1) NOT NULL DEFAULT 1,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Table structure for table `beds`
+-- Table structure for table `accommodations`
+-- Description: Merged table for 'beds' and 'rooms' to reduce redundancy.
 --
-CREATE TABLE `beds` (
+CREATE TABLE `accommodations` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
-  `ward_id` INT(11) NOT NULL,
-  `bed_number` VARCHAR(50) NOT NULL,
+  `type` ENUM('bed', 'room') NOT NULL,
+  `number` VARCHAR(50) NOT NULL COMMENT 'Bed number or room number',
+  `ward_id` INT(11) DEFAULT NULL COMMENT 'Applicable only if type is bed',
   `status` ENUM('available', 'occupied', 'reserved', 'cleaning') NOT NULL DEFAULT 'available',
   `patient_id` INT(11) DEFAULT NULL,
   `doctor_id` INT(11) DEFAULT NULL,
@@ -163,30 +199,15 @@ CREATE TABLE `beds` (
   `price_per_day` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
   `last_updated` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `ward_bed_unique` (`ward_id`, `bed_number`),
-  CONSTRAINT `fk_beds_ward` FOREIGN KEY (`ward_id`) REFERENCES `wards` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `fk_beds_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `fk_beds_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  UNIQUE KEY `type_number_ward_unique` (`type`, `number`, `ward_id`),
+  KEY `fk_accommodations_ward` (`ward_id`),
+  KEY `fk_accommodations_patient` (`patient_id`),
+  KEY `fk_accommodations_doctor` (`doctor_id`),
+  CONSTRAINT `fk_accommodations_ward` FOREIGN KEY (`ward_id`) REFERENCES `wards` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_accommodations_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_accommodations_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
---
--- Table structure for table `rooms`
---
-CREATE TABLE `rooms` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `room_number` varchar(50) NOT NULL,
-  `status` enum('available','occupied','reserved','cleaning') NOT NULL DEFAULT 'available',
-  `patient_id` int(11) DEFAULT NULL,
-  `doctor_id` INT(11) DEFAULT NULL,
-  `occupied_since` datetime DEFAULT NULL,
-  `reserved_since` datetime DEFAULT NULL,
-  `price_per_day` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `last_updated` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `room_number` (`room_number`),
-  KEY `patient_id` (`patient_id`),
-  CONSTRAINT `fk_rooms_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `fk_rooms_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 --
 -- Table structure for table `appointments`
 --
@@ -200,11 +221,11 @@ CREATE TABLE `appointments` (
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
   KEY `doctor_id` (`doctor_id`),
+  KEY `appointment_date` (`appointment_date`), -- Index for faster date-based lookups
   CONSTRAINT `fk_appointments_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_appointments_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
 --
 -- Table structure for table `transactions`
 --
@@ -241,27 +262,34 @@ CREATE TABLE `notifications` (
   CONSTRAINT `fk_notifications_recipient` FOREIGN KEY (`recipient_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Table structure for table `admissions`
+--
 CREATE TABLE `admissions` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `patient_id` int(11) NOT NULL,
   `doctor_id` int(11) DEFAULT NULL,
-  `ward_id` int(11) DEFAULT NULL,
-  `bed_id` int(11) DEFAULT NULL,
-  `room_id` int(11) DEFAULT NULL,
+  `accommodation_id` int(11) DEFAULT NULL,
   `admission_date` datetime NOT NULL,
   `discharge_date` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `patient_id` (`patient_id`),
   KEY `doctor_id` (`doctor_id`),
+  KEY `fk_admissions_accommodation` (`accommodation_id`),
   CONSTRAINT `fk_admissions_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `fk_admissions_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `fk_admissions_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_admissions_accommodation` FOREIGN KEY (`accommodation_id`) REFERENCES `accommodations` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Table structure for table `system_settings`
+--
 CREATE TABLE `system_settings` (
   `setting_key` VARCHAR(255) NOT NULL,
   `setting_value` TEXT NOT NULL,
   PRIMARY KEY (`setting_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 INSERT INTO `system_settings` (`setting_key`, `setting_value`) VALUES ('gmail_app_password', 'sswyqzegdpyixbyw');
 
 --
@@ -336,6 +364,7 @@ CREATE TABLE `prescriptions` (
   PRIMARY KEY (`id`),
   KEY `patient_id` (`patient_id`),
   KEY `doctor_id` (`doctor_id`),
+  KEY `prescription_date` (`prescription_date`), -- Index for faster date-based searches
   CONSTRAINT `fk_prescriptions_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_prescriptions_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -357,3 +386,22 @@ CREATE TABLE `prescription_items` (
   CONSTRAINT `fk_items_prescription` FOREIGN KEY (`prescription_id`) REFERENCES `prescriptions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_items_medicine` FOREIGN KEY (`medicine_id`) REFERENCES `medicines` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+---
+---Table for automated discharge process
+---
+CREATE TABLE `discharge_clearance` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `admission_id` INT(11) NOT NULL,
+  `clearance_step` ENUM('nursing', 'pharmacy', 'billing') NOT NULL,
+  `is_cleared` TINYINT(1) NOT NULL DEFAULT 0,
+  `cleared_by_user_id` INT(11) DEFAULT NULL,
+  `cleared_at` TIMESTAMP NULL DEFAULT NULL,
+  `notes` TEXT DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_clearance_step` (`admission_id`, `clearance_step`),
+  CONSTRAINT `fk_clearance_admission` FOREIGN KEY (`admission_id`) REFERENCES `admissions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_clearance_user` FOREIGN KEY (`cleared_by_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+

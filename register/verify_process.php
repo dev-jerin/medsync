@@ -7,12 +7,21 @@
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-require '../vendor/PHPMailer/PHPMailer/src/PHPMailer.php';
-require '../vendor/PHPMailer/PHPMailer/src/SMTP.php';
+// Correctly include the Composer autoloader to load PHPMailer classes
+require '../vendor/autoload.php'; 
+
+// Include your existing configuration and email template files
 require_once '../config.php';
 require_once '../register/welcome_email_template.php';
 
-// ... (The generateDisplayId function remains the same) ...
+/**
+ * Generates a unique, sequential display ID for a new user.
+ *
+ * @param string $role The role of the user.
+ * @param mysqli $conn The database connection object.
+ * @return string The generated display ID.
+ * @throws Exception If an invalid role is provided or a database error occurs.
+ */
 function generateDisplayId($role, $conn) {
     $prefix_map = ['admin' => 'A', 'doctor' => 'D', 'staff' => 'S', 'user' => 'U'];
     if (!isset($prefix_map[$role])) {
@@ -22,21 +31,22 @@ function generateDisplayId($role, $conn) {
 
     $conn->begin_transaction();
     try {
+        // Ensure the counter exists before trying to lock it
+        $init_stmt = $conn->prepare("INSERT INTO role_counters (role_prefix, last_id) VALUES (?, 0) ON DUPLICATE KEY UPDATE role_prefix = role_prefix");
+        $init_stmt->bind_param("s", $prefix);
+        $init_stmt->execute();
+        $init_stmt->close();
+        
+        // Lock the row for the specific role to prevent race conditions
         $stmt = $conn->prepare("SELECT last_id FROM role_counters WHERE role_prefix = ? FOR UPDATE");
         $stmt->bind_param("s", $prefix);
         $stmt->execute();
         $result = $stmt->get_result();
-        if ($result->num_rows === 0) {
-            // If the prefix doesn't exist, create it.
-            $insert_stmt = $conn->prepare("INSERT INTO role_counters (role_prefix, last_id) VALUES (?, 0)");
-            $insert_stmt->bind_param("s", $prefix);
-            $insert_stmt->execute();
-            $new_id_num = 1; // Start from 1
-        } else {
-            $row = $result->fetch_assoc();
-            $new_id_num = $row['last_id'] + 1;
-        }
-
+        
+        $row = $result->fetch_assoc();
+        $new_id_num = $row['last_id'] + 1;
+        
+        // Update the counter
         $update_stmt = $conn->prepare("UPDATE role_counters SET last_id = ? WHERE role_prefix = ?");
         $update_stmt->bind_param("is", $new_id_num, $prefix);
         $update_stmt->execute();
@@ -45,99 +55,127 @@ function generateDisplayId($role, $conn) {
         return $prefix . str_pad($new_id_num, 4, '0', STR_PAD_LEFT);
     } catch (Exception $e) {
         $conn->rollback();
-        throw $e;
+        // Log the actual database error for debugging, but don't expose it to the user.
+        error_log("ID Generation Failed: " . $e->getMessage());
+        throw new Exception("Could not generate a new user ID. Please try again later.");
     }
 }
 
 
 // --- Security & Session Checks ---
-// ... (These checks remain the same) ...
-if ($_SERVER["REQUEST_METHOD"] !== "POST") { exit(); }
-if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) { exit(); }
-if (!isset($_SESSION['registration_data'])) { header("Location: ../register.php"); exit(); }
+if ($_SERVER["REQUEST_METHOD"] !== "POST") { 
+    // Silently exit if not a POST request
+    exit(); 
+}
+if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+    // Silently exit on CSRF failure
+    exit(); 
+}
+if (!isset($_SESSION['registration_data'])) {
+    // Redirect if the registration process hasn't been started
+    header("Location: ../register.php");
+    exit();
+}
 
 
 // --- OTP Validation ---
-// ... (This logic remains the same) ...
 $submitted_otp = trim($_POST['otp']);
 $session_data = $_SESSION['registration_data'];
+
+// Check for OTP expiry (10 minutes)
+if (time() - $session_data['timestamp'] > 600) {
+    $_SESSION['verify_error'] = "Your OTP has expired. Please register again.";
+    // Clear expired data
+    unset($_SESSION['registration_data']);
+    header("Location: ../register.php");
+    exit();
+}
+
 if ($submitted_otp != $session_data['otp']) {
     $_SESSION['verify_error'] = "Invalid OTP. Please try again.";
     header("Location: ../register/verify_otp.php");
     exit();
 }
-// ... (OTP expiry check remains the same) ...
-
 
 // --- Database Insertion ---
 $conn = getDbConnection();
 
 try {
-    $display_user_id = generateDisplayId($session_data['role'], $conn);
+    $role_name = $session_data['role'] ?? 'user';
+    // Since the registration form is only for 'user', we can assume the role_id is 1
+    // A more robust solution for other roles would be to query the `roles` table
+    $role_id = 1; 
 
-    // UPDATED SQL QUERY to include profile_picture
-    $sql_insert = "INSERT INTO users (display_user_id, username, name, email, phone, password, role, date_of_birth, gender, profile_picture) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    $display_user_id = generateDisplayId($role_name, $conn);
+
+    // UPDATED SQL QUERY to use `role_id` instead of `role`
+    $sql_insert = "INSERT INTO users (display_user_id, username, name, email, phone, password, role_id, date_of_birth, gender, profile_picture) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     $stmt_insert = $conn->prepare($sql_insert);
-
-    // UPDATED bind_param to include profile_picture (10 params, "ssssssssss")
+    
+    // UPDATED bind_param to use an integer `i` for role_id
     $stmt_insert->bind_param(
-        "ssssssssss",
+        "ssssssisss", // Changed the 7th parameter from 's' to 'i'
         $display_user_id,
         $session_data['username'],
         $session_data['name'],
         $session_data['email'],
         $session_data['phone'],
         $session_data['password'],
-        $session_data['role'],
+        $role_id, // Pass the integer role_id
         $session_data['date_of_birth'],
         $session_data['gender'],
-        $session_data['profile_picture'] // Add the profile picture filename
+        $session_data['profile_picture']
     );
 
     if ($stmt_insert->execute()) {
-     // --- Send Welcome Email ---
+        // --- Send Welcome Email ---
         $mail = new PHPMailer(true);
         try {
-            // ... (Email sending logic remains the same, but calls the updated template) ...
              $system_email = get_system_setting($conn, 'system_email');
              $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
  
              if (empty($system_email) || empty($gmail_app_password)) {
-                 throw new Exception("Email settings not configured, skipping welcome email.");
+                 // Don't block registration if email fails, just log it.
+                 error_log("Welcome email not sent: Mail service is not configured.");
+             } else {
+                 $mail->isSMTP();
+                 $mail->Host = 'smtp.gmail.com';
+                 $mail->SMTPAuth = true;
+                 $mail->Username = $system_email;
+                 $mail->Password = $gmail_app_password;
+                 $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+                 $mail->Port = 587;
+     
+                 $mail->setFrom($system_email, 'MedSync Welcome Team');
+                 $mail->addAddress($session_data['email'], $session_data['name']);
+     
+                 $mail->isHTML(true);
+                 $mail->Subject = 'Welcome to MedSync, ' . $session_data['name'] . '!';
+                 $mail->Body = getWelcomeEmailTemplate(
+                     $session_data['name'],
+                     $session_data['username'],
+                     $display_user_id
+                 );
+                 $mail->send();
              }
- 
-             $mail->isSMTP();
-             $mail->Host = 'smtp.gmail.com';
-             $mail->SMTPAuth = true;
-             $mail->Username = $system_email;
-             $mail->Password = $gmail_app_password;
-             $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-             $mail->Port = 587;
- 
-             $mail->setFrom($system_email, 'MedSync');
-             $mail->addAddress($session_data['email'], $session_data['name']);
- 
-             $mail->isHTML(true);
-             $mail->Subject = 'Welcome to MedSync, ' . $session_data['name'] . '!';
-             // Use the updated welcome email template
-             $mail->Body = getWelcomeEmailTemplate(
-                 $session_data['name'],
-                 $session_data['username'],
-                 $display_user_id
-             );
-             $mail->send();
 
         } catch (Exception $e) {
-            error_log("Welcome email could not be sent. Mailer Error: {$mail->ErrorInfo}");
+            // Log the email error but don't interrupt the user's successful registration
+            error_log("Welcome email could not be sent to {$session_data['email']}. Mailer Error: {$mail->ErrorInfo}");
         }
 
+        // Clean up session and redirect to login with a success message
         unset($_SESSION['registration_data']);
         $_SESSION['register_success'] = "Registration successful! Your User ID is " . $display_user_id . ". You can now log in.";
         header("Location: ../login.php");
         exit();
 
     } else {
-        throw new Exception("Database error: Could not create account.");
+        // Handle specific database errors, like duplicate entry
+        if ($conn->errno == 1062) { // Duplicate entry error code
+             throw new Exception("An account with this username or email already exists.");
+        }
+        throw new Exception("Database error: Could not create your account at this time.");
     }
 } catch (Exception $e) {
     // If user creation fails, delete the uploaded profile picture to clean up
@@ -147,7 +185,8 @@ try {
             unlink($file_to_delete);
         }
     }
-    $_SESSION['verify_error'] = $e->getMessage();
+    // Set a user-friendly error message and redirect
+    $_SESSION['verify_error'] = "An error occurred during registration: " . $e->getMessage();
     header("Location: ../register/verify_otp.php");
     exit();
 } finally {

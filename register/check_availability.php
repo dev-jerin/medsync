@@ -1,7 +1,8 @@
 <?php
 // Handles real-time checking for username and email availability.
 
-require_once 'config.php';
+// CORRECTED: The path now correctly points to the parent directory
+require_once '../config.php';
 
 // Set the content type to JSON for the response
 header('Content-Type: application/json');
