@@ -1,5 +1,4 @@
 <?php
-// Include the backend logic for session management and data retrieval.
 require_once 'user.php';
 ?>
 <!DOCTYPE html>
@@ -40,6 +39,9 @@ require_once 'user.php';
             </nav>
             <div class="sidebar-footer">
                 </div>
+                            <div class="sidebar-footer">
+                <a href="../logout.php" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
+            </div>
         </aside>
 
         <main class="main-content">

@@ -1073,7 +1073,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     async function initializeBedManagement() {
         if (bedManagementInitialized) {
-            await fetchAndRenderBedData();
+            await fetchAndRenderBedData(); // Always refresh data on tab click
             return;
         }
 
@@ -1133,11 +1133,14 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function renderBedManagementPage(data) {
         const locationFilter = document.getElementById('bed-location-filter');
+        const currentVal = locationFilter.value;
         locationFilter.innerHTML = '<option value="all">All Wards & Rooms</option>';
         data.wards.forEach(ward => {
             locationFilter.innerHTML += `<option value="ward-${ward.id}">${ward.name}</option>`;
         });
         locationFilter.innerHTML += `<option value="rooms">Private Rooms</option>`;
+        locationFilter.value = currentVal;
+
 
         const gridContainer = document.getElementById('bed-grid-container');
         gridContainer.innerHTML = '';
@@ -1145,22 +1148,29 @@ document.addEventListener("DOMContentLoaded", function() {
             gridContainer.innerHTML = '<p class="no-items-message">No beds or rooms found. Add one to get started.</p>';
             return;
         }
-
-        data.beds.forEach(bed => gridContainer.innerHTML += renderBedCard(bed));
-        data.rooms.forEach(room => gridContainer.innerHTML += renderBedCard(room, 'room'));
+        
+        const allAccommodations = [...data.beds, ...data.rooms].map(entity => {
+            return renderBedCard(entity);
+        }).join('');
+        
+        gridContainer.innerHTML = allAccommodations;
 
         filterBedGrid();
     }
 
-    function renderBedCard(entity, type = 'bed') {
-        const isBed = type === 'bed';
-        const number = isBed ? entity.bed_number : entity.room_number;
+    function renderBedCard(entity) {
+        const isBed = entity.type === 'bed';
+        const number = entity.number; // **FIXED**: Using the correct 'number' key
         const locationName = isBed ? entity.ward_name : 'Private Room';
         const locationFilterValue = isBed ? `ward-${entity.ward_id}` : 'rooms';
 
         let patientInfo = '';
         if (entity.status === 'occupied' && entity.patient_name) {
-            patientInfo = `<div class="patient-info" title="Patient: ${entity.patient_name} (${entity.patient_display_id})\nDoctor: ${entity.doctor_name || 'N/A'}">
+            let tooltip = `Patient: ${entity.patient_name} (${entity.patient_display_id})`;
+            if(entity.doctor_name) {
+                tooltip += `\nDoctor: ${entity.doctor_name}`;
+            }
+            patientInfo = `<div class="patient-info" title="${tooltip}">
                 <i class="fas fa-user-circle"></i> ${entity.patient_name}
             </div>`;
         }
@@ -1170,7 +1180,7 @@ document.addEventListener("DOMContentLoaded", function() {
                  data-status="${entity.status}" 
                  data-location="${locationFilterValue}"
                  data-entity='${JSON.stringify(entity)}'
-                 data-type="${type}">
+                 data-type="${entity.type}">
                 
                 <div class="bed-card-header">
                     <div class="bed-id">${number}</div>
@@ -1201,7 +1211,13 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
         if (visibleCount === 0) {
-            // Optionally show a message if no cards match the filter
+            const gridContainer = document.getElementById('bed-grid-container');
+            if(!gridContainer.querySelector('.no-items-message')) {
+                 gridContainer.insertAdjacentHTML('beforeend', '<p class="no-items-message">No beds match the current filters.</p>');
+            }
+        } else {
+            const noItemsMsg = document.querySelector('#bed-grid-container .no-items-message');
+            if(noItemsMsg) noItemsMsg.remove();
         }
     }
 
@@ -1224,17 +1240,19 @@ document.addEventListener("DOMContentLoaded", function() {
         if (mode === 'add') {
             title.textContent = 'Add New Bed / Room';
             form.querySelector('#bed-form-action').value = 'addBedOrRoom';
+            form.querySelector('#bed-form-id').value = '';
             typeSelect.disabled = false;
         } else { // 'edit' mode
-            const type = entity.ward_id ? 'bed' : 'room';
-            title.textContent = `Edit ${type === 'bed' ? 'Bed' : 'Room'} ${type === 'bed' ? entity.bed_number : entity.room_number}`;
+            const type = entity.type;
+            const number = entity.number; // **FIXED**: Using the correct 'number' key
+            title.textContent = `Edit ${type.charAt(0).toUpperCase() + type.slice(1)} ${number}`;
             form.querySelector('#bed-form-action').value = 'updateBedOrRoom';
             form.querySelector('#bed-form-id').value = entity.id;
             
             typeSelect.value = type;
             typeSelect.disabled = true;
 
-            document.getElementById('bed-form-number').value = type === 'bed' ? entity.bed_number : entity.room_number;
+            document.getElementById('bed-form-number').value = number;
             document.getElementById('bed-form-price').value = parseFloat(entity.price_per_day).toFixed(2);
             if (type === 'bed') {
                 wardSelect.value = entity.ward_id;
@@ -1251,12 +1269,13 @@ document.addEventListener("DOMContentLoaded", function() {
         const modal = form.closest('.modal-overlay');
         const formData = new FormData(form);
         formData.append('csrf_token', csrfToken);
-
+        
+        // When updating, we need to explicitly send the type, as the field is disabled.
         if (form.querySelector('#bed-form-id').value) {
-            formData.set('action', 'updateBedOrRoom');
             const type = document.getElementById('bed-form-type').value;
             formData.append('type', type);
         }
+
 
         try {
             const response = await fetch('staff.php', { method: 'POST', body: formData });
@@ -1276,10 +1295,10 @@ document.addEventListener("DOMContentLoaded", function() {
         const form = document.getElementById('bed-assign-form');
         form.reset();
 
-        const type = entity.ward_id ? 'bed' : 'room';
-        const number = type === 'bed' ? entity.bed_number : entity.room_number;
+        const type = entity.type;
+        const number = entity.number;
         
-        document.getElementById('bed-assign-modal-title').textContent = `Manage Occupancy for ${number}`;
+        document.getElementById('bed-assign-modal-title').textContent = `Manage Occupancy for ${type.charAt(0).toUpperCase() + type.slice(1)} ${number}`;
         document.getElementById('bed-assign-id').value = entity.id;
         document.getElementById('bed-assign-type').value = type;
         document.getElementById('bed-assign-current-status').textContent = entity.status.charAt(0).toUpperCase() + entity.status.slice(1);
@@ -1298,19 +1317,16 @@ document.addEventListener("DOMContentLoaded", function() {
 
             const patientSelect = document.getElementById('bed-assign-patient-id');
             patientSelect.innerHTML = '<option value="">-- Select Patient --</option>';
+            // Add currently available patients
             bedManagementData.available_patients.forEach(p => {
                 patientSelect.innerHTML += `<option value="${p.id}">${p.name} (${p.display_user_id})</option>`;
             });
-            if (entity.patient_id) {
-                patientSelect.innerHTML += `<option value="${entity.patient_id}" selected>${entity.patient_name} (${entity.patient_display_id})</option>`;
-            }
 
             const doctorSelect = document.getElementById('bed-assign-doctor-id');
             doctorSelect.innerHTML = '<option value="">-- Select Doctor --</option>';
             bedManagementData.available_doctors.forEach(d => {
                 doctorSelect.innerHTML += `<option value="${d.id}">${d.name}</option>`;
             });
-            if(entity.doctor_id) doctorSelect.value = entity.doctor_id;
 
         } else if (entity.status === 'occupied') {
             assignSection.style.display = 'none';
@@ -1320,7 +1336,7 @@ document.addEventListener("DOMContentLoaded", function() {
             
             document.getElementById('bed-assign-patient-name').textContent = `${entity.patient_name} (${entity.patient_display_id})`;
             document.getElementById('bed-assign-doctor-name').textContent = entity.doctor_name || 'N/A';
-        } else {
+        } else { // Reserved, etc.
             assignSection.style.display = 'none';
             dischargeSection.style.display = 'none';
             submitBtn.style.display = 'none';
@@ -1367,7 +1383,8 @@ document.addEventListener("DOMContentLoaded", function() {
         formData.append('action', 'updateBedOrRoom');
         formData.append('id', id);
         formData.append('type', type);
-        formData.append('patient_id', '');
+        formData.append('patient_id', ''); // Empty patient ID signifies discharge
+        formData.append('doctor_id', ''); // Clear doctor as well
         formData.append('status', 'cleaning');
 
         try {
@@ -1439,12 +1456,13 @@ document.addEventListener("DOMContentLoaded", function() {
                 : '<span class="status admitted">Admitted</span>';
             
             const admissionDate = new Date(adm.admission_date).toLocaleDateString('en-CA');
+            const location = adm.location ? `${adm.location_type} ${adm.location}` : 'N/A';
 
             return `
                 <tr>
                     <td data-label="Adm. ID">ADM-${String(adm.id).padStart(4, '0')}</td>
                     <td data-label="Patient Name">${adm.patient_name} (${adm.patient_display_id})</td>
-                    <td data-label="Location">${adm.location || 'N/A'} (${adm.location_type})</td>
+                    <td data-label="Location">${location}</td>
                     <td data-label="Admitted On">${admissionDate}</td>
                     <td data-label="Status">${status}</td>
                 </tr>

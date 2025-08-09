@@ -288,12 +288,12 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         SELECT 
                             a.id, a.type, a.ward_id, w.name AS ward_name, a.number, a.status, a.price_per_day,
                             p.id as patient_id, p.display_user_id as patient_display_id, p.name as patient_name,
-                            d.id as doctor_id, doc_user.name as doctor_name
+                            d.user_id as doctor_id, doc_user.name as doctor_name
                         FROM accommodations a
                         LEFT JOIN wards w ON a.ward_id = w.id
                         LEFT JOIN users p ON a.patient_id = p.id
-                        LEFT JOIN doctors d ON a.doctor_id = d.user_id
-                        LEFT JOIN users doc_user ON d.user_id = doc_user.id
+                        LEFT JOIN users doc_user ON a.doctor_id = doc_user.id
+                        LEFT JOIN doctors d ON doc_user.id = d.user_id
                         ORDER BY a.type, w.name, a.number
                     ");
                     $accommodations_stmt->execute();
@@ -301,8 +301,14 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $accommodations_stmt->close();
                 
                     // Separate beds and rooms for frontend logic if needed
-                    $beds = array_filter($accommodations_data, function($item) { return $item['type'] === 'bed'; });
-                    $rooms = array_filter($accommodations_data, function($item) { return $item['type'] === 'room'; });
+                    $beds = array_filter($accommodations_data, function($item) { 
+                        $item['bed_number'] = $item['number'];
+                        return $item['type'] === 'bed'; 
+                    });
+                    $rooms = array_filter($accommodations_data, function($item) { 
+                        $item['room_number'] = $item['number'];
+                        return $item['type'] === 'room'; 
+                    });
 
                     // Fetch available patients (users with role 'user' not currently admitted)
                     $patients_stmt = $conn->prepare("
@@ -356,7 +362,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             a.discharge_date,
                             acc.number AS location,
                             CASE 
-                                WHEN acc.type = 'bed' THEN w.name 
+                                WHEN acc.type = 'bed' THEN 'Bed' 
                                 WHEN acc.type = 'room' THEN 'Private Room' 
                                 ELSE 'N/A' 
                             END AS location_type
@@ -959,7 +965,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $type = $current_accommodation['type'];
                         $old_patient_id = $current_accommodation['patient_id'];
 
-                        // Handle simple updates
+                        // Handle simple updates like price or bed number
                         if (isset($_POST['price'])) {
                             $price = filter_var($_POST['price'], FILTER_VALIDATE_FLOAT);
                             if ($price === false || $price < 0) throw new Exception("Invalid price format.");
@@ -967,19 +973,25 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $params[] = $price;
                             $types .= "d";
                         }
+                         if (isset($_POST['number'])) {
+                            $updates[] = "number = ?";
+                            $params[] = trim($_POST['number']);
+                            $types .= "s";
+                        }
                         
                         // Handle complex patient assignment/discharge
                         if (isset($_POST['patient_id'])) {
                             $new_patient_id = empty($_POST['patient_id']) ? null : (int)$_POST['patient_id'];
                             $new_doctor_id = empty($_POST['doctor_id']) ? null : (int)$_POST['doctor_id'];
 
-                            if ($new_patient_id !== $old_patient_id) {
+                            if ($new_patient_id != $old_patient_id) {
                                 // Discharging old patient if there was one
                                 if ($old_patient_id) {
                                     $dis_stmt = $conn->prepare("UPDATE admissions SET discharge_date = NOW() WHERE accommodation_id = ? AND patient_id = ? AND discharge_date IS NULL");
                                     $dis_stmt->bind_param("ii", $id, $old_patient_id);
                                     $dis_stmt->execute();
                                     $dis_stmt->close();
+                                    log_activity($conn, $user_id, "discharge_patient", $old_patient_id, "Discharged patient from {$type} ID {$id}.");
                                 }
                                 
                                 // Admitting new patient
@@ -992,9 +1004,15 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                                     $updates[] = "status = 'occupied'";
                                     $updates[] = "occupied_since = NOW()";
                                     $updates[] = "reserved_since = NULL";
+                                    log_activity($conn, $user_id, "admit_patient", $new_patient_id, "Admitted patient to {$type} ID {$id}.");
                                 } else {
-                                    // No new patient, so it's a discharge or status change
-                                    $updates[] = "status = 'cleaning'"; // Default status after discharge
+                                    // No new patient, so it's a discharge
+                                    // Status is set via POST data (e.g., 'cleaning')
+                                     if(isset($_POST['status'])) {
+                                        $updates[] = "status = ?";
+                                        $params[] = $_POST['status'];
+                                        $types .= "s";
+                                     }
                                     $updates[] = "occupied_since = NULL";
                                 }
                                 $updates[] = "patient_id = ?";
@@ -1008,7 +1026,14 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         }
 
                         if (empty($updates)) {
-                            throw new Exception("No data provided to update.");
+                            // If only the status is being changed (e.g. from discharge to available)
+                            if(isset($_POST['status'])) {
+                                $updates[] = "status = ?";
+                                $params[] = $_POST['status'];
+                                $types .= "s";
+                            } else {
+                                throw new Exception("No data provided to update.");
+                            }
                         }
 
                         $sql = "UPDATE accommodations SET " . implode(", ", $updates) . " WHERE id = ?";
@@ -1193,6 +1218,7 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
+$conn = getDbConnection();
 $role_check_stmt = $conn->prepare("SELECT r.role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?");
 $role_check_stmt->bind_param("i", $_SESSION['user_id']);
 $role_check_stmt->execute();
@@ -1218,7 +1244,6 @@ if (isset($_SESSION['loggedin_time']) && (time() - $_SESSION['loggedin_time'] > 
 $_SESSION['loggedin_time'] = time();
 
 // --- Prepare Variables for Frontend ---
-$conn = getDbConnection();
 
 $stmt = $conn->prepare("
     SELECT 
@@ -1261,7 +1286,7 @@ $profile_picture_filename = htmlspecialchars($user['profile_picture'] ?? 'defaul
 
 $profile_picture_path = '../uploads/profile_pictures/' . $profile_picture_filename;
 if (!file_exists(dirname(__DIR__) . '/uploads/profile_pictures/' . $profile_picture_filename) || empty($user['profile_picture'])) {
-    $profile_picture_path = '../uploads/default.png'; // A default placeholder
+    $profile_picture_path = '../uploads/profile_pictures/default.png'; // A default placeholder
 }
 
 // Generate a CSRF token if one doesn't exist

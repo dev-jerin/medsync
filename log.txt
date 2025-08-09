@@ -1,1 +1,0 @@
-[2025-07-30 15:04:22] Severity: 2 | Message: Undefined array key "role" | File: C:\xampp\htdocs\medsync\register\verify_process.php | Line: 76
