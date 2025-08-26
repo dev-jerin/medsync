@@ -484,10 +484,18 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $unit_price = (float) $_POST['unit_price'];
                     $low_stock_threshold = (int) ($_POST['low_stock_threshold'] ?? 10);
 
+                    // --- Audit Log: Fetch medicine name before update ---
+                    $stmt_med = $conn->prepare("SELECT name FROM medicines WHERE id = ?");
+                    $stmt_med->bind_param("i", $id);
+                    $stmt_med->execute();
+                    $med_data = $stmt_med->get_result()->fetch_assoc();
+                    $old_med_name = $med_data ? $med_data['name'] : 'Unknown';
+                    // --- End Fetch ---
+
                     $stmt = $conn->prepare("UPDATE medicines SET name = ?, description = ?, quantity = ?, unit_price = ?, low_stock_threshold = ? WHERE id = ?");
                     $stmt->bind_param("ssidii", $name, $description, $quantity, $unit_price, $low_stock_threshold, $id);
                     if ($stmt->execute()) {
-                        $log_details = "Updated medicine '{$name}' (ID: {$id}). New quantity: {$quantity}.";
+                        $log_details = "Updated medicine '{$old_med_name}' (ID: {$id}). New name: '{$name}', New quantity: {$quantity}.";
                         log_activity($conn, $admin_user_id_for_log, 'update_medicine', null, $log_details);
                         $response = ['success' => true, 'message' => 'Medicine updated successfully.'];
                     } else {
@@ -543,10 +551,19 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $name = $_POST['name'];
                     $is_active = isset($_POST['is_active']) ? (int) $_POST['is_active'] : 1;
 
+                    // --- Audit Log: Fetch department name before update ---
+                    $stmt_dept = $conn->prepare("SELECT name FROM departments WHERE id = ?");
+                    $stmt_dept->bind_param("i", $id);
+                    $stmt_dept->execute();
+                    $dept_data = $stmt_dept->get_result()->fetch_assoc();
+                    $old_dept_name = $dept_data ? $dept_data['name'] : 'Unknown';
+                    // --- End Fetch ---
+
                     $stmt = $conn->prepare("UPDATE departments SET name = ?, is_active = ? WHERE id = ?");
                     $stmt->bind_param("sii", $name, $is_active, $id);
                     if ($stmt->execute()) {
-                        log_activity($conn, $admin_user_id_for_log, 'update_department', null, "Updated department ID {$id} to name '{$name}' and status " . ($is_active ? 'Active' : 'Inactive'));
+                        $log_details = "Updated department '{$old_dept_name}' (ID: {$id}) to name '{$name}' and status " . ($is_active ? 'Active' : 'Inactive') . ".";
+                        log_activity($conn, $admin_user_id_for_log, 'update_department', null, $log_details);
                         $response = ['success' => true, 'message' => 'Department updated successfully.'];
                     } else {
                         throw new Exception('Failed to update department.');
@@ -558,10 +575,19 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         throw new Exception('Department ID is required.');
                     }
                     $id = (int) $_POST['id'];
+
+                    // --- Audit Log: Fetch department name before deactivating ---
+                    $stmt_dept = $conn->prepare("SELECT name FROM departments WHERE id = ?");
+                    $stmt_dept->bind_param("i", $id);
+                    $stmt_dept->execute();
+                    $dept_data = $stmt_dept->get_result()->fetch_assoc();
+                    $dept_name_for_log = $dept_data ? $dept_data['name'] : "ID {$id}";
+                    // --- End Fetch ---
+
                     $stmt = $conn->prepare("UPDATE departments SET is_active = 0 WHERE id = ?");
                     $stmt->bind_param("i", $id);
                     if ($stmt->execute()) {
-                        log_activity($conn, $admin_user_id_for_log, 'deactivate_department', null, "Deactivated department ID {$id}.");
+                        log_activity($conn, $admin_user_id_for_log, 'deactivate_department', null, "Deactivated department '{$dept_name_for_log}'.");
                         $response = ['success' => true, 'message' => 'Department disabled successfully.'];
                     } else {
                         throw new Exception('Failed to disable department.');
@@ -734,11 +760,19 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $doctor_id = (int) $_POST['doctor_id'];
                     $slots_json = $_POST['slots']; // This will be a JSON string from the frontend
 
+                    // --- Audit Log: Fetch doctor details ---
+                    $stmt_doc_info = $conn->prepare("SELECT name, display_user_id FROM users WHERE id = ?");
+                    $stmt_doc_info->bind_param("i", $doctor_id);
+                    $stmt_doc_info->execute();
+                    $doc_info = $stmt_doc_info->get_result()->fetch_assoc();
+                    $doc_name_for_log = $doc_info ? "{$doc_info['name']} ({$doc_info['display_user_id']})" : "ID {$doctor_id}";
+                    // --- End Fetch ---
+
                     $stmt = $conn->prepare("UPDATE doctors SET slots = ? WHERE user_id = ?");
                     $stmt->bind_param("si", $slots_json, $doctor_id);
 
                     if ($stmt->execute()) {
-                        log_activity($conn, $admin_user_id_for_log, 'update_doctor_schedule', $doctor_id, "Updated schedule for doctor ID {$doctor_id}.");
+                        log_activity($conn, $admin_user_id_for_log, 'update_doctor_schedule', $doctor_id, "Updated schedule for doctor {$doc_name_for_log}.");
                         $response = ['success' => true, 'message' => 'Doctor schedule updated successfully.'];
                     } else {
                         throw new Exception('Failed to update doctor schedule.');
@@ -752,16 +786,72 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $message = $_POST['message'];
                     $admin_user_id = $_SESSION['user_id'];
 
+                    // --- Audit Log: Fetch recipient details ---
+                    $stmt_recipient_info = $conn->prepare("SELECT name, display_user_id FROM users WHERE id = ?");
+                    $stmt_recipient_info->bind_param("i", $recipient_user_id);
+                    $stmt_recipient_info->execute();
+                    $recipient_info = $stmt_recipient_info->get_result()->fetch_assoc();
+                    $recipient_name_for_log = $recipient_info ? "{$recipient_info['name']} ({$recipient_info['display_user_id']})" : "ID {$recipient_user_id}";
+                    // --- End Fetch ---
+
                     $sql = "INSERT INTO notifications (sender_id, message, recipient_user_id) VALUES (?, ?, ?)";
                     $stmt = $conn->prepare($sql);
                     $stmt->bind_param("isi", $admin_user_id, $message, $recipient_user_id);
 
                     if ($stmt->execute()) {
-                        log_activity($conn, $admin_user_id_for_log, 'send_notification', $recipient_user_id, "Sent an individual message.");
+                        log_activity($conn, $admin_user_id_for_log, 'send_notification', $recipient_user_id, "Sent an individual message to {$recipient_name_for_log}.");
                         $response = ['success' => true, 'message' => 'Message sent successfully.'];
                     } else {
                         throw new Exception('Failed to send message.');
                     }
+                    break;
+                
+                case 'sendMessage':
+                    $conn->begin_transaction();
+                    $transaction_active = true;
+
+                    if (empty($_POST['receiver_id']) || empty(trim($_POST['message_text']))) {
+                        throw new Exception("Receiver and message text cannot be empty.");
+                    }
+                    $receiver_id = (int) $_POST['receiver_id'];
+                    $message_text = trim($_POST['message_text']);
+                    $sender_id = $admin_user_id_for_log;
+
+                    $user_one_id = min($sender_id, $receiver_id);
+                    $user_two_id = max($sender_id, $receiver_id);
+
+                    $stmt_conv = $conn->prepare("SELECT id FROM conversations WHERE user_one_id = ? AND user_two_id = ?");
+                    $stmt_conv->bind_param("ii", $user_one_id, $user_two_id);
+                    $stmt_conv->execute();
+                    $conv_result = $stmt_conv->get_result();
+
+                    if ($conv_result->num_rows > 0) {
+                        $conversation_id = $conv_result->fetch_assoc()['id'];
+                    } else {
+                        $stmt_insert_conv = $conn->prepare("INSERT INTO conversations (user_one_id, user_two_id) VALUES (?, ?)");
+                        $stmt_insert_conv->bind_param("ii", $user_one_id, $user_two_id);
+                        $stmt_insert_conv->execute();
+                        $conversation_id = $conn->insert_id;
+                        $stmt_insert_conv->close();
+                    }
+                    $stmt_conv->close();
+
+                    $stmt_msg = $conn->prepare("INSERT INTO messages (conversation_id, sender_id, receiver_id, message_text) VALUES (?, ?, ?, ?)");
+                    $stmt_msg->bind_param("iiis", $conversation_id, $sender_id, $receiver_id, $message_text);
+                    $stmt_msg->execute();
+                    $new_message_id = $conn->insert_id;
+                    $stmt_msg->close();
+
+                    $conn->commit();
+                    $transaction_active = false;
+
+                    $stmt_get_msg = $conn->prepare("SELECT id, conversation_id, sender_id, receiver_id, message_text, created_at FROM messages WHERE id = ?");
+                    $stmt_get_msg->bind_param("i", $new_message_id);
+                    $stmt_get_msg->execute();
+                    $sent_message = $stmt_get_msg->get_result()->fetch_assoc();
+                    $stmt_get_msg->close();
+
+                    $response = ['success' => true, 'message' => 'Message sent.', 'data' => $sent_message];
                     break;
 
                 case 'sendNotification':
@@ -794,10 +884,18 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         throw new Exception('Invalid shift value.');
                     }
 
+                    // --- Audit Log: Fetch staff details ---
+                    $stmt_staff_info = $conn->prepare("SELECT name, display_user_id FROM users WHERE id = ?");
+                    $stmt_staff_info->bind_param("i", $staff_id);
+                    $stmt_staff_info->execute();
+                    $staff_info = $stmt_staff_info->get_result()->fetch_assoc();
+                    $staff_name_for_log = $staff_info ? "{$staff_info['name']} ({$staff_info['display_user_id']})" : "ID {$staff_id}";
+                    // --- End Fetch ---
+
                     $stmt = $conn->prepare("UPDATE staff SET shift = ? WHERE user_id = ?");
                     $stmt->bind_param("si", $shift, $staff_id);
                     if ($stmt->execute()) {
-                        log_activity($conn, $admin_user_id_for_log, 'update_staff_shift', $staff_id, "Updated shift to '{$shift}' for staff ID {$staff_id}.");
+                        log_activity($conn, $admin_user_id_for_log, 'update_staff_shift', $staff_id, "Updated shift to '{$shift}' for staff member {$staff_name_for_log}.");
                         $response = ['success' => true, 'message' => 'Staff shift updated successfully.'];
                     } else {
                         throw new Exception('Failed to update staff shift.');
@@ -1044,6 +1142,63 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     ];
                     $response = ['success' => true, 'data' => $slots];
                     break;
+                
+                case 'conversations':
+                    $user_id = $admin_user_id_for_log;
+                    $stmt = $conn->prepare("
+                        SELECT
+                            c.id AS conversation_id,
+                            u.id AS other_user_id,
+                            u.display_user_id,
+                            u.name AS other_user_name,
+                            u.profile_picture AS other_user_profile_picture,
+                            r.role_name AS other_user_role,
+                            (SELECT message_text FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message,
+                            (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message_time,
+                            (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id AND receiver_id = ? AND is_read = 0) AS unread_count
+                        FROM conversations c
+                        JOIN users u ON u.id = IF(c.user_one_id = ?, c.user_two_id, c.user_one_id)
+                        JOIN roles r ON u.role_id = r.id
+                        WHERE c.user_one_id = ? OR c.user_two_id = ?
+                        ORDER BY last_message_time DESC
+                    ");
+                    $stmt->bind_param("iiii", $user_id, $user_id, $user_id, $user_id);
+                    $stmt->execute();
+                    $conversations = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+
+                    $response = ['success' => true, 'data' => $conversations];
+                    break;
+                
+                case 'messages':
+                    if (!isset($_GET['conversation_id'])) {
+                        throw new Exception('Conversation ID is required.');
+                    }
+                    $conversation_id = (int) $_GET['conversation_id'];
+                    $user_id = $admin_user_id_for_log;
+
+                    $auth_stmt = $conn->prepare("SELECT id FROM conversations WHERE id = ? AND (user_one_id = ? OR user_two_id = ?)");
+                    $auth_stmt->bind_param("iii", $conversation_id, $user_id, $user_id);
+                    $auth_stmt->execute();
+                    if ($auth_stmt->get_result()->num_rows === 0) {
+                        http_response_code(403);
+                        throw new Exception('You are not authorized to view this conversation.');
+                    }
+                    $auth_stmt->close();
+
+                    $update_stmt = $conn->prepare("UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND receiver_id = ?");
+                    $update_stmt->bind_param("ii", $conversation_id, $user_id);
+                    $update_stmt->execute();
+                    $update_stmt->close();
+
+                    $msg_stmt = $conn->prepare("SELECT id, sender_id, message_text, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC");
+                    $msg_stmt->bind_param("i", $conversation_id);
+                    $msg_stmt->execute();
+                    $messages = $msg_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $msg_stmt->close();
+
+                    $response = ['success' => true, 'data' => $messages];
+                    break;
 
                 case 'staff_for_shifting':
                     $result = $conn->query("SELECT u.id, u.name, u.display_user_id, s.shift FROM users u JOIN staff s ON u.id = s.user_id JOIN roles r ON u.role_id = r.id WHERE u.is_active = 1 AND r.role_name = 'staff' ORDER BY u.name ASC");
@@ -1142,43 +1297,37 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
 
                 case 'report':
-                    if (empty($_GET['type']) || empty($_GET['period'])) {
-                        throw new Exception('Report type and period are required.');
+                    if (empty($_GET['type']) || empty($_GET['start_date']) || empty($_GET['end_date'])) {
+                        throw new Exception('Report type, start date, and end date are required.');
                     }
                     $reportType = $_GET['type'];
-                    $period = $_GET['period'];
+                    $startDate = $_GET['start_date'];
+                    $endDate = $_GET['end_date'] . ' 23:59:59'; // Include the entire end day
 
-                    $data = ['summary' => [], 'chartData' => [], 'tableData' => []];
-                    $interval = '1 YEAR';
-                    $date_format_chart = '%Y-%m-%d';
-
-                    switch ($period) {
-                        case 'daily': $interval = '30 DAY'; $date_format_chart = '%Y-%m-%d'; break;
-                        case 'weekly': $interval = '3 MONTH'; $date_format_chart = '%Y-W%U'; break;
-                        case 'monthly': $interval = '1 YEAR'; $date_format_chart = '%Y-%m'; break;
-                        case 'yearly': $interval = '5 YEAR'; $date_format_chart = '%Y'; break;
-                    }
+                    // chartData is no longer needed
+                    $data = ['summary' => [], 'tableData' => []];
+                    $date_column = '';
+                    $summary_sql = '';
+                    $table_sql = '';
 
                     if ($reportType === 'financial') {
-                        $summary_sql = "SELECT SUM(IF(type='payment', amount, 0)) as total_revenue, SUM(IF(type='refund', amount, 0)) as total_refunds, COUNT(*) as total_transactions FROM transactions WHERE created_at >= DATE_SUB(NOW(), INTERVAL $interval)";
-                        $chart_sql = "SELECT DATE_FORMAT(created_at, '$date_format_chart') as label, SUM(IF(type='payment', amount, -amount)) as value FROM transactions WHERE created_at >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
-                        $table_sql = "SELECT t.id, u.name as user_name, t.description, t.amount, t.type, DATE_FORMAT(t.created_at, '%Y-%m-%d %H:%i') as date FROM transactions t JOIN users u ON t.user_id = u.id WHERE t.created_at >= DATE_SUB(NOW(), INTERVAL $interval) ORDER BY t.created_at DESC";
+                        $date_column = 'created_at';
+                        $summary_sql = "SELECT SUM(IF(type='payment', amount, 0)) as total_revenue, SUM(IF(type='refund', amount, 0)) as total_refunds, COUNT(*) as total_transactions FROM transactions WHERE $date_column BETWEEN ? AND ?";
+                        $table_sql = "SELECT t.id, u.name as user_name, t.description, t.amount, t.type, DATE_FORMAT(t.created_at, '%Y-%m-%d %H:%i') as date FROM transactions t JOIN users u ON t.user_id = u.id WHERE t.created_at BETWEEN ? AND ? ORDER BY t.created_at DESC";
                     } elseif ($reportType === 'patient') {
-                        $summary_sql = "SELECT COUNT(*) as total_appointments, SUM(IF(status='completed', 1, 0)) as completed, SUM(IF(status='cancelled', 1, 0)) as cancelled FROM appointments WHERE appointment_date >= DATE_SUB(NOW(), INTERVAL $interval)";
-                        $chart_sql = "SELECT DATE_FORMAT(appointment_date, '$date_format_chart') as label, COUNT(*) as value FROM appointments WHERE appointment_date >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
-                        $table_sql = "SELECT a.id, p.name as patient_name, d.name as doctor_name, a.status, DATE_FORMAT(a.appointment_date, '%Y-%m-%d %H:%i') as date FROM appointments a JOIN users p ON a.user_id = p.id JOIN users d ON a.doctor_id = d.id WHERE a.appointment_date >= DATE_SUB(NOW(), INTERVAL $interval) ORDER BY a.appointment_date DESC";
+                        $date_column = 'appointment_date';
+                        $summary_sql = "SELECT COUNT(*) as total_appointments, SUM(IF(status='completed', 1, 0)) as completed, SUM(IF(status='cancelled', 1, 0)) as cancelled FROM appointments WHERE $date_column BETWEEN ? AND ?";
+                        $table_sql = "SELECT a.id, p.name as patient_name, d.name as doctor_name, a.status, DATE_FORMAT(a.appointment_date, '%Y-%m-%d %H:%i') as date FROM appointments a JOIN users p ON a.user_id = p.id JOIN users d ON a.doctor_id = d.id WHERE a.appointment_date BETWEEN ? AND ? ORDER BY a.appointment_date DESC";
                     } else { // resource
+                        $date_column = 'admission_date';
+                        // Summary for resource utilization is a snapshot, not date-based
                         $summary_sql = "SELECT 
                             (SELECT COUNT(*) FROM accommodations WHERE type='bed') as total_beds,
                             (SELECT COUNT(*) FROM accommodations WHERE type='room') as total_rooms,
                             (SELECT COUNT(*) FROM accommodations WHERE status = 'occupied' AND type='bed') as occupied_beds,
                             (SELECT COUNT(*) FROM accommodations WHERE status = 'occupied' AND type='room') as occupied_rooms";
-
-                        $chart_sql = "SELECT DATE_FORMAT(admission_date, '$date_format_chart') as label, COUNT(*) as value FROM admissions WHERE admission_date >= DATE_SUB(NOW(), INTERVAL $interval) GROUP BY label ORDER BY label";
-
                         $table_sql = "SELECT 
-                            a.id, 
-                            p.name as patient_name, 
+                            a.id, p.name as patient_name, 
                             CASE 
                                 WHEN acc.type = 'bed' THEN CONCAT('Bed ', acc.number, ' (', w.name, ')')
                                 WHEN acc.type = 'room' THEN CONCAT('Room ', acc.number)
@@ -1190,13 +1339,25 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         JOIN users p ON a.patient_id = p.id
                         LEFT JOIN accommodations acc ON a.accommodation_id = acc.id
                         LEFT JOIN wards w ON acc.ward_id = w.id
-                        WHERE a.admission_date >= DATE_SUB(NOW(), INTERVAL $interval)
+                        WHERE a.admission_date BETWEEN ? AND ?
                         ORDER BY a.admission_date DESC";
                     }
 
-                    $data['summary'] = $conn->query($summary_sql)->fetch_assoc();
-                    $data['chartData'] = $conn->query($chart_sql)->fetch_all(MYSQLI_ASSOC);
-                    $data['tableData'] = $conn->query($table_sql)->fetch_all(MYSQLI_ASSOC);
+                    // Fetch Summary
+                    if ($reportType === 'resource') {
+                        $data['summary'] = $conn->query($summary_sql)->fetch_assoc();
+                    } else {
+                        $stmt_summary = $conn->prepare($summary_sql);
+                        $stmt_summary->bind_param("ss", $startDate, $endDate);
+                        $stmt_summary->execute();
+                        $data['summary'] = $stmt_summary->get_result()->fetch_assoc();
+                    }
+
+                    // Fetch Table Data
+                    $stmt_table = $conn->prepare($table_sql);
+                    $stmt_table->bind_param("ss", $startDate, $endDate);
+                    $stmt_table->execute();
+                    $data['tableData'] = $stmt_table->get_result()->fetch_all(MYSQLI_ASSOC);
 
                     $response = ['success' => true, 'data' => $data];
                     break;
@@ -1208,7 +1369,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         break;
                     }
                     $searchTerm = "%{$term}%";
-                    $sql = "SELECT u.id, u.name, u.display_user_id, r.role_name as role FROM users u JOIN roles r ON u.role_id = r.id WHERE u.name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR u.display_user_id LIKE ? LIMIT 10";
+$sql = "SELECT u.id, u.name, u.profile_picture, u.display_user_id, r.role_name as role FROM users u JOIN roles r ON u.role_id = r.id WHERE u.name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR u.display_user_id LIKE ? LIMIT 10";
                     $stmt = $conn->prepare($sql);
                     $stmt->bind_param("ssss", $searchTerm, $searchTerm, $searchTerm, $searchTerm);
                     $stmt->execute();
@@ -1275,28 +1436,29 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
 // --- PDF GENERATION LOGIC ---
 // ===================================================================================
 if (isset($_GET['action']) && $_GET['action'] === 'download_pdf') {
-    $reportType = $_GET['report_type'] ?? 'Unknown';
-    $period = $_GET['period'] ?? 'All Time';
+    if (empty($_GET['report_type']) || empty($_GET['start_date']) || empty($_GET['end_date'])) {
+        die('Report type and date range are required to generate a PDF.');
+    }
+    $reportType = $_GET['report_type'];
+    $startDate = $_GET['start_date'];
+    $endDate = $_GET['end_date'];
+    $endDateWithTime = $endDate . ' 23:59:59';
     $conn = getDbConnection();
 
-    // --- Data Fetching (same as the report API endpoint) ---
+    // --- Data Fetching ---
     $table_sql = '';
     $table_headers = [];
 
-    $interval_map = ['daily' => '30 DAY', 'weekly' => '3 MONTH', 'monthly' => '1 YEAR', 'yearly' => '5 YEAR'];
-    $interval = $interval_map[$period] ?? '1 YEAR';
-
     if ($reportType === 'financial') {
         $table_headers = ['ID', 'User', 'Description', 'Amount', 'Type', 'Date'];
-        $table_sql = "SELECT t.id, u.name as user_name, t.description, t.amount, t.type, DATE_FORMAT(t.created_at, '%Y-%m-%d %H:%i') as date FROM transactions t JOIN users u ON t.user_id = u.id WHERE t.created_at >= DATE_SUB(NOW(), INTERVAL $interval) ORDER BY t.created_at DESC";
+        $table_sql = "SELECT t.id, u.name as user_name, t.description, t.amount, t.type, DATE_FORMAT(t.created_at, '%Y-%m-%d %H:%i') as date FROM transactions t JOIN users u ON t.user_id = u.id WHERE t.created_at BETWEEN ? AND ? ORDER BY t.created_at DESC";
     } elseif ($reportType === 'patient') {
         $table_headers = ['ID', 'Patient', 'Doctor', 'Status', 'Date'];
-        $table_sql = "SELECT a.id, p.name as patient_name, d.name as doctor_name, a.status, DATE_FORMAT(a.appointment_date, '%Y-%m-%d %H:%i') as date FROM appointments a JOIN users p ON a.user_id = p.id JOIN users d ON a.doctor_id = d.id WHERE a.appointment_date >= DATE_SUB(NOW(), INTERVAL $interval) ORDER BY a.appointment_date DESC";
+        $table_sql = "SELECT a.id, p.name as patient_name, d.name as doctor_name, a.status, DATE_FORMAT(a.appointment_date, '%Y-%m-%d %H:%i') as date FROM appointments a JOIN users p ON a.user_id = p.id JOIN users d ON a.doctor_id = d.id WHERE a.appointment_date BETWEEN ? AND ? ORDER BY a.appointment_date DESC";
     } elseif ($reportType === 'resource') {
         $table_headers = ['Admission ID', 'Patient Name', 'Location', 'Admission Date', 'Discharge Date'];
         $table_sql = "SELECT 
-                    a.id, 
-                    p.name as patient_name, 
+                    a.id, p.name as patient_name, 
                     CASE 
                         WHEN acc.type = 'bed' THEN CONCAT('Bed ', acc.number, ' (', w.name, ')')
                         WHEN acc.type = 'room' THEN CONCAT('Room ', acc.number)
@@ -1308,27 +1470,30 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pdf') {
                 JOIN users p ON a.patient_id = p.id
                 LEFT JOIN accommodations acc ON a.accommodation_id = acc.id
                 LEFT JOIN wards w ON acc.ward_id = w.id
-                WHERE a.admission_date >= DATE_SUB(NOW(), INTERVAL $interval)
+                WHERE a.admission_date BETWEEN ? AND ?
                 ORDER BY a.admission_date DESC";
     }
-
-    $result = $conn->query($table_sql);
-    $tableData = $result->fetch_all(MYSQLI_ASSOC);
+    
+    $stmt = $conn->prepare($table_sql);
+    $stmt->bind_param("ss", $startDate, $endDateWithTime);
+    $stmt->execute();
+    $tableData = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $conn->close();
 
     // --- HTML Template for PDF ---
     $medsync_logo_path = '../images/logo.png';
-    $hospital_logo_path = '../images/hospital.png'; // Make sure you have this image
+    $hospital_logo_path = '../images/hospital.png';
     $medsync_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($medsync_logo_path));
     $hospital_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($hospital_logo_path));
 
+    // UPDATED: Report title now shows the date range
     $html = '
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <title>Report</title>
-<style>
+        <style>
             @page { margin: 20px; }
             body { font-family: "Poppins", sans-serif; color: #333; }
             .header { position: fixed; top: 0; left: 0; right: 0; width: 100%; height: 120px; }
@@ -1365,7 +1530,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pdf') {
 
         <div class="report-title">
             <h1>' . htmlspecialchars(ucfirst($reportType)) . ' Report</h1>
-            <p>Period: ' . htmlspecialchars(ucfirst($period)) . ' | Generated on: ' . date('Y-m-d H:i:s') . '</p>
+            <p>Date Range: ' . htmlspecialchars($startDate) . ' to ' . htmlspecialchars($endDate) . ' | Generated on: ' . date('Y-m-d H:i:s') . '</p>
         </div>
         <table class="data-table">
             <thead>
@@ -1373,10 +1538,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pdf') {
     foreach ($table_headers as $header) {
         $html .= '<th>' . htmlspecialchars($header) . '</th>';
     }
-    $html .= '
-                </tr>
-            </thead>
-            <tbody>';
+    $html .= '</tr></thead><tbody>';
     if (count($tableData) > 0) {
         foreach ($tableData as $row) {
             $html .= '<tr>';
@@ -1388,15 +1550,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pdf') {
     } else {
         $html .= '<tr><td colspan="' . count($table_headers) . '" style="text-align: center;">No data available for this period.</td></tr>';
     }
-    $html .= '
-            </tbody>
-        </table>
+    $html .= '</tbody></table>
         <div class="footer">
             MedSync Healthcare Platform | &copy; ' . date('Y') . ' Calysta Health Institute
         </div>
     </body>
     </html>';
 
+    // (This part for Dompdf rendering remains the same)
     $options = new Options();
     $options->set('isHtml5ParserEnabled', true);
     $options->set('isRemoteEnabled', true);

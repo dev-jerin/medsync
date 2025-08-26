@@ -304,6 +304,7 @@ require_once 'staff.php';
                             <option value="all">All Statuses</option>
                             <option value="paid">Paid</option>
                             <option value="unpaid">Unpaid</option>
+                            <option value="pending">Pending</option>
                         </select>
                     </div>
                     <table class="data-table" id="billing-table">
@@ -318,25 +319,7 @@ require_once 'staff.php';
                             </tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td data-label="Invoice ID">INV-001</td>
-                                <td data-label="Patient Name">Michael Brown</td>
-                                <td data-label="Amount">₹1,250.00</td>
-                                <td data-label="Date">2025-07-26</td>
-                                <td data-label="Status"><span class="status unpaid">Unpaid</span></td>
-                                <td data-label="Actions"><button class="action-btn">View</button> <button
-                                        class="action-btn">Print</button></td>
-                            </tr>
-                            <tr>
-                                <td data-label="Invoice ID">INV-002</td>
-                                <td data-label="Patient Name">Emily Davis</td>
-                                <td data-label="Amount">₹850.50</td>
-                                <td data-label="Date">2025-07-25</td>
-                                <td data-label="Status"><span class="status paid">Paid</span></td>
-                                <td data-label="Actions"><button class="action-btn">View</button> <button
-                                        class="action-btn">Print</button></td>
-                            </tr>
-                        </tbody>
+                            </tbody>
                     </table>
                 </div>
             </div>
@@ -372,8 +355,9 @@ require_once 'staff.php';
                     <div class="filters"><input type="text" id="discharge-search" class="search-bar"
                             placeholder="Search by patient..."><select id="discharge-status-filter">
                             <option value="all">All Statuses</option>
-                            <option value="pending-nursing">Pending Nursing</option>
-                            <option value="pending-pharmacy">Pending Pharmacy</option>
+                            <option value="nursing">Pending Nursing</option>
+                            <option value="pharmacy">Pending Pharmacy</option>
+                            <option value="billing">Pending Billing</option>
                         </select></div>
                     <table class="data-table" id="discharge-table">
                         <thead>
@@ -386,21 +370,7 @@ require_once 'staff.php';
                             </tr>
                         </thead>
                         <tbody>
-                            <tr data-status="pending-nursing">
-                                <td data-label="Req. ID">D4501</td>
-                                <td data-label="Patient">Emily Davis</td>
-                                <td data-label="Status"><span class="status pending-nursing">Nursing</span></td>
-                                <td data-label="Doctor">Dr. Carter</td>
-                                <td data-label="Action"><button class="action-btn">Process Clearance</button></td>
-                            </tr>
-                            <tr data-status="pending-pharmacy">
-                                <td data-label="Req. ID">D4502</td>
-                                <td data-label="Patient">Michael Brown</td>
-                                <td data-label="Status"><span class="status pending-pharmacy">Pharmacy</span></td>
-                                <td data-label="Doctor">Dr. Smith</td>
-                                <td data-label="Action"><button class="action-btn">Process Clearance</button></td>
-                            </tr>
-                        </tbody>
+                            </tbody>
                     </table>
                 </div>
             </div>
@@ -933,6 +903,62 @@ require_once 'staff.php';
             </div>
         </div>
     </div>
+    <div class="modal-overlay" id="discharge-clearance-modal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h4 id="discharge-clearance-modal-title">Process Discharge Clearance</h4>
+                <button class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="discharge-clearance-form" novalidate>
+                    <input type="hidden" name="action" value="process_clearance">
+                    <input type="hidden" id="discharge-id" name="discharge_id">
+                    <div class="form-group">
+                        <label for="discharge-notes">Notes</label>
+                        <textarea id="discharge-notes" name="notes" rows="4" required></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary modal-close-btn">Cancel</button>
+                <button type="submit" form="discharge-clearance-form" class="btn btn-primary">Process</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="create-invoice-modal">
+        <div class="modal-container" style="max-width: 500px;">
+            <div class="modal-header">
+                <h4>Create New Invoice</h4>
+                <button class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="create-invoice-form" novalidate>
+                    <input type="hidden" name="action" value="generateInvoice">
+                    <input type="hidden" name="admission_id" id="invoice-admission-id" required>
+
+                    <div class="form-group">
+                        <label for="invoice-patient-search">Find Billable Patient Admission</label>
+                        <div class="patient-search-container">
+                            <input type="text" id="invoice-patient-search" placeholder="Search by patient name or ID..." autocomplete="off">
+                            <div id="invoice-patient-search-results" class="search-results-list"></div>
+                        </div>
+                        <div id="invoice-selected-patient-display" class="selected-item-display" style="display:none;">
+                            <strong>Selected:</strong>
+                            <span id="invoice-selected-patient-name"></span>
+                            <button type="button" id="invoice-clear-selected-patient-btn" class="clear-selection-btn" title="Change Patient">&times;</button>
+                        </div>
+                        <small>Select a patient to calculate costs and generate a new invoice.</small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary modal-close-btn">Cancel</button>
+                <button type="submit" form="create-invoice-form" class="btn btn-primary">Generate Invoice</button>
+            </div>
+        </div>
+    </div>
+
 
     <script src="script.js"></script>
 </body>

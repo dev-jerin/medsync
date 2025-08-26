@@ -1,14 +1,8 @@
 document.addEventListener("DOMContentLoaded", function () {
-
-    const userSearchInput = document.getElementById('user-search-input');
-    userSearchInput.addEventListener('keyup', () => {
-        // A small delay to avoid sending too many requests while typing
-        setTimeout(() => {
-            fetchUsers(currentRole, userSearchInput.value.trim());
-        }, 300);
-    });
     // --- CORE UI ELEMENTS & STATE ---
-    const csrfToken = document.querySelector('input[name="csrf_token"]').value; // Read from the DOM
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+    // CORRECTED: Read the user ID from the hidden input field in dashboard.php
+    const currentUserId = parseInt(document.getElementById('current-user-id').value, 10);
     const hamburgerBtn = document.getElementById('hamburger-btn');
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('overlay');
@@ -16,10 +10,16 @@ document.addEventListener("DOMContentLoaded", function () {
     const dropdownToggles = document.querySelectorAll('.nav-dropdown-toggle');
     const panelTitle = document.getElementById('panel-title');
     const welcomeMessage = document.getElementById('welcome-message');
+    const userSearchInput = document.getElementById('user-search-input');
+
     let currentRole = 'user';
     let currentAccommodationType = 'bed'; // 'bed' or 'room'
     let userRolesChart = null;
-    let reportChart = null;
+    // REMOVED: reportChart is no longer needed
+    let messengerInitialized = false;
+    let activeConversationId = null;
+    let activeReceiverId = null;
+    let searchDebounceTimer;
 
     // --- HELPER FUNCTIONS ---
     const showNotification = (message, type = 'success') => {
@@ -31,6 +31,26 @@ document.addEventListener("DOMContentLoaded", function () {
         setTimeout(() => {
             notification.remove();
         }, 5000);
+    };
+
+    const convert24hTo12h = (timeString) => {
+        if (!timeString) return { hour: 9, minute: '00', period: 'AM' }; // Default for new slots
+        const [hours24, minutes] = timeString.split(':');
+        const period = parseInt(hours24, 10) >= 12 ? 'PM' : 'AM';
+        let hours12 = parseInt(hours24, 10) % 12;
+        if (hours12 === 0) hours12 = 12;
+        return { hour: hours12, minute: minutes, period };
+    };
+
+    const convert12hTo24h = (hour, minute, period) => {
+        hour = parseInt(hour, 10);
+        if (period === 'PM' && hour !== 12) {
+            hour += 12;
+        }
+        if (period === 'AM' && hour === 12) { // Midnight case (12 AM)
+            hour = 0;
+        }
+        return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     };
 
     const showConfirmation = (title, message) => {
@@ -46,17 +66,19 @@ document.addEventListener("DOMContentLoaded", function () {
             const cleanup = (result) => {
                 dialog.classList.remove('show');
                 resolve(result);
-                okBtn.removeEventListener('click', handleOk);
-                cancelBtn.removeEventListener('click', handleCancel);
             };
 
-            const handleOk = () => cleanup(true);
-            const handleCancel = () => cleanup(false);
-
-            okBtn.addEventListener('click', handleOk, { once: true });
-            cancelBtn.addEventListener('click', handleCancel, { once: true });
+            okBtn.onclick = () => cleanup(true);
+            cancelBtn.onclick = () => cleanup(false);
         });
     };
+    
+    // A small delay to avoid sending too many requests while typing
+    userSearchInput.addEventListener('keyup', () => {
+        setTimeout(() => {
+            fetchUsers(currentRole, userSearchInput.value.trim());
+        }, 300);
+    });
 
     // --- THEME TOGGLE ---
     const themeToggle = document.getElementById('theme-toggle');
@@ -153,6 +175,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 fetchDoctorsForAppointmentFilter();
                 fetchAppointments();
             }
+             if (targetId === 'messenger') initializeMessenger();
             if (targetId === 'reports') generateReport();
             if (targetId === 'activity') fetchActivityLogs();
             if (targetId === 'schedules' && doctorSelect.options.length <= 1) fetchDoctorsForScheduling();
@@ -1124,19 +1147,32 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const generateReport = async () => {
         const reportType = document.getElementById('report-type').value;
-        const period = document.getElementById('report-period').value;
+        // NEW: Get values from new date inputs
+        const startDate = document.getElementById('start-date').value;
+        const endDate = document.getElementById('end-date').value;
 
+        // Basic validation
+        if (!startDate || !endDate) {
+            showNotification('Please select both a start and end date.', 'error');
+            return;
+        }
+
+        // NEW: Update hidden inputs for PDF form
         document.getElementById('pdf-report-type').value = reportType;
-        document.getElementById('pdf-period').value = period;
+        document.getElementById('pdf-start-date').value = startDate;
+        document.getElementById('pdf-end-date').value = endDate;
+
         summaryCardsContainer.innerHTML = '<p>Loading summary...</p>';
         document.getElementById('report-table-container').innerHTML = '';
 
         try {
-            const response = await fetch(`admin.php?fetch=report&type=${reportType}&period=${period}`);
+            // UPDATED: Fetch call with new date parameters
+            const response = await fetch(`admin.php?fetch=report&type=${reportType}&start_date=${startDate}&end_date=${endDate}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
 
-            const { summary, chartData, tableData } = result.data;
+            // UPDATED: chartData is no longer expected from the backend
+            const { summary, tableData } = result.data;
 
             summaryCardsContainer.innerHTML = '';
             if (reportType === 'financial') {
@@ -1161,23 +1197,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     `;
             }
 
-            const chartCtx = document.getElementById('report-chart').getContext('2d');
-            if (reportChart) reportChart.destroy();
-            reportChart = new Chart(chartCtx, {
-                type: 'line',
-                data: {
-                    labels: chartData.map(item => item.label),
-                    datasets: [{
-                        label: reportType.charAt(0).toUpperCase() + reportType.slice(1) + ' Trend',
-                        data: chartData.map(item => item.value),
-                        borderColor: 'var(--primary-color)',
-                        backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                        fill: true,
-                        tension: 0.4
-                    }]
-                },
-                options: { responsive: true, scales: { y: { beginAtZero: true } } }
-            });
+            // REMOVED: All Chart.js related code has been deleted.
 
             const tableContainer = document.getElementById('report-table-container');
             if (tableData.length > 0) {
@@ -1190,6 +1210,8 @@ document.addEventListener("DOMContentLoaded", function () {
                                     <tbody>${tableData.map(row => `<tr>${headers.map(h => `<td>${row[h]}</td>`).join('')}</tr>`).join('')}</tbody>
                                 </table>
                             </div>`;
+            } else {
+                 tableContainer.innerHTML = `<p style="text-align:center; padding: 2rem; color: var(--text-muted);">No data found for the selected date range.</p>`;
             }
 
         } catch (error) {
@@ -1262,18 +1284,44 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const renderScheduleEditor = (slots) => {
         const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-        scheduleEditorContainer.innerHTML = days.map(day => `
+        scheduleEditorContainer.innerHTML = days.map(day => {
+            const daySlots = (slots[day] || []).map(slot => {
+                const fromTime = convert24hTo12h(slot.from);
+                const toTime = convert24hTo12h(slot.to);
+                return `
+                    <div class="time-slot">
+                        <div class="time-inputs">
+                            <label>From:</label>
+                            <input type="number" class="slot-hour-from" min="1" max="12" value="${fromTime.hour}" />:
+                            <input type="number" class="slot-minute-from" min="0" max="59" step="15" value="${fromTime.minute}" />
+                            <select class="slot-period-from">
+                                <option value="AM" ${fromTime.period === 'AM' ? 'selected' : ''}>AM</option>
+                                <option value="PM" ${fromTime.period === 'PM' ? 'selected' : ''}>PM</option>
+                            </select>
+                        </div>
+                         <div class="time-inputs">
+                            <label>To:</label>
+                            <input type="number" class="slot-hour-to" min="1" max="12" value="${toTime.hour}" />:
+                            <input type="number" class="slot-minute-to" min="0" max="59" step="15" value="${toTime.minute}" />
+                            <select class="slot-period-to">
+                                <option value="AM" ${toTime.period === 'AM' ? 'selected' : ''}>AM</option>
+                                <option value="PM" ${toTime.period === 'PM' ? 'selected' : ''}>PM</option>
+                            </select>
+                        </div>
+                        <div class="limit-input">
+                            <label>Limit:</label><input type="number" class="slot-limit" min="1" value="${slot.limit || 50}" placeholder="e.g., 50"/>
+                        </div>
+                        <button class="remove-slot-btn" title="Remove slot"><i class="fas fa-times"></i></button>
+                    </div>`;
+            }).join('');
+
+            return `
             <div class="day-schedule-card" data-day="${day}">
                 <h4>${day}</h4>
-                <div class="time-slots-grid">${(slots[day] || []).map(slot => `
-                    <div class="time-slot">
-                        <label>From:</label><input type="time" class="slot-from" value="${slot.from}" />
-                        <label>To:</label><input type="time" class="slot-to" value="${slot.to}" />
-                        <button class="remove-slot-btn" title="Remove slot"><i class="fas fa-times"></i></button>
-                    </div>`).join('')}
-                </div>
+                <div class="time-slots-grid">${daySlots}</div>
                 <button class="add-slot-btn"><i class="fas fa-plus"></i> Add Slot</button>
-            </div>`).join('');
+            </div>`;
+        }).join('');
         document.querySelector('.schedule-actions').style.display = 'block';
     };
 
@@ -1301,7 +1349,27 @@ document.addEventListener("DOMContentLoaded", function () {
             const grid = e.target.closest('.day-schedule-card').querySelector('.time-slots-grid');
             const slotDiv = document.createElement('div');
             slotDiv.className = 'time-slot';
-            slotDiv.innerHTML = `<label>From:</label><input type="time" class="slot-from" value="09:00" /><label>To:</label><input type="time" class="slot-to" value="13:00" /><button class="remove-slot-btn" title="Remove slot"><i class="fas fa-times"></i></button>`;
+            slotDiv.innerHTML = `
+                <div class="time-inputs">
+                    <label>From:</label>
+                    <input type="number" class="slot-hour-from" min="1" max="12" value="9" />:
+                    <input type="number" class="slot-minute-from" min="0" max="59" step="15" value="00" />
+                    <select class="slot-period-from">
+                        <option value="AM" selected>AM</option><option value="PM">PM</option>
+                    </select>
+                </div>
+                <div class="time-inputs">
+                    <label>To:</label>
+                    <input type="number" class="slot-hour-to" min="1" max="12" value="5" />:
+                    <input type="number" class="slot-minute-to" min="0" max="59" step="15" value="00" />
+                    <select class="slot-period-to">
+                        <option value="AM">AM</option><option value="PM" selected>PM</option>
+                    </select>
+                </div>
+                <div class="limit-input">
+                    <label>Limit:</label><input type="number" class="slot-limit" min="1" value="50" />
+                </div>
+                <button class="remove-slot-btn" title="Remove slot"><i class="fas fa-times"></i></button>`;
             grid.appendChild(slotDiv);
         }
         if (e.target.closest('.remove-slot-btn')) {
@@ -1319,17 +1387,26 @@ document.addEventListener("DOMContentLoaded", function () {
             const day = dayCard.dataset.day;
             const slots = [];
             dayCard.querySelectorAll('.time-slot').forEach(slotEl => {
-                const from = slotEl.querySelector('.slot-from').value;
-                const to = slotEl.querySelector('.slot-to').value;
-                if (from && to) {
+                const fromHour = slotEl.querySelector('.slot-hour-from').value;
+                const fromMinute = slotEl.querySelector('.slot-minute-from').value;
+                const fromPeriod = slotEl.querySelector('.slot-period-from').value;
+                const toHour = slotEl.querySelector('.slot-hour-to').value;
+                const toMinute = slotEl.querySelector('.slot-minute-to').value;
+                const toPeriod = slotEl.querySelector('.slot-period-to').value;
+                const limit = slotEl.querySelector('.slot-limit').value;
+
+                if (fromHour && fromMinute && fromPeriod && toHour && toMinute && toPeriod && limit) {
+                    const from = convert12hTo24h(fromHour, fromMinute, fromPeriod);
+                    const to = convert12hTo24h(toHour, toMinute, toPeriod);
+                    
                     if (to <= from) { isValid = false; }
-                    slots.push({ from, to });
+                    slots.push({ from, to, limit: parseInt(limit, 10) });
                 }
             });
             scheduleData[day] = slots;
         });
 
-        if (!isValid) return showNotification(`'To' time must be after 'From' time.`, 'error');
+        if (!isValid) return showNotification(`Error: 'To' time must be after 'From' time in all slots.`, 'error');
 
         const formData = new FormData();
         formData.append('action', 'update_doctor_schedule');
@@ -1527,6 +1604,271 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     document.getElementById('appointment-doctor-filter').addEventListener('change', (e) => fetchAppointments(e.target.value));
+
+    // --- MESSENGER LOGIC ---
+    function initializeMessenger() {
+        if (messengerInitialized) return;
+
+        fetchAndRenderConversations();
+        
+        const searchInput = document.getElementById('messenger-user-search');
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(() => handleMessengerSearch(searchInput.value), 300);
+        });
+
+        const listContainer = document.getElementById('conversation-list-items');
+        listContainer.addEventListener('click', handleListItemClick);
+        
+        const messageForm = document.getElementById('message-form');
+        messageForm.addEventListener('submit', handleSendMessage);
+        
+        messengerInitialized = true;
+    }
+
+    async function handleMessengerSearch(query) {
+        const listContainer = document.getElementById('conversation-list-items');
+        query = query.trim();
+        if (query.length < 2) {
+            await fetchAndRenderConversations();
+            return;
+        }
+        
+        listContainer.innerHTML = `<p class="no-items-message">Searching...</p>`;
+        
+        try {
+            const response = await fetch(`admin.php?fetch=search_users&term=${encodeURIComponent(query)}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            
+            if(result.data.length === 0) {
+                 listContainer.innerHTML = `<p class="no-items-message">No users found.</p>`;
+                 return;
+            }
+            listContainer.innerHTML = result.data.map(renderSearchResultItem).join('');
+        } catch (error) {
+            console.error("Search error:", error);
+            listContainer.innerHTML = `<p class="no-items-message" style="color: var(--danger-color)">Search failed.</p>`;
+        }
+    }
+    
+    function renderSearchResultItem(user) {
+        const avatarUrl = `../uploads/profile_pictures/${user.profile_picture || 'default.png'}`;
+        return `
+            <div class="search-result-item" data-user-id="${user.id}" data-user-name="${user.name}" data-user-avatar="${avatarUrl}" data-user-display-id="${user.role}">
+                <img src="${avatarUrl}" alt="${user.name}" class="user-avatar" onerror="this.src='../uploads/profile_pictures/default.png'">
+                <div class="conversation-details">
+                    <span class="user-name">${user.name}</span>
+                    <span class="last-message">${user.role} - ${user.display_user_id}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    async function fetchAndRenderConversations() {
+        const listContainer = document.getElementById('conversation-list-items');
+        listContainer.innerHTML = `<p class="no-items-message">Loading conversations...</p>`;
+
+        try {
+            const response = await fetch('admin.php?fetch=conversations');
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            
+            if (result.data.length === 0) {
+                listContainer.innerHTML = `<p class="no-items-message">No conversations yet. Search for a user to start chatting.</p>`;
+                return;
+            }
+            listContainer.innerHTML = result.data.map(renderConversationItem).join('');
+
+        } catch (error) {
+            console.error("Failed to fetch conversations:", error);
+            listContainer.innerHTML = `<p class="no-items-message" style="color: var(--danger-color)">Could not load conversations.</p>`;
+        }
+    }
+    
+    function formatMessageTime(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderConversationItem(conv) {
+        const avatarUrl = `../uploads/profile_pictures/${conv.other_user_profile_picture || 'default.png'}`;
+        return `
+            <div class="conversation-item ${conv.conversation_id === activeConversationId ? 'active' : ''}" data-conversation-id="${conv.conversation_id}" data-user-id="${conv.other_user_id}" data-user-name="${conv.other_user_name}" data-user-avatar="${avatarUrl}" data-user-display-id="${conv.other_user_role}">
+                <img src="${avatarUrl}" alt="${conv.other_user_name}" class="user-avatar" onerror="this.src='../uploads/profile_pictures/default.png'">
+                <div class="conversation-details">
+                    <span class="user-name">${conv.other_user_name}</span>
+                    <span class="last-message">${conv.last_message || 'No messages yet'}</span>
+                </div>
+                <div class="conversation-meta">
+                    <span class="message-time">${formatMessageTime(conv.last_message_time)}</span>
+                    ${conv.unread_count > 0 ? `<div class="unread-indicator">${conv.unread_count}</div>` : ''}
+                </div>
+            </div>`;
+    }
+
+    function handleListItemClick(e) {
+        const item = e.target.closest('.conversation-item, .search-result-item');
+        if (!item) return;
+
+        const searchInput = document.getElementById('messenger-user-search');
+        if(searchInput.value) {
+            searchInput.value = '';
+            fetchAndRenderConversations();
+        }
+        
+        const conversationId = item.dataset.conversationId ? parseInt(item.dataset.conversationId, 10) : null;
+        const userId = parseInt(item.dataset.userId, 10);
+        const userName = item.dataset.userName;
+        const userAvatar = item.dataset.userAvatar;
+        const userDisplayId = item.dataset.userDisplayId;
+        
+        selectConversation(conversationId, userId, userName, userAvatar, userDisplayId);
+    }
+    
+    function selectConversation(conversationId, userId, userName, userAvatar, userDisplayId) {
+        activeConversationId = conversationId;
+        activeReceiverId = userId;
+
+        document.querySelectorAll('#conversation-list-items .conversation-item').forEach(el => {
+            el.classList.toggle('active', parseInt(el.dataset.conversationId, 10) === conversationId);
+        });
+        
+        document.getElementById('no-chat-placeholder').style.display = 'none';
+        const chatWindow = document.getElementById('chat-window');
+        chatWindow.style.display = 'flex';
+        
+        document.getElementById('chat-header-avatar').src = userAvatar;
+        document.getElementById('chat-with-user-name').textContent = userName;
+        document.getElementById('chat-with-user-id').textContent = userDisplayId;
+        
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('message-form').querySelector('.send-btn');
+        messageInput.disabled = false;
+        sendBtn.disabled = false;
+        
+        if(conversationId) {
+            fetchAndRenderMessages(conversationId);
+        } else {
+            document.getElementById('chat-messages-container').innerHTML = `<p class="no-items-message">Send a message to start the conversation with ${userName}.</p>`;
+        }
+    }
+
+    function formatDateSeparator(dateString) {
+        const date = new Date(dateString);
+        const today = new Date();
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        const options = { month: 'long', day: 'numeric', year: 'numeric' };
+
+        if (date.toDateString() === today.toDateString()) return 'Today';
+        if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+        return date.toLocaleDateString('en-US', options);
+    }
+
+    async function fetchAndRenderMessages(conversationId) {
+        const container = document.getElementById('chat-messages-container');
+        container.innerHTML = '<p class="no-items-message">Loading messages...</p>';
+        try {
+            const response = await fetch(`admin.php?fetch=messages&conversation_id=${conversationId}`);
+            const result = await response.json();
+            if(!result.success) throw new Error(result.message);
+            
+            let messagesHtml = '';
+            let lastMessageDateStr = null;
+
+            if (result.data.length > 0) {
+                result.data.forEach(message => {
+                    const currentMessageDateStr = new Date(message.created_at).toDateString();
+                    if (currentMessageDateStr !== lastMessageDateStr) {
+                        messagesHtml += `<div class="message-date-separator">${formatDateSeparator(message.created_at)}</div>`;
+                        lastMessageDateStr = currentMessageDateStr;
+                    }
+                    messagesHtml += renderMessageItem(message);
+                });
+                 container.dataset.lastDate = lastMessageDateStr;
+            } else {
+                 messagesHtml = `<p class="no-items-message">No messages yet. Say hello!</p>`;
+                 delete container.dataset.lastDate;
+            }
+            
+            container.innerHTML = messagesHtml;
+            container.scrollTop = container.scrollHeight;
+
+        } catch(error) {
+            console.error("Failed to fetch messages:", error);
+            container.innerHTML = `<p class="no-items-message" style="color: var(--danger-color)">Could not load messages.</p>`;
+        }
+    }
+    
+    function renderMessageItem(message) {
+        const sentOrReceived = message.sender_id === currentUserId ? 'sent' : 'received';
+        return `
+            <div class="message ${sentOrReceived}">
+                <div class="message-content">
+                    <p>${message.message_text}</p>
+                </div>
+                <span class="message-timestamp">${formatMessageTime(message.created_at)}</span>
+            </div>
+        `;
+    }
+
+    async function handleSendMessage(e) {
+        e.preventDefault();
+        const form = e.target;
+        const input = form.querySelector('#message-input');
+        const button = form.querySelector('.send-btn');
+        const messageText = input.value.trim();
+
+        if (!messageText || !activeReceiverId) return;
+
+        input.disabled = true;
+        button.disabled = true;
+
+        const formData = new FormData();
+        formData.append('action', 'sendMessage');
+        formData.append('receiver_id', activeReceiverId);
+        formData.append('message_text', messageText);
+        formData.append('csrf_token', csrfToken);
+
+        try {
+            const response = await fetch('admin.php', { method: 'POST', body: formData });
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            
+            input.value = '';
+            
+            if (!activeConversationId) {
+                activeConversationId = result.data.conversation_id;
+                await fetchAndRenderConversations();
+                await fetchAndRenderMessages(activeConversationId);
+            } else {
+                const container = document.getElementById('chat-messages-container');
+                if (container.querySelector('.no-items-message')) container.innerHTML = '';
+                
+                const currentDateStr = new Date(result.data.created_at).toDateString();
+                if(currentDateStr !== container.dataset.lastDate) {
+                     container.insertAdjacentHTML('beforeend', `<div class="message-date-separator">${formatDateSeparator(result.data.created_at)}</div>`);
+                     container.dataset.lastDate = currentDateStr;
+                }
+
+                container.insertAdjacentHTML('beforeend', renderMessageItem(result.data));
+                container.scrollTop = container.scrollHeight;
+                fetchAndRenderConversations();
+            }
+
+        } catch (error) {
+            console.error("Send message failed:", error);
+            alert("Could not send message. Please try again.");
+        } finally {
+            input.disabled = false;
+            button.disabled = false;
+            input.focus();
+        }
+    }
+
 
     // --- INITIAL LOAD ---
     updateDashboardStats();

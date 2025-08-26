@@ -75,6 +75,7 @@ $conn->close();
 </head>
 
 <body class="light-mode">
+    <input type="hidden" id="current-user-id" value="<?php echo htmlspecialchars($_SESSION['user_id']); ?>">
     <div class="dashboard-layout">
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
@@ -130,6 +131,8 @@ $conn->close();
                             Appointments</a></li>
                     <li><a href="#" class="nav-link" data-target="schedules"><i class="fas fa-calendar-alt"></i>
                             Schedules</a></li>
+                    <li><a href="#" class="nav-link" data-target="messenger"><i class="fas fa-paper-plane"></i>
+                            Messenger</a></li>
                     <li><a href="#" class="nav-link" data-target="reports"><i class="fas fa-chart-line"></i> Reports</a>
                     </li>
                     <li><a href="#" class="nav-link" data-target="activity"><i class="fas fa-history"></i> Activity
@@ -405,14 +408,52 @@ $conn->close();
                 </div>
             </div>
 
-            <!-- Unified Accommodations Panel -->
             <div id="accommodations-panel" class="content-panel">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
-                    <h2 id="accommodations-title">Bed Management</h2> <!-- Title will be dynamic -->
-                    <button id="add-accommodation-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Bed</button> <!-- Button text will be dynamic -->
-                </div>
+                    <h2 id="accommodations-title">Bed Management</h2> <button id="add-accommodation-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New Bed</button> </div>
                 <div id="accommodations-container" class="resource-grid-container">
-                    <!-- Cards will be loaded here by JS -->
+                    </div>
+            </div>
+            
+            <div id="messenger-panel" class="content-panel">
+                <div class="messenger-layout">
+                    <div class="conversation-list" id="conversation-list">
+                        <div class="conversation-search">
+                            <input type="text" id="messenger-user-search"
+                                placeholder="Search for staff, doctors, admins...">
+                        </div>
+                        <div class="scrollable-area" id="conversation-list-items">
+                            <p class="no-items-message">Loading conversations...</p>
+                        </div>
+                    </div>
+
+                    <div class="chat-area">
+                        <div class="chat-window" id="chat-window" style="display: none;">
+                            <div class="chat-header">
+                                <div class="user-info">
+                                    <img src="../uploads/profile_pictures/default.png" alt="Avatar" class="chat-avatar"
+                                        id="chat-header-avatar">
+                                    <div>
+                                        <span class="chat-user-name" id="chat-with-user-name"></span>
+                                        <span class="chat-user-id" id="chat-with-user-id"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chat-messages" id="chat-messages-container">
+                            </div>
+                            <form class="chat-input" id="message-form" novalidate>
+                                <input type="text" id="message-input" placeholder="Type your message..."
+                                    autocomplete="off" disabled>
+                                <button type="submit" class="send-btn" disabled><i
+                                        class="fas fa-paper-plane"></i></button>
+                            </form>
+                        </div>
+                        <div class="no-chat-selected" id="no-chat-placeholder">
+                            <i class="fas fa-comments"></i>
+                            <h3>MedSync Messenger</h3>
+                            <p>Select a conversation or search for a user to begin chatting.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -426,48 +467,33 @@ $conn->close();
                             <option value="resource">Resource Utilization</option>
                         </select>
                     </div>
+                    
                     <div class="form-group">
-                        <label for="report-period">Period</label>
-                        <select id="report-period" name="period">
-                            <option value="yearly">Year</option>
-                            <option value="monthly" selected>Month</option>
-                            <option value="daily">Day</option>
-                        </select>
+                        <label for="start-date">Start Date</label>
+                        <input type="date" id="start-date" name="start_date" value="<?php echo date('Y-m-01'); ?>">
                     </div>
-                    <div class="form-group" id="report-year-container">
-                        <label for="report-year">Year</label>
-                        <input type="number" id="report-year" name="year" value="<?php echo date('Y'); ?>">
+
+                    <div class="form-group">
+                        <label for="end-date">End Date</label>
+                        <input type="date" id="end-date" name="end_date" value="<?php echo date('Y-m-t'); ?>">
                     </div>
-                    <div class="form-group" id="report-month-container">
-                        <label for="report-month">Month</label>
-                        <input type="month" id="report-month" name="month" value="<?php echo date('Y-m'); ?>">
-                    </div>
-                    <div class="form-group" id="report-day-container" style="display: none;">
-                        <label for="report-day">Day</label>
-                        <input type="date" id="report-day" name="day" value="<?php echo date('Y-m-d'); ?>">
-                    </div>
-                    <button id="generate-report-btn" class="btn btn-primary"><i class="fas fa-sync"></i> Generate
-                        Report</button>
+
+                    <button id="generate-report-btn" class="btn btn-primary"><i class="fas fa-sync"></i> Generate Report</button>
+
                     <form id="download-pdf-form" method="GET" action="admin.php" target="_blank">
                         <input type="hidden" name="action" value="download_pdf">
                         <input type="hidden" id="pdf-report-type" name="report_type">
-                        <input type="hidden" id="pdf-period" name="period">
-                        <input type="hidden" id="pdf-year" name="year">
-                        <input type="hidden" id="pdf-month" name="month">
-                        <input type="hidden" id="pdf-day" name="day">
-                        <button type="submit" class="btn btn-secondary"><i class="fas fa-file-pdf"></i> Download
-                            PDF</button>
+                        <input type="hidden" id="pdf-start-date" name="start_date">
+                        <input type="hidden" id="pdf-end-date" name="end_date">
+                        <button type="submit" class="btn btn-secondary"><i class="fas fa-file-pdf"></i> Download PDF</button>
                     </form>
                 </div>
 
                 <div class="report-summary-cards" id="report-summary-cards">
                 </div>
 
-                <div id="report-chart-container">
-                    <canvas id="report-chart"></canvas>
-                </div>
                 <div id="report-table-container" style="margin-top: 2rem;">
-                </div>
+                    </div>
             </div>
 
             <div id="activity-panel" class="content-panel">
@@ -908,7 +934,6 @@ $conn->close();
         </div>
     </div>
 
-    <!-- Unified Accommodation Modal -->
     <div id="accommodation-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -918,14 +943,11 @@ $conn->close();
             <form id="accommodation-form">
                 <input type="hidden" name="id" id="accommodation-id">
                 <input type="hidden" name="action" id="accommodation-form-action">
-                <input type="hidden" name="type" id="accommodation-type"> <!-- 'bed' or 'room' -->
-                <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                <input type="hidden" name="type" id="accommodation-type"> <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
 
-                <div class="form-group" id="accommodation-ward-group"> <!-- Show only for beds -->
-                    <label for="accommodation-ward-id">Ward</label>
+                <div class="form-group" id="accommodation-ward-group"> <label for="accommodation-ward-id">Ward</label>
                     <select id="accommodation-ward-id" name="ward_id">
-                        <!-- Options loaded by JS -->
-                    </select>
+                        </select>
                 </div>
                 <div class="form-group">
                     <label for="accommodation-number" id="accommodation-number-label">Bed Number</label>

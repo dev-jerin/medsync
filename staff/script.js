@@ -35,6 +35,8 @@ document.addEventListener("DOMContentLoaded", function() {
             if (pageId === 'admissions') initializeAdmissions();
             if (pageId === 'labs') initializeLabs();
             if (pageId === 'notifications') fetchAndRenderNotifications(document.querySelector('#notifications-page .notification-list-container'));
+            if (pageId === 'discharge') initializeDischarge();
+            if (pageId === 'billing') initializeBilling();
 
 
             const pageTitle = link.querySelector('span') ? link.querySelector('span').textContent.trim() : link.textContent.trim().replace(link.querySelector('i').textContent, '').trim();
@@ -1722,6 +1724,314 @@ document.addEventListener("DOMContentLoaded", function() {
             
             alert(result.message);
             fetchAndRenderLabs();
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    // --- DISCHARGE MANAGEMENT LOGIC ---
+    const dischargePage = document.getElementById('discharge-page');
+    let dischargeInitialized = false;
+    let dischargeSearchDebounce;
+
+    function initializeDischarge() {
+        if (dischargeInitialized || !dischargePage) return;
+
+        const searchInput = document.getElementById('discharge-search');
+        searchInput.addEventListener('input', () => {
+            clearTimeout(dischargeSearchDebounce);
+            dischargeSearchDebounce = setTimeout(() => {
+                fetchAndRenderDischarges(searchInput.value, document.getElementById('discharge-status-filter').value);
+            }, 300);
+        });
+
+        const statusFilter = document.getElementById('discharge-status-filter');
+        statusFilter.addEventListener('change', () => {
+            fetchAndRenderDischarges(searchInput.value, statusFilter.value);
+        });
+
+        document.getElementById('discharge-table').addEventListener('click', (e) => {
+            const btn = e.target.closest('.process-clearance-btn');
+            if (btn) {
+                const dischargeId = btn.dataset.id;
+                openDischargeClearanceModal(dischargeId);
+            }
+        });
+
+        document.getElementById('discharge-clearance-form').addEventListener('submit', handleDischargeClearanceSubmit);
+
+        fetchAndRenderDischarges();
+        dischargeInitialized = true;
+    }
+
+    async function fetchAndRenderDischarges(search = '', status = 'all') {
+        const tableBody = document.getElementById('discharge-table')?.querySelector('tbody');
+        if (!tableBody) return;
+        tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">Loading discharge requests...</td></tr>`;
+
+        try {
+            const response = await fetch(`staff.php?fetch=discharge_requests&search=${encodeURIComponent(search)}&status=${status}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            renderDischarges(result.data);
+        } catch (error) {
+            tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
+        }
+    }
+
+    function renderDischarges(data) {
+        const tableBody = document.getElementById('discharge-table')?.querySelector('tbody');
+        if (!tableBody) return;
+
+        if (data.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">No discharge requests found.</td></tr>`;
+            return;
+        }
+
+        tableBody.innerHTML = data.map(req => {
+            let statusText = '';
+            let statusClass = '';
+            switch(req.clearance_step) {
+                case 'nursing':
+                    statusText = 'Pending Nursing';
+                    statusClass = 'pending-nursing';
+                    break;
+                case 'pharmacy':
+                    statusText = 'Pending Pharmacy';
+                    statusClass = 'pending-pharmacy';
+                    break;
+                case 'billing':
+                    statusText = 'Pending Billing';
+                    statusClass = 'pending-billing';
+                    break;
+            }
+            if (req.is_cleared == 1) {
+                statusText = `Cleared by ${req.cleared_by_name}`;
+                statusClass = 'completed';
+            }
+
+            return `
+                <tr>
+                    <td data-label="Req. ID">D-${String(req.discharge_id).padStart(4, '0')}</td>
+                    <td data-label="Patient">${req.patient_name} (${req.patient_display_id})</td>
+                    <td data-label="Status"><span class="status ${statusClass}">${statusText}</span></td>
+                    <td data-label="Doctor">${req.doctor_name}</td>
+                    <td data-label="Action">
+                        ${req.is_cleared == 0 ? `<button class="action-btn process-clearance-btn" data-id="${req.discharge_id}"><i class="fas fa-check"></i> Process</button>` : `<button class="action-btn" disabled><i class="fas fa-check-double"></i> Done</button>`}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function openDischargeClearanceModal(dischargeId) {
+        const modal = document.getElementById('discharge-clearance-modal');
+        document.getElementById('discharge-id').value = dischargeId;
+        document.getElementById('discharge-notes').value = '';
+        modal.classList.add('show');
+    }
+
+    async function handleDischargeClearanceSubmit(e) {
+        e.preventDefault();
+        const form = e.target;
+        const modal = form.closest('.modal-overlay');
+        const formData = new FormData(form);
+        formData.append('csrf_token', csrfToken);
+
+        try {
+            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            alert(result.message);
+            modal.classList.remove('show');
+            fetchAndRenderDischarges(document.getElementById('discharge-search').value, document.getElementById('discharge-status-filter').value);
+        } catch (error) {
+            alert(`Error: ${error.message}`);
+        }
+    }
+
+    // --- BILLING MANAGEMENT LOGIC ---
+    const billingPage = document.getElementById('billing-page');
+    let billingInitialized = false;
+    let invoicePatientSearchDebounce;
+    let billingSearchDebounce;
+
+
+    function initializeBilling() {
+        if (billingInitialized) return;
+
+        fetchAndRenderInvoices();
+
+        document.getElementById('create-invoice-btn').addEventListener('click', openCreateInvoiceModal);
+        
+        const searchInput = document.getElementById('billing-search');
+        searchInput.addEventListener('input', () => {
+            clearTimeout(billingSearchDebounce);
+            billingSearchDebounce = setTimeout(() => {
+                fetchAndRenderInvoices(searchInput.value);
+            }, 300);
+        });
+
+        billingInitialized = true;
+    }
+
+    async function fetchAndRenderInvoices(search = '') {
+        const tableBody = document.getElementById('billing-table')?.querySelector('tbody');
+        if (!tableBody) return;
+        tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">Loading invoices...</td></tr>`;
+
+        try {
+            const response = await fetch(`staff.php?fetch=invoices&search=${encodeURIComponent(search)}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            renderInvoices(result.data);
+        } catch (error) {
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
+        }
+    }
+
+    function renderInvoices(invoices) {
+        const tableBody = document.getElementById('billing-table')?.querySelector('tbody');
+        if (!tableBody) return;
+
+        if (invoices.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No invoices found.</td></tr>`;
+            return;
+        }
+
+        tableBody.innerHTML = invoices.map(inv => {
+            const statusClass = inv.status === 'paid' ? 'paid' : (inv.status === 'pending' ? 'unpaid' : 'unpaid');
+            const statusText = inv.status.charAt(0).toUpperCase() + inv.status.slice(1);
+
+            return `
+                <tr>
+                    <td data-label="Invoice ID">INV-${String(inv.id).padStart(4, '0')}</td>
+                    <td data-label="Patient Name">${inv.patient_name}</td>
+                    <td data-label="Amount">₹${parseFloat(inv.amount).toFixed(2)}</td>
+                    <td data-label="Date">${new Date(inv.created_at).toLocaleDateString()}</td>
+                    <td data-label="Status"><span class="status ${statusClass}">${statusText}</span></td>
+                    <td data-label="Actions">
+                        <button class="action-btn">View</button>
+                        <button class="action-btn">Print</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function openCreateInvoiceModal() {
+        const modal = document.getElementById('create-invoice-modal');
+        const form = document.getElementById('create-invoice-form');
+        form.reset();
+        clearSelectedBillablePatient();
+        modal.classList.add('show');
+
+        // Attach event listeners for this specific modal instance
+        const searchInput = document.getElementById('invoice-patient-search');
+        const resultsContainer = document.getElementById('invoice-patient-search-results');
+        const clearBtn = document.getElementById('invoice-clear-selected-patient-btn');
+        
+        const searchHandler = () => {
+            clearTimeout(invoicePatientSearchDebounce);
+            invoicePatientSearchDebounce = setTimeout(() => handleBillablePatientSearch(searchInput.value), 300);
+        };
+
+        const resultClickHandler = (e) => {
+            const item = e.target.closest('.search-result-item');
+            if (item) {
+                selectBillablePatient(item.dataset.id, item.dataset.name);
+            }
+        };
+        
+        const formSubmitHandler = (e) => {
+             e.preventDefault();
+             handleInvoiceFormSubmit(form);
+        };
+
+        searchInput.addEventListener('input', searchHandler);
+        resultsContainer.addEventListener('click', resultClickHandler);
+        clearBtn.addEventListener('click', clearSelectedBillablePatient);
+        form.addEventListener('submit', formSubmitHandler);
+
+        // Cleanup listeners when modal is closed
+        modal.querySelectorAll('.modal-close-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                modal.classList.remove('show');
+                searchInput.removeEventListener('input', searchHandler);
+                resultsContainer.removeEventListener('click', resultClickHandler);
+                form.removeEventListener('submit', formSubmitHandler);
+            }, { once: true });
+        });
+    }
+    
+    async function handleBillablePatientSearch(query) {
+        const resultsContainer = document.getElementById('invoice-patient-search-results');
+        if (query.length < 2) {
+            resultsContainer.innerHTML = '';
+            resultsContainer.style.display = 'none';
+            return;
+        }
+
+        resultsContainer.innerHTML = '<div class="search-result-item">Searching...</div>';
+        resultsContainer.style.display = 'block';
+
+        try {
+            const response = await fetch(`staff.php?fetch=billable_patients&search=${encodeURIComponent(query)}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            
+            if(result.data.length === 0) {
+                 resultsContainer.innerHTML = '<div class="search-result-item">No billable patients found.</div>';
+            } else {
+                resultsContainer.innerHTML = result.data.map(p => `
+                    <div class="search-result-item" data-id="${p.admission_id}" data-name="${p.patient_name} (Adm ID: ${p.admission_id})">
+                        ${p.patient_name} (${p.patient_display_id})
+                    </div>
+                `).join('');
+            }
+
+        } catch (error) {
+             resultsContainer.innerHTML = `<div class="search-result-item" style="color:var(--danger-color)">Search failed.</div>`;
+        }
+    }
+
+    function selectBillablePatient(admissionId, name) {
+        document.getElementById('invoice-admission-id').value = admissionId;
+        document.getElementById('invoice-selected-patient-name').textContent = name;
+        
+        document.getElementById('invoice-patient-search-results').style.display = 'none';
+        document.getElementById('invoice-patient-search').style.display = 'none';
+        document.getElementById('invoice-selected-patient-display').style.display = 'flex';
+    }
+
+    function clearSelectedBillablePatient() {
+        document.getElementById('invoice-admission-id').value = '';
+        document.getElementById('invoice-selected-patient-name').textContent = '';
+        document.getElementById('invoice-patient-search').value = '';
+        
+        document.getElementById('invoice-patient-search-results').style.display = 'none';
+        document.getElementById('invoice-patient-search').style.display = 'block';
+        document.getElementById('invoice-selected-patient-display').style.display = 'none';
+    }
+
+    async function handleInvoiceFormSubmit(form) {
+        const modal = form.closest('.modal-overlay');
+        const formData = new FormData(form);
+        formData.append('csrf_token', csrfToken);
+        
+        if (!formData.get('admission_id')) {
+            alert('Please select a patient admission before generating an invoice.');
+            return;
+        }
+
+        try {
+            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.message || 'An unknown error occurred');
+
+            modal.classList.remove('show');
+            alert(result.message);
+            fetchAndRenderInvoices();
         } catch (error) {
             alert('Error: ' + error.message);
         }

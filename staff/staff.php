@@ -467,6 +467,144 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
 
                     $response = ['success' => true, 'data' => $patients];
                     break;
+                
+                case 'discharge_requests':
+                    $search_query = $_GET['search'] ?? '';
+                    $status_filter = $_GET['status'] ?? 'all';
+                
+                    $sql = "
+                        SELECT 
+                            dc.id as discharge_id,
+                            a.id as admission_id,
+                            p.name as patient_name,
+                            p.display_user_id as patient_display_id,
+                            d.name as doctor_name,
+                            dc.clearance_step,
+                            dc.is_cleared,
+                            dc.cleared_at,
+                            u_cleared.name as cleared_by_name
+                        FROM discharge_clearance dc
+                        JOIN admissions a ON dc.admission_id = a.id
+                        JOIN users p ON a.patient_id = p.id
+                        LEFT JOIN users d ON a.doctor_id = d.id
+                        LEFT JOIN users u_cleared ON dc.cleared_by_user_id = u_cleared.id
+                    ";
+                
+                    $params = [];
+                    $types = "";
+                
+                    // Add WHERE clauses based on filters
+                    $where_clauses = [];
+                    if (!empty($search_query)) {
+                        $where_clauses[] = "(p.name LIKE ? OR p.display_user_id LIKE ?)";
+                        $search_term = "%{$search_query}%";
+                        array_push($params, $search_term, $search_term);
+                        $types .= "ss";
+                    }
+                
+                    if ($status_filter !== 'all') {
+                        $where_clauses[] = "dc.clearance_step = ? AND dc.is_cleared = 0";
+                        $params[] = $status_filter;
+                        $types .= "s";
+                    }
+                
+                    if (!empty($where_clauses)) {
+                        $sql .= " WHERE " . implode(" AND ", $where_clauses);
+                    }
+                
+                    $sql .= " ORDER BY dc.id DESC";
+                
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                
+                    $stmt->execute();
+                    $discharge_requests = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+                
+                    $response = ['success' => true, 'data' => $discharge_requests];
+                    break;
+
+                case 'billable_patients':
+                    $search_query = $_GET['search'] ?? '';
+                    $sql = "
+                        SELECT 
+                            a.id as admission_id,
+                            p.id as patient_id,
+                            p.display_user_id as patient_display_id,
+                            p.name as patient_name
+                        FROM admissions a
+                        JOIN users p ON a.patient_id = p.id
+                        WHERE a.discharge_date IS NULL OR a.id NOT IN (
+                            SELECT admission_id FROM transactions WHERE status = 'paid'
+                        )
+                    ";
+                    
+                    $params = [];
+                    $types = "";
+
+                    if (!empty($search_query)) {
+                        $sql .= " AND (p.name LIKE ? OR p.display_user_id LIKE ?)";
+                        $search_term = "%{$search_query}%";
+                        $params[] = $search_term;
+                        $params[] = $search_term;
+                        $types .= "ss";
+                    }
+                    
+                    $sql .= " ORDER BY a.admission_date DESC";
+                    
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                    
+                    $stmt->execute();
+                    $patients = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+                    
+                    $response = ['success' => true, 'data' => $patients];
+                    break;
+
+                case 'invoices':
+                    $search_query = $_GET['search'] ?? '';
+                    
+                    $sql = "
+                        SELECT 
+                            t.id,
+                            u.name as patient_name,
+                            t.amount,
+                            t.created_at,
+                            t.status
+                        FROM transactions t
+                        JOIN users u ON t.user_id = u.id
+                    ";
+                    
+                    $params = [];
+                    $types = "";
+
+                    if (!empty($search_query)) {
+                        $sql .= " WHERE (u.name LIKE ? OR t.id LIKE ?)";
+                        $search_term = "%{$search_query}%";
+                        $search_id = "{$search_query}%";
+                        $params[] = $search_term;
+                        $params[] = $search_id;
+                        $types .= "ss";
+                    }
+
+                    $sql .= " ORDER BY t.created_at DESC";
+                    
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                    
+                    $stmt->execute();
+                    $invoices = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+                    
+                    $response = ['success' => true, 'data' => $invoices];
+                    break;
             }
         }
         // Handle POST requests for performing actions
@@ -1192,6 +1330,87 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         throw new Exception('Could not find or delete the lab result.');
                     }
                     $stmt_delete->close();
+                    break;
+                case 'process_clearance':
+                    if (empty($_POST['discharge_id']) || empty($_POST['notes'])) {
+                        throw new Exception("Discharge ID and notes are required.");
+                    }
+                    $discharge_id = (int)$_POST['discharge_id'];
+                    $notes = trim($_POST['notes']);
+
+                    $stmt = $conn->prepare("UPDATE discharge_clearance SET is_cleared = 1, cleared_by_user_id = ?, cleared_at = NOW(), notes = ? WHERE id = ? AND is_cleared = 0");
+                    $stmt->bind_param("isi", $user_id, $notes, $discharge_id);
+                    $stmt->execute();
+
+                    if ($stmt->affected_rows > 0) {
+                        log_activity($conn, $user_id, 'process_discharge_clearance', null, "Processed discharge clearance #{$discharge_id}. Notes: {$notes}");
+                        $response = ['success' => true, 'message' => 'Clearance processed successfully.'];
+                    } else {
+                        throw new Exception("Failed to process clearance. It might have been already processed.");
+                    }
+                    $stmt->close();
+                    break;
+                case 'generateInvoice':
+                    $conn->begin_transaction();
+                    $transaction_active = true;
+                    try {
+                        if (empty($_POST['admission_id'])) {
+                             throw new Exception("Admission ID is required to generate an invoice.");
+                        }
+                        $admission_id = (int)$_POST['admission_id'];
+                        
+                        // Fetch admission details to calculate costs
+                        $stmt_adm = $conn->prepare("
+                            SELECT 
+                                a.patient_id,
+                                a.admission_date,
+                                COALESCE(a.discharge_date, NOW()) as effective_discharge_date,
+                                acc.price_per_day
+                            FROM admissions a
+                            LEFT JOIN accommodations acc ON a.accommodation_id = acc.id
+                            WHERE a.id = ?
+                        ");
+                        $stmt_adm->bind_param("i", $admission_id);
+                        $stmt_adm->execute();
+                        $admission_details = $stmt_adm->get_result()->fetch_assoc();
+                        $stmt_adm->close();
+                        
+                        if (!$admission_details) {
+                            throw new Exception("Admission record not found.");
+                        }
+                        
+                        // Calculate duration of stay in days
+                        $admission_date = new DateTime($admission_details['admission_date']);
+                        $discharge_date = new DateTime($admission_details['effective_discharge_date']);
+                        $duration = $admission_date->diff($discharge_date)->days;
+                        $duration = $duration >= 0 ? $duration + 1 : 1; // Minimum 1 day charge
+                        
+                        $accommodation_cost = $duration * ($admission_details['price_per_day'] ?? 0);
+                        
+                        // FUTURE: Add logic to fetch and sum costs for other services (prescriptions, lab tests).
+                        
+                        $total_amount = $accommodation_cost;
+                        $description = "Invoice for admission #" . $admission_id . ". Accommodation for " . $duration . " day(s).";
+                        
+                        $stmt_insert = $conn->prepare("
+                            INSERT INTO transactions (user_id, description, amount, type, status, admission_id) 
+                            VALUES (?, ?, ?, 'payment', 'pending', ?)
+                        ");
+                        $stmt_insert->bind_param("isdi", $admission_details['patient_id'], $description, $total_amount, $admission_id);
+                        $stmt_insert->execute();
+                        $new_invoice_id = $conn->insert_id;
+                        $stmt_insert->close();
+
+                        log_activity($conn, $user_id, 'generate_invoice', $admission_details['patient_id'], "Generated invoice #{$new_invoice_id} for admission #{$admission_id}. Amount: {$total_amount}");
+                        
+                        $conn->commit();
+                        $transaction_active = false;
+                        $response = ['success' => true, 'message' => 'Invoice generated successfully.'];
+
+                    } catch (Exception $e) {
+                        if ($transaction_active) $conn->rollback();
+                        throw $e;
+                    }
                     break;
             }
         }
