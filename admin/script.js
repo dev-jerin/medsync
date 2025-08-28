@@ -178,6 +178,7 @@ document.addEventListener("DOMContentLoaded", function () {
              if (targetId === 'messenger') initializeMessenger();
             if (targetId === 'reports') generateReport();
             if (targetId === 'activity') fetchActivityLogs();
+            if (targetId === 'feedback') fetchFeedback();
             if (targetId === 'schedules' && doctorSelect.options.length <= 1) fetchDoctorsForScheduling();
         }
 
@@ -237,6 +238,20 @@ document.addEventListener("DOMContentLoaded", function () {
                 document.getElementById('low-blood-count').textContent = stats.low_blood_count;
                 lowBloodStat.style.display = 'flex';
             }
+            
+            // --- NEW: Fetch and display patient satisfaction ---
+            try {
+                const feedbackResponse = await fetch('admin.php?fetch=feedback_summary');
+                const feedbackResult = await feedbackResponse.json();
+                if (feedbackResult.success && feedbackResult.data.total_reviews > 0) {
+                    const avgRating = parseFloat(feedbackResult.data.average_rating).toFixed(1);
+                    document.getElementById('satisfaction-score').textContent = `${avgRating} / 5`;
+                    document.getElementById('patient-satisfaction-stat').style.display = 'flex';
+                }
+            } catch (error) {
+                console.error('Could not fetch feedback summary:', error);
+            }
+
 
             const chartData = [
                 stats.role_counts.user || 0,
@@ -1257,6 +1272,43 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     refreshLogsBtn.addEventListener('click', fetchActivityLogs);
+
+    // --- NEW: FETCH FEEDBACK ---
+    const fetchFeedback = async () => {
+        const container = document.getElementById('feedback-container');
+        container.innerHTML = `<p style="text-align:center;">Loading feedback...</p>`;
+
+        try {
+            const response = await fetch('admin.php?fetch=feedback_list');
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+
+            if (result.data.length > 0) {
+                container.innerHTML = result.data.map(item => {
+                    const ratingStars = '<i class="fas fa-star"></i>'.repeat(item.overall_rating) +
+                                      '<i class="far fa-star"></i>'.repeat(5 - item.overall_rating);
+                    
+                    return `
+                        <div class="feedback-item ${item.feedback_type}">
+                            <div class="feedback-header">
+                                <span class="patient-name">${item.patient_name}</span>
+                                <div class="feedback-meta">
+                                    <span class="feedback-type-badge ${item.feedback_type}">${item.feedback_type}</span>
+                                    <span class="star-rating">${ratingStars}</span>
+                                    <span>${new Date(item.created_at).toLocaleDateString()}</span>
+                                </div>
+                            </div>
+                            <p class="feedback-comment">${item.comments || 'No comment provided.'}</p>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                container.innerHTML = `<p style="text-align:center;">No patient feedback has been submitted yet.</p>`;
+            }
+        } catch (error) {
+            container.innerHTML = `<p style="text-align:center; color: var(--danger-color);">Failed to load feedback: ${error.message}</p>`;
+        }
+    };
 
     // --- SCHEDULES & NOTIFICATIONS PANELS ---
     const schedulesPanel = document.getElementById('schedules-panel');

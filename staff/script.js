@@ -10,6 +10,131 @@ document.addEventListener("DOMContentLoaded", function() {
     const pages = document.querySelectorAll('.main-content .page');
     const mainHeaderTitle = document.getElementById('main-header-title');
 
+    // --- DASHBOARD LOGIC (NEW & UPDATED) ---
+    let bedChartInstance = null; // To hold the chart object
+
+    async function fetchDashboardData() {
+        const dashboardPage = document.getElementById('dashboard-page');
+        if (!dashboardPage.classList.contains('active')) return; // Only run if dashboard is visible
+
+        const availableBedsEl = document.getElementById('stat-available-beds');
+        const lowStockEl = document.getElementById('stat-low-stock');
+        const pendingDischargesEl = document.getElementById('stat-pending-discharges');
+        const activePatientsEl = document.getElementById('stat-active-patients');
+        const dischargeTableBody = document.getElementById('pending-discharges-table-body');
+        const activityFeedContainer = document.getElementById('activity-feed-container');
+        const chartCanvas = document.getElementById('bedOccupancyChart');
+
+        // Set initial loading state only once
+        if (availableBedsEl.textContent !== '...') {
+            availableBedsEl.textContent = '...';
+            lowStockEl.textContent = '...';
+            pendingDischargesEl.textContent = '...';
+            activePatientsEl.textContent = '...';
+            dischargeTableBody.innerHTML = `<tr><td colspan="4" style="text-align: center;">Loading...</td></tr>`;
+            activityFeedContainer.innerHTML = `<p class="no-items-message" style="text-align:center;">Loading...</p>`;
+        }
+
+        try {
+            const response = await fetch('staff.php?fetch=dashboard_stats');
+            const result = await response.json();
+
+            if (result.success) {
+                const stats = result.data;
+                
+                // Update stat cards
+                availableBedsEl.textContent = stats.available_beds;
+                lowStockEl.textContent = stats.low_stock_items;
+                pendingDischargesEl.textContent = stats.pending_discharges;
+                activePatientsEl.textContent = stats.active_patients;
+
+                // Update pending discharges table
+                if (stats.discharge_table_data.length > 0) {
+                    dischargeTableBody.innerHTML = stats.discharge_table_data.map(req => {
+                        let statusText = '';
+                        let statusClass = '';
+                        switch(req.clearance_step) {
+                            case 'nursing': statusText = 'Nursing'; statusClass = 'pending-nursing'; break;
+                            case 'pharmacy': statusText = 'Pharmacy'; statusClass = 'pending-pharmacy'; break;
+                            case 'billing': statusText = 'Billing'; statusClass = 'pending-billing'; break;
+                        }
+                        return `
+                            <tr>
+                                <td data-label="Patient">${req.patient_name}</td>
+                                <td data-label="Location">${req.location || 'N/A'}</td>
+                                <td data-label="Status"><span class="status ${statusClass}">${statusText}</span></td>
+                                <td data-label="Action"><button class="action-btn btn-sm" onclick="navigateToDischargePage()">View</button></td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    dischargeTableBody.innerHTML = `<tr><td colspan="4" style="text-align: center;">No pending clearances.</td></tr>`;
+                }
+                
+                // Update activity feed
+                if(stats.recent_activity.length > 0) {
+                     activityFeedContainer.innerHTML = stats.recent_activity.map(log => `
+                        <div style="padding-bottom: 10px; border-bottom: 1px solid var(--border-color); margin-bottom: 10px;">
+                            <p style="margin:0; font-size: 0.9rem;"><strong>${log.user_name}</strong>: ${log.details}</p>
+                            <small style="color: var(--text-muted);">${timeSince(new Date(log.created_at))}</small>
+                        </div>
+                    `).join('');
+                } else {
+                    activityFeedContainer.innerHTML = `<p class="no-items-message" style="text-align:center;">No recent activity.</p>`;
+                }
+
+                // Update bed occupancy chart
+                if (bedChartInstance) {
+                    bedChartInstance.destroy(); // Destroy old chart before creating new one
+                }
+                const occupancyData = stats.occupancy_data;
+                const ctx = chartCanvas.getContext('2d');
+                const chartColors = {
+                    available: '#1abc9c',
+                    occupied: '#e74c3c',
+                    cleaning: '#f39c12',
+                    reserved: '#9b59b6'
+                };
+                
+                bedChartInstance = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: occupancyData.map(d => d.status.charAt(0).toUpperCase() + d.status.slice(1)),
+                        datasets: [{
+                            data: occupancyData.map(d => d.count),
+                            backgroundColor: occupancyData.map(d => chartColors[d.status] || '#bdc3c7'),
+                            borderColor: getComputedStyle(document.body).getPropertyValue('--background-panel'),
+                            borderWidth: 3
+                        }]
+                    },
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { 
+                                position: 'bottom', 
+                                labels: { 
+                                    color: getComputedStyle(document.body).getPropertyValue('--text-dark'),
+                                    padding: 15,
+                                    font: { size: 12 }
+                                } 
+                            }
+                        }
+                    }
+                });
+
+            } else { throw new Error(result.message); }
+        } catch (error) {
+            console.error('Failed to fetch dashboard data:', error);
+            dischargeTableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--danger-color);">Could not load data.</td></tr>`;
+        }
+    }
+    
+    // Helper function to navigate pages from dashboard buttons
+    window.navigateToDischargePage = function() {
+        document.querySelector('.nav-link[data-page="discharge"]').click();
+    };
+
     // --- Sidebar Navigation & Menu Toggling ---
     function toggleMenu() {
         sidebar.classList.toggle('active');
@@ -26,7 +151,19 @@ document.addEventListener("DOMContentLoaded", function() {
             e.preventDefault();
             const pageId = link.getAttribute('data-page');
             
+            // Activate the correct page
+            pages.forEach(page => page.classList.remove('active'));
+            document.getElementById(pageId + '-page').classList.add('active');
+
+            navLinks.forEach(navLink => navLink.classList.remove('active'));
+            link.classList.add('active');
+
+            const pageTitle = link.querySelector('span') ? link.querySelector('span').textContent.trim() : link.textContent.trim().replace(link.querySelector('i').textContent, '').trim();
+            mainHeaderTitle.textContent = pageTitle;
+
             // Fetch data for specific pages when their link is clicked
+            if (pageId === 'dashboard') fetchDashboardData();
+            if (pageId === 'live-tokens') initializeLiveTokens();
             if (pageId === 'callbacks') fetchCallbackRequests();
             if (pageId === 'messenger') initializeMessenger();
             if (pageId === 'inventory') initializeInventory();
@@ -37,16 +174,7 @@ document.addEventListener("DOMContentLoaded", function() {
             if (pageId === 'notifications') fetchAndRenderNotifications(document.querySelector('#notifications-page .notification-list-container'));
             if (pageId === 'discharge') initializeDischarge();
             if (pageId === 'billing') initializeBilling();
-
-
-            const pageTitle = link.querySelector('span') ? link.querySelector('span').textContent.trim() : link.textContent.trim().replace(link.querySelector('i').textContent, '').trim();
-            mainHeaderTitle.textContent = pageTitle;
-            
-            pages.forEach(page => page.classList.remove('active'));
-            document.getElementById(pageId + '-page').classList.add('active');
-
-            navLinks.forEach(navLink => navLink.classList.remove('active'));
-            link.classList.add('active');
+            if (pageId === 'pharmacy') initializePharmacy();
 
             if (window.innerWidth <= 992) closeMenu();
         });
@@ -60,6 +188,10 @@ document.addEventListener("DOMContentLoaded", function() {
     themeToggle.addEventListener('change', function() {
         document.body.classList.toggle('dark-theme', this.checked);
         localStorage.setItem('theme', this.checked ? 'dark-theme' : 'light-theme');
+        // Re-render chart with new theme colors if dashboard is active
+        if (document.getElementById('dashboard-page').classList.contains('active')) {
+             fetchDashboardData();
+        }
     });
     if (localStorage.getItem('theme') === 'dark-theme') {
         themeToggle.checked = true;
@@ -101,6 +233,7 @@ document.addEventListener("DOMContentLoaded", function() {
             };
         });
     };
+    
     // --- NOTIFICATION WIDGET LOGIC ---
     const notificationBell = document.getElementById('notification-bell');
     const notificationBadge = document.getElementById('notification-badge');
@@ -149,13 +282,9 @@ document.addEventListener("DOMContentLoaded", function() {
         container.innerHTML = notifications.map(n => {
             const isReadClass = n.is_read == 1 ? 'read' : 'unread';
             let sender = n.sender_name || 'System';
-            // Capitalize the first letter of the role
             let senderRole = n.sender_role ? n.sender_role.charAt(0).toUpperCase() + n.sender_role.slice(1) : '';
-
-            // Combine sender and role
             const senderDisplay = senderRole ? `${sender} (${senderRole})` : sender;
-            
-            const iconClass = 'fas fa-info-circle item-icon announcement'; // Default icon
+            const iconClass = 'fas fa-info-circle item-icon announcement';
 
             return `
                 <div class="notification-list-item ${isReadClass}" data-id="${n.id}">
@@ -195,6 +324,11 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!notificationPanel.contains(e.target) && !notificationBell.contains(e.target)) {
             notificationPanel.classList.remove('show');
         }
+        document.querySelectorAll('.bed-status-dropdown.active').forEach(dropdown => {
+            if (!dropdown.previousElementSibling.contains(e.target)) {
+                dropdown.classList.remove('active');
+            }
+        });
     });
 
     viewAllNotificationsLink.addEventListener('click', (e) => {
@@ -222,10 +356,34 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    // Initial and periodic fetch for notification count
+    // --- QUICK ACTIONS LOGIC (NEW) ---
+    document.getElementById('quick-action-admit')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        document.querySelector('.nav-link[data-page="bed-management"]').click();
+    });
+    document.getElementById('quick-action-add-user')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        document.querySelector('.nav-link[data-page="user-management"]').click();
+        setTimeout(() => document.getElementById('add-new-user-btn')?.click(), 100);
+    });
+    document.getElementById('quick-action-update-inventory')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        document.querySelector('.nav-link[data-page="inventory"]').click();
+    });
+    document.getElementById('quick-action-add-bed')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        document.querySelector('.nav-link[data-page="bed-management"]').click();
+        setTimeout(() => document.getElementById('add-new-bed-btn')?.click(), 100);
+    });
+
+
+    // --- INITIAL DATA FETCHES ---
     fetchUnreadNotificationCount();
-    setInterval(fetchUnreadNotificationCount, 60000); // every 60 seconds
-    
+    setInterval(fetchUnreadNotificationCount, 60000);
+    fetchDashboardData(); // Initial call for dashboard
+    setInterval(fetchDashboardData, 90000); // Auto-refresh every 90 seconds
+
+
     // --- CALLBACK REQUESTS LOGIC ---
     const callbacksTableBody = document.getElementById('callbacks-table-body');
 
@@ -1068,10 +1226,11 @@ document.addEventListener("DOMContentLoaded", function() {
         inventoryInitialized = true;
     }
 
-    // --- BED MANAGEMENT LOGIC ---
+    // --- BED MANAGEMENT LOGIC (REVISED) ---
     const bedManagementPage = document.getElementById('bed-management-page');
     let bedManagementInitialized = false;
     let bedManagementData = {}; // To store fetched data
+    let bedSearchDebounce;
 
     async function initializeBedManagement() {
         if (bedManagementInitialized) {
@@ -1086,6 +1245,10 @@ document.addEventListener("DOMContentLoaded", function() {
         document.getElementById('add-new-bed-btn').addEventListener('click', () => openBedModal('add'));
         document.getElementById('bed-location-filter').addEventListener('change', filterBedGrid);
         document.getElementById('bed-status-filter').addEventListener('change', filterBedGrid);
+        document.getElementById('bed-search-filter').addEventListener('input', () => {
+             clearTimeout(bedSearchDebounce);
+             bedSearchDebounce = setTimeout(filterBedGrid, 300);
+        });
 
         const bedModal = document.getElementById('bed-management-modal');
         bedModal.querySelectorAll('.modal-close-btn').forEach(btn => btn.addEventListener('click', () => bedModal.classList.remove('show')));
@@ -1099,7 +1262,8 @@ document.addEventListener("DOMContentLoaded", function() {
         document.getElementById('bed-assign-form').addEventListener('submit', handleAssignFormSubmit);
         document.getElementById('bed-discharge-btn').addEventListener('click', handleDischarge);
 
-        document.getElementById('bed-grid-container').addEventListener('click', (e) => {
+        const bedGridContainer = document.getElementById('bed-grid-container');
+        bedGridContainer.addEventListener('click', (e) => {
             const card = e.target.closest('.bed-card');
             if (!card) return;
 
@@ -1109,6 +1273,47 @@ document.addEventListener("DOMContentLoaded", function() {
                 openBedModal('edit', entity);
             } else if (e.target.closest('.manage-occupancy-btn')) {
                 openAssignModal(entity);
+            } else if (e.target.closest('.status-change-btn')) {
+                e.stopPropagation();
+                const dropdown = e.target.closest('.bed-actions').querySelector('.bed-status-dropdown');
+                if (dropdown) dropdown.classList.toggle('active');
+            } else if (e.target.closest('.status-option')) {
+                const newStatus = e.target.closest('.status-option').dataset.status;
+                handleDirectStatusChange(entity.id, entity.type, newStatus);
+            }
+        });
+
+        // Bulk update logic
+        const bulkUpdateButton = document.getElementById('bulk-update-beds-btn');
+        bedGridContainer.addEventListener('change', (e) => {
+            if (e.target.classList.contains('bed-selection-checkbox')) {
+                const selectedChecks = bedGridContainer.querySelectorAll('.bed-selection-checkbox:checked');
+                bulkUpdateButton.style.display = selectedChecks.length > 0 ? 'inline-flex' : 'none';
+            }
+        });
+
+        bulkUpdateButton.addEventListener('click', async () => {
+            const selectedChecks = bedGridContainer.querySelectorAll('.bed-selection-checkbox:checked');
+            const bedIdsToUpdate = Array.from(selectedChecks).map(cb => cb.dataset.id);
+            if (bedIdsToUpdate.length === 0) return;
+
+            const confirmed = await showConfirmation('Confirm Update', `Mark ${bedIdsToUpdate.length} bed(s)/room(s) as 'Available'?`);
+            if (confirmed) {
+                const formData = new FormData();
+                formData.append('action', 'bulkUpdateBedStatus');
+                formData.append('ids', JSON.stringify(bedIdsToUpdate));
+                formData.append('status', 'available');
+                formData.append('csrf_token', csrfToken);
+                try {
+                    const response = await fetch('staff.php', { method: 'POST', body: formData });
+                    const result = await response.json();
+                    if (!result.success) throw new Error(result.message);
+                    alert(result.message);
+                    bulkUpdateButton.style.display = 'none';
+                    await fetchAndRenderBedData();
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                }
             }
         });
 
@@ -1118,15 +1323,12 @@ document.addEventListener("DOMContentLoaded", function() {
     async function fetchAndRenderBedData() {
         const gridContainer = document.getElementById('bed-grid-container');
         gridContainer.innerHTML = '<p class="no-items-message">Loading bed data...</p>';
-
         try {
             const response = await fetch('staff.php?fetch=bed_management_data');
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
-
             bedManagementData = result.data;
             renderBedManagementPage(bedManagementData);
-
         } catch (error) {
             console.error("Fetch error:", error);
             gridContainer.innerHTML = `<p class="no-items-message" style="color:var(--danger-color)">Failed to load bed data.</p>`;
@@ -1143,7 +1345,6 @@ document.addEventListener("DOMContentLoaded", function() {
         locationFilter.innerHTML += `<option value="rooms">Private Rooms</option>`;
         locationFilter.value = currentVal;
 
-
         const gridContainer = document.getElementById('bed-grid-container');
         gridContainer.innerHTML = '';
         if (data.beds.length === 0 && data.rooms.length === 0) {
@@ -1151,42 +1352,52 @@ document.addEventListener("DOMContentLoaded", function() {
             return;
         }
         
-        const allAccommodations = [...data.beds, ...data.rooms].map(entity => {
-            return renderBedCard(entity);
-        }).join('');
-        
+        const allAccommodations = [...data.beds, ...data.rooms].map(renderBedCard).join('');
         gridContainer.innerHTML = allAccommodations;
-
         filterBedGrid();
     }
 
     function renderBedCard(entity) {
         const isBed = entity.type === 'bed';
-        const number = entity.number; // **FIXED**: Using the correct 'number' key
+        const number = entity.number;
         const locationName = isBed ? entity.ward_name : 'Private Room';
         const locationFilterValue = isBed ? `ward-${entity.ward_id}` : 'rooms';
+
+        const cleaningCheckbox = entity.status === 'cleaning'
+            ? `<div class="bed-card-checkbox"><input type="checkbox" class="bed-selection-checkbox" data-id="${entity.id}"></div>`
+            : '';
 
         let patientInfo = '';
         if (entity.status === 'occupied' && entity.patient_name) {
             let tooltip = `Patient: ${entity.patient_name} (${entity.patient_display_id})`;
-            if(entity.doctor_name) {
-                tooltip += `\nDoctor: ${entity.doctor_name}`;
-            }
+            if(entity.doctor_name) tooltip += `\nDoctor: ${entity.doctor_name}`;
             patientInfo = `<div class="patient-info" title="${tooltip}">
                 <i class="fas fa-user-circle"></i> ${entity.patient_name}
             </div>`;
         }
+
+        const statusChangeDropdown = entity.status !== 'occupied' ? `
+            <div class="bed-status-dropdown">
+                ${entity.status !== 'available' ? `<div class="status-option" data-status="available"><i class="fas fa-check-circle"></i> Available</div>` : ''}
+                ${entity.status !== 'cleaning' ? `<div class="status-option" data-status="cleaning"><i class="fas fa-broom"></i> Cleaning</div>` : ''}
+                ${entity.status !== 'reserved' ? `<div class="status-option" data-status="reserved"><i class="fas fa-user-clock"></i> Reserved</div>` : ''}
+            </div>
+        ` : '';
 
         return `
             <div class="bed-card status-${entity.status}" 
                  data-status="${entity.status}" 
                  data-location="${locationFilterValue}"
                  data-entity='${JSON.stringify(entity)}'
+                 data-search-terms="${number} ${entity.patient_name || ''} ${entity.doctor_name || ''}"
                  data-type="${entity.type}">
                 
+                ${cleaningCheckbox}
                 <div class="bed-card-header">
                     <div class="bed-id">${number}</div>
                     <div class="bed-actions">
+                        ${entity.status !== 'occupied' ? '<button class="action-btn-icon status-change-btn" title="Change Status"><i class="fas fa-exchange-alt"></i></button>' : ''}
+                        ${statusChangeDropdown}
                         <button class="action-btn-icon manage-occupancy-btn" title="Manage Occupancy"><i class="fas fa-user-plus"></i></button>
                         <button class="action-btn-icon edit-bed-btn" title="Edit Details"><i class="fas fa-pencil-alt"></i></button>
                     </div>
@@ -1200,26 +1411,28 @@ document.addEventListener("DOMContentLoaded", function() {
     function filterBedGrid() {
         const locationFilter = document.getElementById('bed-location-filter').value;
         const statusFilter = document.getElementById('bed-status-filter').value;
+        const searchQuery = document.getElementById('bed-search-filter').value.toLowerCase();
         const cards = document.querySelectorAll('#bed-grid-container .bed-card');
         let visibleCount = 0;
+        
         cards.forEach(card => {
             const showLocation = (locationFilter === 'all') || (card.dataset.location === locationFilter);
             const showStatus = (statusFilter === 'all') || (card.dataset.status === statusFilter);
-            if (showLocation && showStatus) {
+            const showSearch = (searchQuery === '') || (card.dataset.searchTerms.toLowerCase().includes(searchQuery));
+            
+            if (showLocation && showStatus && showSearch) {
                 card.style.display = 'flex';
                 visibleCount++;
             } else {
                 card.style.display = 'none';
             }
         });
+
+        const gridContainer = document.getElementById('bed-grid-container');
+        let noItemsMsg = gridContainer.querySelector('.no-items-message');
+        if (noItemsMsg) noItemsMsg.remove();
         if (visibleCount === 0) {
-            const gridContainer = document.getElementById('bed-grid-container');
-            if(!gridContainer.querySelector('.no-items-message')) {
-                 gridContainer.insertAdjacentHTML('beforeend', '<p class="no-items-message">No beds match the current filters.</p>');
-            }
-        } else {
-            const noItemsMsg = document.querySelector('#bed-grid-container .no-items-message');
-            if(noItemsMsg) noItemsMsg.remove();
+            gridContainer.insertAdjacentHTML('beforeend', '<p class="no-items-message">No beds match the current filters.</p>');
         }
     }
 
@@ -1246,7 +1459,7 @@ document.addEventListener("DOMContentLoaded", function() {
             typeSelect.disabled = false;
         } else { // 'edit' mode
             const type = entity.type;
-            const number = entity.number; // **FIXED**: Using the correct 'number' key
+            const number = entity.number;
             title.textContent = `Edit ${type.charAt(0).toUpperCase() + type.slice(1)} ${number}`;
             form.querySelector('#bed-form-action').value = 'updateBedOrRoom';
             form.querySelector('#bed-form-id').value = entity.id;
@@ -1272,12 +1485,10 @@ document.addEventListener("DOMContentLoaded", function() {
         const formData = new FormData(form);
         formData.append('csrf_token', csrfToken);
         
-        // When updating, we need to explicitly send the type, as the field is disabled.
         if (form.querySelector('#bed-form-id').value) {
             const type = document.getElementById('bed-form-type').value;
             formData.append('type', type);
         }
-
 
         try {
             const response = await fetch('staff.php', { method: 'POST', body: formData });
@@ -1310,7 +1521,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const submitBtn = document.getElementById('bed-assign-submit-btn');
         const dischargeBtn = document.getElementById('bed-discharge-btn');
 
-        if (entity.status === 'available' || entity.status === 'cleaning') {
+        if (entity.status === 'available' || entity.status === 'cleaning' || entity.status === 'reserved') {
             assignSection.style.display = 'block';
             dischargeSection.style.display = 'none';
             submitBtn.style.display = 'inline-flex';
@@ -1319,7 +1530,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
             const patientSelect = document.getElementById('bed-assign-patient-id');
             patientSelect.innerHTML = '<option value="">-- Select Patient --</option>';
-            // Add currently available patients
             bedManagementData.available_patients.forEach(p => {
                 patientSelect.innerHTML += `<option value="${p.id}">${p.name} (${p.display_user_id})</option>`;
             });
@@ -1338,14 +1548,26 @@ document.addEventListener("DOMContentLoaded", function() {
             
             document.getElementById('bed-assign-patient-name').textContent = `${entity.patient_name} (${entity.patient_display_id})`;
             document.getElementById('bed-assign-doctor-name').textContent = entity.doctor_name || 'N/A';
-        } else { // Reserved, etc.
-            assignSection.style.display = 'none';
-            dischargeSection.style.display = 'none';
-            submitBtn.style.display = 'none';
-            dischargeBtn.style.display = 'none';
         }
 
         modal.classList.add('show');
+    }
+    
+    async function handleDirectStatusChange(id, type, newStatus) {
+        const formData = new FormData();
+        formData.append('action', 'updateBedOrRoom');
+        formData.append('id', id);
+        formData.append('type', type);
+        formData.append('status', newStatus);
+        formData.append('csrf_token', csrfToken);
+        try {
+            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            await fetchAndRenderBedData(); // Just refresh on success
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
     }
 
     async function handleAssignFormSubmit(e) {
@@ -1757,7 +1979,9 @@ document.addEventListener("DOMContentLoaded", function() {
                 openDischargeClearanceModal(dischargeId);
             }
         });
-
+        
+        const dischargeModal = document.getElementById('discharge-clearance-modal');
+        dischargeModal.querySelectorAll('.modal-close-btn').forEach(btn => btn.addEventListener('click', () => dischargeModal.classList.remove('show')));
         document.getElementById('discharge-clearance-form').addEventListener('submit', handleDischargeClearanceSubmit);
 
         fetchAndRenderDischarges();
@@ -1806,7 +2030,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     break;
             }
             if (req.is_cleared == 1) {
-                statusText = `Cleared by ${req.cleared_by_name}`;
+                statusText = `Cleared by ${req.cleared_by_name || 'Staff'}`;
                 statusClass = 'completed';
             }
 
@@ -1815,7 +2039,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     <td data-label="Req. ID">D-${String(req.discharge_id).padStart(4, '0')}</td>
                     <td data-label="Patient">${req.patient_name} (${req.patient_display_id})</td>
                     <td data-label="Status"><span class="status ${statusClass}">${statusText}</span></td>
-                    <td data-label="Doctor">${req.doctor_name}</td>
+                    <td data-label="Doctor">${req.doctor_name || 'N/A'}</td>
                     <td data-label="Action">
                         ${req.is_cleared == 0 ? `<button class="action-btn process-clearance-btn" data-id="${req.discharge_id}"><i class="fas fa-check"></i> Process</button>` : `<button class="action-btn" disabled><i class="fas fa-check-double"></i> Done</button>`}
                     </td>
@@ -1872,6 +2096,20 @@ document.addEventListener("DOMContentLoaded", function() {
             }, 300);
         });
 
+        const billingTable = document.getElementById('billing-table');
+        billingTable.addEventListener('click', (e) => {
+            const paymentBtn = e.target.closest('.process-payment-btn');
+            if (paymentBtn) {
+                const transactionId = paymentBtn.dataset.transactionId;
+                const amount = paymentBtn.dataset.amount;
+                openPaymentModal(transactionId, amount);
+            }
+        });
+        
+        const paymentModal = document.getElementById('process-payment-modal');
+        paymentModal.querySelectorAll('.modal-close-btn').forEach(btn => btn.addEventListener('click', () => paymentModal.classList.remove('show')));
+        document.getElementById('process-payment-form').addEventListener('submit', handlePaymentSubmit);
+
         billingInitialized = true;
     }
 
@@ -1900,8 +2138,13 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         tableBody.innerHTML = invoices.map(inv => {
-            const statusClass = inv.status === 'paid' ? 'paid' : (inv.status === 'pending' ? 'unpaid' : 'unpaid');
+            const isPaid = inv.status === 'paid';
+            const statusClass = isPaid ? 'paid' : 'unpaid';
             const statusText = inv.status.charAt(0).toUpperCase() + inv.status.slice(1);
+            
+            const actions = isPaid
+                ? `<button class="action-btn" disabled><i class="fas fa-check-circle"></i> Paid</button>`
+                : `<button class="action-btn process-payment-btn" data-transaction-id="${inv.id}" data-amount="${inv.amount}"><i class="fas fa-money-check-alt"></i> Process Payment</button>`;
 
             return `
                 <tr>
@@ -1910,10 +2153,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     <td data-label="Amount">₹${parseFloat(inv.amount).toFixed(2)}</td>
                     <td data-label="Date">${new Date(inv.created_at).toLocaleDateString()}</td>
                     <td data-label="Status"><span class="status ${statusClass}">${statusText}</span></td>
-                    <td data-label="Actions">
-                        <button class="action-btn">View</button>
-                        <button class="action-btn">Print</button>
-                    </td>
+                    <td data-label="Actions">${actions}</td>
                 </tr>
             `;
         }).join('');
@@ -1926,7 +2166,6 @@ document.addEventListener("DOMContentLoaded", function() {
         clearSelectedBillablePatient();
         modal.classList.add('show');
 
-        // Attach event listeners for this specific modal instance
         const searchInput = document.getElementById('invoice-patient-search');
         const resultsContainer = document.getElementById('invoice-patient-search-results');
         const clearBtn = document.getElementById('invoice-clear-selected-patient-btn');
@@ -1953,7 +2192,6 @@ document.addEventListener("DOMContentLoaded", function() {
         clearBtn.addEventListener('click', clearSelectedBillablePatient);
         form.addEventListener('submit', formSubmitHandler);
 
-        // Cleanup listeners when modal is closed
         modal.querySelectorAll('.modal-close-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 modal.classList.remove('show');
@@ -2037,4 +2275,285 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
+    function openPaymentModal(transactionId, amount) {
+        const modal = document.getElementById('process-payment-modal');
+        document.getElementById('payment-invoice-id').textContent = `INV-${String(transactionId).padStart(4, '0')}`;
+        document.getElementById('payment-transaction-id').value = transactionId;
+        document.getElementById('payment-amount').textContent = parseFloat(amount).toFixed(2);
+        modal.classList.add('show');
+    }
+
+    async function handlePaymentSubmit(e) {
+        e.preventDefault();
+        const form = e.target;
+        const modal = form.closest('.modal-overlay');
+        const formData = new FormData(form);
+        formData.append('csrf_token', csrfToken);
+
+        try {
+            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.message);
+            
+            alert(result.message);
+            modal.classList.remove('show');
+            fetchAndRenderInvoices(); // Refresh the billing table
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+
+    // --- PHARMACY LOGIC ---
+    const pharmacyPage = document.getElementById('pharmacy-page');
+    let pharmacyInitialized = false;
+    let pharmacySearchDebounce;
+
+    function initializePharmacy() {
+        if (pharmacyInitialized || !pharmacyPage) return;
+
+        const searchInput = document.getElementById('pharmacy-search');
+        searchInput.addEventListener('input', () => {
+            clearTimeout(pharmacySearchDebounce);
+            pharmacySearchDebounce = setTimeout(() => fetchAndRenderPendingPrescriptions(searchInput.value), 300);
+        });
+
+        const prescriptionsTable = document.getElementById('pharmacy-prescriptions-table');
+        prescriptionsTable.addEventListener('click', e => {
+            const createBillBtn = e.target.closest('.create-bill-btn');
+            if (createBillBtn) {
+                const row = createBillBtn.closest('tr');
+                openBillingModal(row.dataset.prescriptionId, row.dataset.patientName, row.dataset.doctorName);
+            }
+        });
+        
+        document.getElementById('pharmacy-billing-form').addEventListener('submit', handlePharmacyBillSubmit);
+        document.getElementById('pharmacy-billing-modal').querySelectorAll('.modal-close-btn').forEach(btn => btn.addEventListener('click', () => document.getElementById('pharmacy-billing-modal').classList.remove('show')));
+
+        fetchAndRenderPendingPrescriptions();
+        pharmacyInitialized = true;
+    }
+
+    async function fetchAndRenderPendingPrescriptions(search = '') {
+        const tableBody = document.getElementById('pharmacy-prescriptions-table')?.querySelector('tbody');
+        if (!tableBody) return;
+        tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">Loading...</td></tr>`;
+
+        try {
+            const response = await fetch(`staff.php?fetch=pending_prescriptions&search=${encodeURIComponent(search)}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            
+            if (result.data.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No pending prescriptions found.</td></tr>`;
+                return;
+            }
+
+            tableBody.innerHTML = result.data.map(p => `
+                <tr data-prescription-id="${p.id}" data-patient-name="${p.patient_name}" data-doctor-name="${p.doctor_name}">
+                    <td data-label="Presc. ID">PRES-${String(p.id).padStart(4, '0')}</td>
+                    <td data-label="Patient Name">${p.patient_name}</td>
+                    <td data-label="Doctor Name">${p.doctor_name}</td>
+                    <td data-label="Date">${p.prescription_date}</td>
+                    <td data-label="Status"><span class="status pending">${p.status}</span></td>
+                    <td data-label="Actions"><button class="action-btn create-bill-btn"><i class="fas fa-file-invoice"></i> Create Bill</button></td>
+                </tr>
+            `).join('');
+
+        } catch (error) {
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
+        }
+    }
+
+    async function openBillingModal(prescriptionId, patientName, doctorName) {
+        const modal = document.getElementById('pharmacy-billing-modal');
+        const itemsTbody = document.getElementById('billing-items-tbody');
+        itemsTbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Loading prescription items...</td></tr>';
+        
+        document.getElementById('billing-prescription-id').value = prescriptionId;
+        document.getElementById('billing-patient-name').textContent = patientName;
+        document.getElementById('billing-doctor-name').textContent = doctorName;
+        document.getElementById('billing-total-amount').textContent = '0.00';
+        
+        modal.classList.add('show');
+
+        try {
+            const response = await fetch(`staff.php?fetch=prescription_details&id=${prescriptionId}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            
+            itemsTbody.innerHTML = result.data.map(item => {
+                const remainingToDispense = item.quantity_prescribed - item.quantity_dispensed;
+                const maxDispensable = Math.min(remainingToDispense, item.stock_quantity);
+                return `
+                    <tr data-unit-price="${item.unit_price}">
+                        <td data-label="Medicine">${item.medicine_name}</td>
+                        <td data-label="Prescribed">${item.quantity_prescribed}</td>
+                        <td data-label="In Stock">${item.stock_quantity}</td>
+                        <td data-label="Dispense Qty">
+                            <input type="number" class="dispense-qty-input" name="item_${item.medicine_id}" 
+                                   data-medicine-id="${item.medicine_id}"
+                                   value="${maxDispensable}" min="0" max="${maxDispensable}">
+                        </td>
+                        <td data-label="Unit Price">₹${parseFloat(item.unit_price).toFixed(2)}</td>
+                        <td data-label="Subtotal" class="subtotal">₹0.00</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            itemsTbody.addEventListener('input', e => {
+                if (e.target.classList.contains('dispense-qty-input')) {
+                    updateBillingTotals();
+                }
+            });
+            updateBillingTotals();
+
+        } catch (error) {
+            itemsTbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
+        }
+    }
+
+    function updateBillingTotals() {
+        let total = 0;
+        document.querySelectorAll('#billing-items-tbody tr').forEach(row => {
+            const qtyInput = row.querySelector('.dispense-qty-input');
+            const quantity = parseInt(qtyInput.value, 10) || 0;
+            const unitPrice = parseFloat(row.dataset.unitPrice);
+            const subtotal = quantity * unitPrice;
+            row.querySelector('.subtotal').textContent = `₹${subtotal.toFixed(2)}`;
+            total += subtotal;
+        });
+        document.getElementById('billing-total-amount').textContent = total.toFixed(2);
+    }
+
+    async function handlePharmacyBillSubmit(e) {
+        e.preventDefault();
+        const form = e.target;
+        const modal = form.closest('.modal-overlay');
+        const submitBtn = modal.querySelector('button[type="submit"]');
+
+        const items = [];
+        document.querySelectorAll('.dispense-qty-input').forEach(input => {
+            const quantity = parseInt(input.value, 10);
+            if (quantity > 0) {
+                items.push({
+                    medicine_id: input.dataset.medicineId,
+                    quantity: quantity
+                });
+            }
+        });
+
+        const formData = new FormData();
+        formData.append('action', 'create_pharmacy_bill');
+        formData.append('csrf_token', csrfToken);
+        formData.append('prescription_id', document.getElementById('billing-prescription-id').value);
+        formData.append('payment_mode', document.getElementById('billing-payment-mode').value);
+        formData.append('items', JSON.stringify(items));
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+
+        try {
+            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.message);
+
+            modal.classList.remove('show');
+            const confirmed = await showConfirmation(
+                'Success!', 
+                `${result.message} Would you like to download the receipt now?`
+            );
+            
+            if (confirmed) {
+                window.open(`staff.php?action=download_pharmacy_bill&id=${result.bill_id}`, '_blank');
+            }
+
+            fetchAndRenderPendingPrescriptions();
+
+        } catch (error) {
+            alert('Error: ' + error.message);
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Complete Payment & Dispense';
+        }
+    }
+
+    // --- LIVE TOKEN LOGIC ---
+    const liveTokensPage = document.getElementById('live-tokens-page');
+    let liveTokensInitialized = false;
+    let tokenRefreshInterval;
+
+    function initializeLiveTokens() {
+        if (liveTokensInitialized || !liveTokensPage) return;
+
+        const doctorFilter = document.getElementById('token-doctor-filter');
+        
+        // Fetch doctors for the filter dropdown
+        fetch('staff.php?fetch=active_doctors')
+            .then(res => res.json())
+            .then(result => {
+                if (result.success) {
+                    doctorFilter.innerHTML = '<option value="">-- Select a Doctor --</option>';
+                    result.data.forEach(doc => {
+                        doctorFilter.innerHTML += `<option value="${doc.id}">${doc.name}</option>`;
+                    });
+                }
+            });
+
+        doctorFilter.addEventListener('change', () => {
+            const doctorId = doctorFilter.value;
+            clearInterval(tokenRefreshInterval); // Stop previous interval
+            if (doctorId) {
+                fetchAndRenderTokens(doctorId);
+                // Auto-refresh the token view every 20 seconds
+                tokenRefreshInterval = setInterval(() => fetchAndRenderTokens(doctorId), 20000); 
+            } else {
+                document.getElementById('token-display-container').innerHTML = '<p class="no-items-message">Please select a doctor to see their live token queue for today.</p>';
+            }
+        });
+
+        liveTokensInitialized = true;
+    }
+
+    async function fetchAndRenderTokens(doctorId) {
+        const container = document.getElementById('token-display-container');
+        
+        try {
+            const response = await fetch(`staff.php?fetch=fetch_tokens&doctor_id=${doctorId}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+
+            const tokenData = result.data;
+            if (Object.keys(tokenData).length === 0) {
+                container.innerHTML = `<p class="no-items-message">No appointments or tokens found for this doctor today.</p>`;
+                return;
+            }
+
+            let html = '';
+            for (const slotTitle in tokenData) {
+                html += `<h4 class="token-slot-header">${slotTitle}</h4>`;
+                html += '<div class="token-grid-container">'; 
+                
+                tokenData[slotTitle].forEach(token => {
+                    html += `
+                        <div class="token-card status-${token.token_status.replace('_', '-')}">
+                            <div class="token-number">${token.token_number || 'N/A'}</div>
+                            <div class="token-patient-info">
+                                <div class="patient-name">${token.patient_name}</div>
+                                <div class="patient-id">${token.patient_display_id}</div>
+                            </div>
+                            <div class="token-status">${token.token_status.replace('_', ' ')}</div>
+                        </div>
+                    `;
+                });
+
+                html += '</div>';
+            }
+            container.innerHTML = html;
+
+        } catch (error) {
+            console.error('Failed to fetch tokens:', error);
+            container.innerHTML = `<p class="no-items-message" style="color: var(--danger-color)">Could not load token data.</p>`;
+        }
+    }
 });

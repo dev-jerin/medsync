@@ -1,5 +1,5 @@
 -- This is the complete and updated database schema for MedSync.
--- Version 2.0
+-- Version 2.1
 -- This version includes improvements for data integrity, performance, and clarity.
 -- Key changes include:
 -- 1. Merged 'beds' and 'rooms' into a single 'accommodations' table.
@@ -7,6 +7,8 @@
 -- 3. Enforced foreign key for 'staff.assigned_department'.
 -- 4. Added performance-enhancing indexes on frequently queried columns.
 -- 5. Improved naming conventions for clarity (e.g., 'is_active', 'is_available').
+-- 6. Integrated admission_id into prescriptions and transactions for better billing linkage.
+-- 7. Added a cost column to lab_results.
 
 CREATE DATABASE IF NOT EXISTS `medsync` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE `medsync`;
@@ -209,6 +211,25 @@ CREATE TABLE `accommodations` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
+-- Table structure for table `admissions`
+--
+CREATE TABLE `admissions` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `patient_id` int(11) NOT NULL,
+  `doctor_id` int(11) DEFAULT NULL,
+  `accommodation_id` int(11) DEFAULT NULL,
+  `admission_date` datetime NOT NULL,
+  `discharge_date` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `patient_id` (`patient_id`),
+  KEY `doctor_id` (`doctor_id`),
+  KEY `fk_admissions_accommodation` (`accommodation_id`),
+  CONSTRAINT `fk_admissions_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_admissions_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_admissions_accommodation` FOREIGN KEY (`accommodation_id`) REFERENCES `accommodations` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
 -- Table structure for table `appointments`
 --
 CREATE TABLE `appointments` (
@@ -216,22 +237,28 @@ CREATE TABLE `appointments` (
   `user_id` int(11) NOT NULL,
   `doctor_id` int(11) NOT NULL,
   `appointment_date` datetime NOT NULL,
+  `slot_start_time` time DEFAULT NULL,
+  `slot_end_time` time DEFAULT NULL,
+  `token_number` int(11) DEFAULT NULL,
+  `token_status` enum('waiting','in_consultation','completed','skipped') NOT NULL DEFAULT 'waiting',
   `status` enum('scheduled','completed','cancelled') NOT NULL DEFAULT 'scheduled',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
   KEY `doctor_id` (`doctor_id`),
-  KEY `appointment_date` (`appointment_date`), -- Index for faster date-based lookups
-  CONSTRAINT `fk_appointments_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `fk_appointments_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+  KEY `appointment_date` (`appointment_date`),
+  KEY `idx_doctor_slot_token` (`doctor_id`,`appointment_date`,`slot_start_time`,`token_number`),
+  CONSTRAINT `fk_appointments_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_appointments_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Table structure for table `transactions`
+-- Table structure for table `transactions` (UPDATED)
 --
 CREATE TABLE `transactions` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `user_id` int(11) NOT NULL,
+  `admission_id` INT(11) DEFAULT NULL,
   `description` varchar(255) NOT NULL,
   `amount` decimal(10,2) NOT NULL,
   `type` enum('payment','refund') NOT NULL DEFAULT 'payment',
@@ -241,7 +268,9 @@ CREATE TABLE `transactions` (
   `paid_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
-  CONSTRAINT `fk_transactions_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+  KEY `fk_transaction_admission` (`admission_id`),
+  CONSTRAINT `fk_transactions_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_transaction_admission` FOREIGN KEY (`admission_id`) REFERENCES `admissions`(`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -263,25 +292,6 @@ CREATE TABLE `notifications` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Table structure for table `admissions`
---
-CREATE TABLE `admissions` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `patient_id` int(11) NOT NULL,
-  `doctor_id` int(11) DEFAULT NULL,
-  `accommodation_id` int(11) DEFAULT NULL,
-  `admission_date` datetime NOT NULL,
-  `discharge_date` datetime DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  KEY `patient_id` (`patient_id`),
-  KEY `doctor_id` (`doctor_id`),
-  KEY `fk_admissions_accommodation` (`accommodation_id`),
-  CONSTRAINT `fk_admissions_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `fk_admissions_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `fk_admissions_accommodation` FOREIGN KEY (`accommodation_id`) REFERENCES `accommodations` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
 -- Table structure for table `system_settings`
 --
 CREATE TABLE `system_settings` (
@@ -293,7 +303,7 @@ CREATE TABLE `system_settings` (
 INSERT INTO `system_settings` (`setting_key`, `setting_value`) VALUES ('gmail_app_password', 'sswyqzegdpyixbyw');
 
 --
--- Table structure for table `lab_results`
+-- Table structure for table `lab_results` (UPDATED)
 --
 CREATE TABLE `lab_results` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -303,6 +313,7 @@ CREATE TABLE `lab_results` (
   `test_name` varchar(255) NOT NULL,
   `test_date` date NOT NULL,
   `result_details` text DEFAULT NULL,
+  `cost` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
   `attachment_path` varchar(255) DEFAULT NULL COMMENT 'Path to an uploaded file (e.g., PDF)',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
@@ -351,12 +362,13 @@ CREATE TABLE `messages` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Table structure for table `prescriptions`
+-- Table structure for table `prescriptions` (UPDATED)
 --
 CREATE TABLE `prescriptions` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `patient_id` int(11) NOT NULL,
   `doctor_id` int(11) NOT NULL,
+  `admission_id` INT(11) DEFAULT NULL,
   `prescription_date` date NOT NULL,
   `status` enum('pending','dispensed','partial','cancelled') NOT NULL DEFAULT 'pending',
   `notes` text DEFAULT NULL,
@@ -365,8 +377,10 @@ CREATE TABLE `prescriptions` (
   KEY `patient_id` (`patient_id`),
   KEY `doctor_id` (`doctor_id`),
   KEY `prescription_date` (`prescription_date`), -- Index for faster date-based searches
+  KEY `fk_prescription_admission` (`admission_id`),
   CONSTRAINT `fk_prescriptions_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `fk_prescriptions_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+  CONSTRAINT `fk_prescriptions_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_prescription_admission` FOREIGN KEY (`admission_id`) REFERENCES `admissions`(`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -379,6 +393,7 @@ CREATE TABLE `prescription_items` (
   `dosage` varchar(100) NOT NULL,
   `frequency` varchar(100) NOT NULL,
   `quantity_prescribed` int(11) NOT NULL DEFAULT 1,
+  `quantity_dispensed` int(11) NOT NULL DEFAULT 0,
   `is_dispensed` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `prescription_id` (`prescription_id`),
@@ -405,3 +420,45 @@ CREATE TABLE `discharge_clearance` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 
+--
+-- Table structure for table `feedback`
+--
+CREATE TABLE `feedback` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `patient_id` INT(11) NOT NULL,
+  `appointment_id` INT(11) DEFAULT NULL COMMENT 'Link feedback to a specific appointment',
+  `admission_id` INT(11) DEFAULT NULL COMMENT 'Link feedback to a hospital stay',
+  `overall_rating` TINYINT(1) NOT NULL COMMENT 'Rating from 1 to 5',
+  `doctor_rating` TINYINT(1) DEFAULT NULL,
+  `nursing_rating` TINYINT(1) DEFAULT NULL,
+  `staff_rating` TINYINT(1) DEFAULT NULL,
+  `cleanliness_rating` TINYINT(1) DEFAULT NULL,
+  `comments` TEXT DEFAULT NULL,
+  `feedback_type` ENUM('Suggestion', 'Complaint', 'Praise') NOT NULL DEFAULT 'Suggestion',
+  `is_anonymous` TINYINT(1) NOT NULL DEFAULT 0,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `patient_id` (`patient_id`),
+  KEY `appointment_id` (`appointment_id`),
+  KEY `admission_id` (`admission_id`),
+  CONSTRAINT `fk_feedback_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_feedback_appointment` FOREIGN KEY (`appointment_id`) REFERENCES `appointments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_feedback_admission` FOREIGN KEY (`admission_id`) REFERENCES `admissions` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Table structure for table `pharmacy_bills`
+--
+CREATE TABLE `pharmacy_bills` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `prescription_id` INT(11) NOT NULL,
+  `transaction_id` INT(11) NOT NULL,
+  `created_by_staff_id` INT(11) NOT NULL,
+  `total_amount` DECIMAL(10, 2) NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_prescription_bill` (`prescription_id`),
+  CONSTRAINT `fk_bill_prescription` FOREIGN KEY (`prescription_id`) REFERENCES `prescriptions` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_bill_transaction` FOREIGN KEY (`transaction_id`) REFERENCES `transactions` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_bill_staff` FOREIGN KEY (`created_by_staff_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

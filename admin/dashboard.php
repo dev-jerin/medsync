@@ -135,6 +135,7 @@ $conn->close();
                             Messenger</a></li>
                     <li><a href="#" class="nav-link" data-target="reports"><i class="fas fa-chart-line"></i> Reports</a>
                     </li>
+                    <li><a href="#" class="nav-link" data-target="feedback"><i class="fas fa-comment-medical"></i> Patient Feedback</a></li>
                     <li><a href="#" class="nav-link" data-target="activity"><i class="fas fa-history"></i> Activity
                             Logs</a></li>
                     <li><a href="#" class="nav-link" data-target="settings"><i class="fas fa-user-edit"></i> My
@@ -207,6 +208,13 @@ $conn->close();
                         <div class="info">
                             <div class="value" id="pending-appointments-stat">0</div>
                             <div class="label">Pending Appointments</div>
+                        </div>
+                    </div>
+                    <div class="stat-card purple" id="patient-satisfaction-stat" style="display: none;">
+                        <div class="icon"><i class="fas fa-star-half-alt"></i></div>
+                        <div class="info">
+                            <div class="value" id="satisfaction-score">0/5</div>
+                            <div class="label">Patient Satisfaction</div>
                         </div>
                     </div>
                     <div class="stat-card red" id="low-medicine-stat" style="display: none;">
@@ -664,6 +672,15 @@ $conn->close();
                     </form>
                 </div>
             </div>
+            
+            <div id="feedback-panel" class="content-panel">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <h2>Patient Feedback & Ratings</h2>
+                    </div>
+                <div id="feedback-container">
+                    </div>
+            </div>
+            
         </main>
     </div>
 

@@ -304,6 +304,9 @@ body.dark-mode .nav-dropdown a {
 .stat-card.orange .icon { color: var(--warning-color); }
 .stat-card.red { border-left-color: var(--danger-color); }
 .stat-card.red .icon { color: var(--danger-color); }
+.stat-card.purple { border-left-color: #8B5CF6; }
+.stat-card.purple .icon { color: #8B5CF6; }
+
 
 .stat-card .info .value {
     font-size: 1.75rem;
@@ -696,6 +699,66 @@ input:checked+.slider:before { transform: translateX(24px); }
 .search-result-item:last-child { border-bottom: none; }
 .search-result-item:hover { background-color: var(--bg-grey); }
 .search-result-item.none { cursor: default; color: var(--text-muted); }
+
+/* --- PATIENT FEEDBACK STYLES --- */
+#feedback-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.feedback-item {
+    background-color: var(--bg-grey);
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    border-left: 4px solid var(--primary-color);
+}
+
+.feedback-item.Complaint { border-left-color: var(--danger-color); }
+.feedback-item.Praise { border-left-color: var(--success-color); }
+.feedback-item.Suggestion { border-left-color: var(--warning-color); }
+
+.feedback-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.feedback-header .patient-name {
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.feedback-header .feedback-meta {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.feedback-type-badge {
+    padding: 0.25rem 0.6rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: white;
+}
+.feedback-type-badge.Suggestion { background-color: var(--warning-color); }
+.feedback-type-badge.Praise { background-color: var(--success-color); }
+.feedback-type-badge.Complaint { background-color: var(--danger-color); }
+
+.star-rating .fa-star {
+    color: #FFC107; /* Gold color for stars */
+}
+
+.feedback-comment {
+    color: var(--text-dark);
+    line-height: 1.6;
+}
 
 /* --- MOBILE & RESPONSIVE --- */
 .hamburger-btn { display: none; background: none; border: none; font-size: 1.5rem; color: var(--text-dark); cursor: pointer; z-index: 1001; }

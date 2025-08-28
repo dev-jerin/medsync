@@ -10,6 +10,11 @@
 
 // config.php should be included first to initialize the session and db connection.
 require_once '../config.php';
+require_once '../vendor/autoload.php'; // Autoload Composer dependencies
+
+// All 'use' statements must be at the top of the file.
+use Dompdf\Dompdf;
+use Dompdf\Options;
 
 /**
  * Logs a specific action to the activity_logs table.
@@ -23,6 +28,9 @@ function log_activity($conn, $user_id, $action, $target_user_id = null, $details
 /**
  * Generates a unique, sequential display ID for a new user.
  */
+/**
+ * Generates a unique, sequential display ID for a new user.
+ */
 function generateDisplayId($role, $conn) {
     $prefix_map = ['admin' => 'A', 'doctor' => 'D', 'staff' => 'S', 'user' => 'U'];
     if (!isset($prefix_map[$role])) {
@@ -30,7 +38,8 @@ function generateDisplayId($role, $conn) {
     }
     $prefix = $prefix_map[$role];
 
-    $conn->begin_transaction();
+    // This function will now run inside the caller's transaction.
+    // DO NOT begin, commit, or rollback transactions here.
     try {
         // Ensure the counter exists for the role
         $init_stmt = $conn->prepare("INSERT INTO role_counters (role_prefix, last_id) VALUES (?, 0) ON DUPLICATE KEY UPDATE role_prefix = role_prefix");
@@ -38,7 +47,7 @@ function generateDisplayId($role, $conn) {
         $init_stmt->execute();
         $init_stmt->close();
         
-        // Atomically fetch and update the counter
+        // Atomically fetch and update the counter (FOR UPDATE works within an active transaction)
         $stmt = $conn->prepare("SELECT last_id FROM role_counters WHERE role_prefix = ? FOR UPDATE");
         $stmt->bind_param("s", $prefix);
         $stmt->execute();
@@ -48,14 +57,53 @@ function generateDisplayId($role, $conn) {
         $update_stmt = $conn->prepare("UPDATE role_counters SET last_id = ? WHERE role_prefix = ?");
         $update_stmt->bind_param("is", $new_id_num, $prefix);
         $update_stmt->execute();
+        $update_stmt->close();
         
-        $conn->commit();
         return $prefix . str_pad($new_id_num, 4, '0', STR_PAD_LEFT);
     } catch (Exception $e) {
-        $conn->rollback();
+        // Let the calling function handle any exceptions and rollbacks
         throw $e;
     }
 }
+
+/**
+ * Checks if all discharge clearances for an admission are complete and finalizes the discharge.
+ */
+function checkAndFinalizeDischarge($conn, $admission_id) {
+    // Check if all 3 steps are cleared
+    $stmt = $conn->prepare("SELECT COUNT(id) as cleared_count FROM discharge_clearance WHERE admission_id = ? AND is_cleared = 1");
+    $stmt->bind_param("i", $admission_id);
+    $stmt->execute();
+    $cleared_count = $stmt->get_result()->fetch_assoc()['cleared_count'];
+    $stmt->close();
+
+    if ($cleared_count === 3) {
+        // Fetch accommodation ID before updating admission
+        $stmt_adm = $conn->prepare("SELECT accommodation_id, patient_id FROM admissions WHERE id = ?");
+        $stmt_adm->bind_param("i", $admission_id);
+        $stmt_adm->execute();
+        $admission_data = $stmt_adm->get_result()->fetch_assoc();
+        $stmt_adm->close();
+
+        if ($admission_data) {
+            // 1. Finalize admission record
+            $stmt_discharge = $conn->prepare("UPDATE admissions SET discharge_date = NOW() WHERE id = ? AND discharge_date IS NULL");
+            $stmt_discharge->bind_param("i", $admission_id);
+            $stmt_discharge->execute();
+            $stmt_discharge->close();
+
+            // 2. Update accommodation status to 'cleaning'
+            if ($admission_data['accommodation_id']) {
+                $stmt_acc = $conn->prepare("UPDATE accommodations SET status = 'cleaning', patient_id = NULL, doctor_id = NULL WHERE id = ?");
+                $stmt_acc->bind_param("i", $admission_data['accommodation_id']);
+                $stmt_acc->execute();
+                $stmt_acc->close();
+            }
+             log_activity($conn, $_SESSION['user_id'], 'finalize_discharge', $admission_data['patient_id'], "All clearances met. Patient from admission #{$admission_id} discharged.");
+        }
+    }
+}
+
 
 // --- AJAX API Endpoint Logic ---
 // This block handles all AJAX requests from the staff dashboard script.
@@ -81,6 +129,132 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
         // Handle GET requests for fetching data
         if (isset($_GET['fetch'])) {
             switch ($_GET['fetch']) {
+                case 'dashboard_stats':
+                    $stats = [];
+
+                    // 1. Count Available Accommodations (Beds & Rooms)
+                    $stmt_beds = $conn->prepare("SELECT COUNT(id) as count FROM accommodations WHERE status = 'available'");
+                    $stmt_beds->execute();
+                    $stats['available_beds'] = $stmt_beds->get_result()->fetch_assoc()['count'] ?? 0;
+                    $stmt_beds->close();
+
+                    // 2. Count Low Stock Items (Medicines + Blood)
+                    $stmt_med = $conn->prepare("SELECT COUNT(id) as count FROM medicines WHERE quantity <= low_stock_threshold");
+                    $stmt_med->execute();
+                    $low_med_count = $stmt_med->get_result()->fetch_assoc()['count'] ?? 0;
+                    $stmt_med->close();
+
+                    $stmt_blood = $conn->prepare("SELECT COUNT(id) as count FROM blood_inventory WHERE quantity_ml <= low_stock_threshold_ml");
+                    $stmt_blood->execute();
+                    $low_blood_count = $stmt_blood->get_result()->fetch_assoc()['count'] ?? 0;
+                    $stmt_blood->close();
+                    $stats['low_stock_items'] = $low_med_count + $low_blood_count;
+
+                    // 3. Count Unique Pending Discharges
+                    $stmt_discharges = $conn->prepare("SELECT COUNT(DISTINCT admission_id) as count FROM discharge_clearance WHERE is_cleared = 0");
+                    $stmt_discharges->execute();
+                    $stats['pending_discharges'] = $stmt_discharges->get_result()->fetch_assoc()['count'] ?? 0;
+                    $stmt_discharges->close();
+
+                    // 4. Count Active In-Patients
+                    $stmt_patients = $conn->prepare("SELECT COUNT(id) as count FROM admissions WHERE discharge_date IS NULL");
+                    $stmt_patients->execute();
+                    $stats['active_patients'] = $stmt_patients->get_result()->fetch_assoc()['count'] ?? 0;
+                    $stmt_patients->close();
+
+                    // 5. Fetch details for the pending discharge table (limit to 5 for the dashboard)
+                    $stmt_table = $conn->prepare("
+                        SELECT 
+                            p.name as patient_name,
+                            acc.number as location,
+                            dc.clearance_step,
+                            dc.id as discharge_id
+                        FROM discharge_clearance dc
+                        JOIN admissions a ON dc.admission_id = a.id
+                        JOIN users p ON a.patient_id = p.id
+                        LEFT JOIN accommodations acc ON a.accommodation_id = acc.id
+                        WHERE dc.is_cleared = 0
+                        ORDER BY dc.id DESC
+                        LIMIT 5
+                    ");
+                    $stmt_table->execute();
+                    $stats['discharge_table_data'] = $stmt_table->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt_table->close();
+
+                    // 6. Fetch data for Bed Occupancy chart
+                    $stmt_occupancy = $conn->prepare("SELECT status, COUNT(id) as count FROM accommodations GROUP BY status");
+                    $stmt_occupancy->execute();
+                    $stats['occupancy_data'] = $stmt_occupancy->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt_occupancy->close();
+
+                    // 7. Fetch Recent Activity Feed
+                    $stmt_activity = $conn->prepare("
+                        SELECT a.details, a.created_at, u.name as user_name
+                        FROM activity_logs a
+                        JOIN users u ON a.user_id = u.id
+                        ORDER BY a.created_at DESC
+                        LIMIT 5
+                    ");
+                    $stmt_activity->execute();
+                    $stats['recent_activity'] = $stmt_activity->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt_activity->close();
+                    
+                    $response = ['success' => true, 'data' => $stats];
+                    break;
+                
+                case 'active_doctors':
+                    $stmt = $conn->prepare("
+                        SELECT u.id, u.name 
+                        FROM users u 
+                        JOIN doctors d ON u.id = d.user_id 
+                        WHERE u.is_active = 1 
+                        ORDER BY u.name ASC
+                    ");
+                    $stmt->execute();
+                    $doctors = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+                    $response = ['success' => true, 'data' => $doctors];
+                    break;
+
+                case 'fetch_tokens':
+                    $doctor_id = isset($_GET['doctor_id']) ? (int)$_GET['doctor_id'] : 0;
+                    if ($doctor_id === 0) {
+                        $response = ['success' => true, 'data' => []];
+                        break;
+                    }
+
+                    $stmt = $conn->prepare("
+                        SELECT 
+                            a.token_number,
+                            a.token_status,
+                            a.slot_start_time,
+                            a.slot_end_time,
+                            p.name as patient_name,
+                            p.display_user_id as patient_display_id
+                        FROM appointments a
+                        JOIN users p ON a.user_id = p.id
+                        WHERE a.doctor_id = ? 
+                          AND DATE(a.appointment_date) = CURDATE()
+                        ORDER BY a.slot_start_time ASC, a.token_number ASC
+                    ");
+                    $stmt->bind_param("i", $doctor_id);
+                    $stmt->execute();
+                    $tokens_flat = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+
+                    // Group the tokens by their time slot for the frontend
+                    $grouped_tokens = [];
+                    foreach ($tokens_flat as $token) {
+                        $slot_key = date("g:i A", strtotime($token['slot_start_time'])) . ' - ' . date("g:i A", strtotime($token['slot_end_time']));
+                        if (!isset($grouped_tokens[$slot_key])) {
+                            $grouped_tokens[$slot_key] = [];
+                        }
+                        $grouped_tokens[$slot_key][] = $token;
+                    }
+
+                    $response = ['success' => true, 'data' => $grouped_tokens];
+                    break;
+
                 case 'callbacks':
                     $stmt = $conn->prepare("SELECT id, name, phone, created_at, is_contacted FROM callback_requests ORDER BY created_at DESC");
                     $stmt->execute();
@@ -605,6 +779,75 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     
                     $response = ['success' => true, 'data' => $invoices];
                     break;
+                
+                case 'pending_prescriptions':
+                    $search_query = $_GET['search'] ?? '';
+                    $sql = "
+                        SELECT 
+                            p.id,
+                            patient.name AS patient_name,
+                            doctor.name AS doctor_name,
+                            p.prescription_date,
+                            p.status
+                        FROM prescriptions p
+                        JOIN users patient ON p.patient_id = patient.id
+                        JOIN users doctor ON p.doctor_id = doctor.id
+                        WHERE (p.status = 'pending' OR p.status = 'partial')
+                        AND p.id NOT IN (SELECT prescription_id FROM pharmacy_bills WHERE 1)
+                    ";
+                    
+                    $params = [];
+                    $types = "";
+
+                    if (!empty($search_query)) {
+                        $sql .= " AND (patient.name LIKE ?)";
+                        $search_term = "%{$search_query}%";
+                        $params[] = $search_term;
+                        $types .= "s";
+                    }
+
+                    $sql .= " ORDER BY p.prescription_date DESC";
+                    
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                    
+                    $stmt->execute();
+                    $data = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+                    
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
+                case 'prescription_details':
+                    if (empty($_GET['id'])) {
+                        throw new Exception('Prescription ID is required.');
+                    }
+                    $prescription_id = (int)$_GET['id'];
+
+                    $sql = "
+                        SELECT 
+                            pi.id as item_id,
+                            pi.medicine_id,
+                            m.name as medicine_name,
+                            m.quantity as stock_quantity,
+                            m.unit_price,
+                            pi.quantity_prescribed,
+                            pi.quantity_dispensed
+                        FROM prescription_items pi
+                        JOIN medicines m ON pi.medicine_id = m.id
+                        WHERE pi.prescription_id = ?
+                    ";
+                    
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("i", $prescription_id);
+                    $stmt->execute();
+                    $data = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+                    
+                    $response = ['success' => true, 'data' => $data];
+                    break;
             }
         }
         // Handle POST requests for performing actions
@@ -1080,7 +1323,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     }
                     break;
 
-
                 case 'updateBedOrRoom':
                     $conn->begin_transaction();
                     $transaction_active = true;
@@ -1091,7 +1333,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $params = [];
                         $types = "";
 
-                        // Fetch current accommodation details to handle admission/discharge logic
                         $stmt_current = $conn->prepare("SELECT type, patient_id FROM accommodations WHERE id = ? FOR UPDATE");
                         $stmt_current->bind_param("i", $id);
                         $stmt_current->execute();
@@ -1103,7 +1344,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $type = $current_accommodation['type'];
                         $old_patient_id = $current_accommodation['patient_id'];
 
-                        // Handle simple updates like price or bed number
                         if (isset($_POST['price'])) {
                             $price = filter_var($_POST['price'], FILTER_VALIDATE_FLOAT);
                             if ($price === false || $price < 0) throw new Exception("Invalid price format.");
@@ -1111,9 +1351,24 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $params[] = $price;
                             $types .= "d";
                         }
-                         if (isset($_POST['number'])) {
+                        if (isset($_POST['number'])) {
                             $updates[] = "number = ?";
                             $params[] = trim($_POST['number']);
+                            $types .= "s";
+                        }
+                        
+                        // Handle direct status change for UNOCCUPIED beds
+                        if (isset($_POST['status']) && !isset($_POST['patient_id'])) {
+                            if ($old_patient_id) {
+                                throw new Exception("Cannot change status directly while a patient is assigned. Please discharge the patient first.");
+                            }
+                            $new_status = $_POST['status'];
+                            $allowed_statuses = ['available', 'cleaning', 'reserved'];
+                            if (!in_array($new_status, $allowed_statuses)) {
+                                throw new Exception("Invalid status provided for an unoccupied bed.");
+                            }
+                            $updates[] = "status = ?";
+                            $params[] = $new_status;
                             $types .= "s";
                         }
                         
@@ -1123,7 +1378,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $new_doctor_id = empty($_POST['doctor_id']) ? null : (int)$_POST['doctor_id'];
 
                             if ($new_patient_id != $old_patient_id) {
-                                // Discharging old patient if there was one
                                 if ($old_patient_id) {
                                     $dis_stmt = $conn->prepare("UPDATE admissions SET discharge_date = NOW() WHERE accommodation_id = ? AND patient_id = ? AND discharge_date IS NULL");
                                     $dis_stmt->bind_param("ii", $id, $old_patient_id);
@@ -1132,7 +1386,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                                     log_activity($conn, $user_id, "discharge_patient", $old_patient_id, "Discharged patient from {$type} ID {$id}.");
                                 }
                                 
-                                // Admitting new patient
                                 if ($new_patient_id) {
                                     $adm_stmt = $conn->prepare("INSERT INTO admissions (patient_id, doctor_id, accommodation_id, admission_date) VALUES (?, ?, ?, NOW())");
                                     $adm_stmt->bind_param("iii", $new_patient_id, $new_doctor_id, $id);
@@ -1140,18 +1393,13 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                                     $adm_stmt->close();
                                     
                                     $updates[] = "status = 'occupied'";
-                                    $updates[] = "occupied_since = NOW()";
-                                    $updates[] = "reserved_since = NULL";
                                     log_activity($conn, $user_id, "admit_patient", $new_patient_id, "Admitted patient to {$type} ID {$id}.");
                                 } else {
-                                    // No new patient, so it's a discharge
-                                    // Status is set via POST data (e.g., 'cleaning')
                                      if(isset($_POST['status'])) {
                                         $updates[] = "status = ?";
                                         $params[] = $_POST['status'];
                                         $types .= "s";
                                      }
-                                    $updates[] = "occupied_since = NULL";
                                 }
                                 $updates[] = "patient_id = ?";
                                 $params[] = $new_patient_id;
@@ -1164,14 +1412,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         }
 
                         if (empty($updates)) {
-                            // If only the status is being changed (e.g. from discharge to available)
-                            if(isset($_POST['status'])) {
-                                $updates[] = "status = ?";
-                                $params[] = $_POST['status'];
-                                $types .= "s";
-                            } else {
-                                throw new Exception("No data provided to update.");
-                            }
+                            throw new Exception("No data provided to update.");
                         }
 
                         $sql = "UPDATE accommodations SET " . implode(", ", $updates) . " WHERE id = ?";
@@ -1194,6 +1435,42 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     }
                     break;
                 
+                case 'bulkUpdateBedStatus':
+                    if (empty($_POST['ids']) || empty($_POST['status'])) {
+                        throw new Exception("A list of IDs and a new status are required.");
+                    }
+                
+                    $ids = json_decode($_POST['ids'], true);
+                    if (!is_array($ids) || empty($ids)) {
+                        throw new Exception("Invalid IDs format.");
+                    }
+                    
+                    $sanitized_ids = array_map('intval', $ids);
+                    $placeholders = implode(',', array_fill(0, count($sanitized_ids), '?'));
+                    $status = $_POST['status'];
+                    
+                    $allowed_statuses = ['available', 'cleaning', 'reserved'];
+                    if (!in_array($status, $allowed_statuses)) {
+                        throw new Exception("Invalid status provided.");
+                    }
+                
+                    $sql = "UPDATE accommodations SET status = ? WHERE id IN ($placeholders)";
+                    $types = 's' . str_repeat('i', count($sanitized_ids));
+                    $params = array_merge([$status], $sanitized_ids);
+                
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param($types, ...$params);
+                    $stmt->execute();
+                
+                    if ($stmt->affected_rows > 0) {
+                        log_activity($conn, $user_id, 'bulk_update_beds', null, "Updated {$stmt->affected_rows} accommodations to status '{$status}'");
+                        $response = ['success' => true, 'message' => "Successfully updated {$stmt->affected_rows} item(s)."];
+                    } else {
+                        throw new Exception("No records were updated. They may have already been updated by someone else.");
+                    }
+                    $stmt->close();
+                    break;
+
                 case 'addLabResult':
                 case 'updateLabResult':
                     $conn->begin_transaction();
@@ -1331,6 +1608,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     }
                     $stmt_delete->close();
                     break;
+
                 case 'process_clearance':
                     if (empty($_POST['discharge_id']) || empty($_POST['notes'])) {
                         throw new Exception("Discharge ID and notes are required.");
@@ -1338,18 +1616,57 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $discharge_id = (int)$_POST['discharge_id'];
                     $notes = trim($_POST['notes']);
 
+                    $conn->begin_transaction();
+                    $transaction_active = true;
+
+                    // Get the current step details
+                    $stmt_step = $conn->prepare("SELECT admission_id, clearance_step FROM discharge_clearance WHERE id = ? FOR UPDATE");
+                    $stmt_step->bind_param("i", $discharge_id);
+                    $stmt_step->execute();
+                    $current_step = $stmt_step->get_result()->fetch_assoc();
+                    $stmt_step->close();
+
+                    if (!$current_step) {
+                        throw new Exception("Discharge record not found.");
+                    }
+                    
+                    $admission_id = $current_step['admission_id'];
+
+                    // Enforce sequential clearing
+                    if ($current_step['clearance_step'] === 'pharmacy') {
+                        $stmt_check = $conn->prepare("SELECT is_cleared FROM discharge_clearance WHERE admission_id = ? AND clearance_step = 'nursing'");
+                        $stmt_check->bind_param("i", $admission_id);
+                        $stmt_check->execute();
+                        if ($stmt_check->get_result()->fetch_assoc()['is_cleared'] == 0) {
+                            throw new Exception("Nursing clearance must be completed before pharmacy clearance.");
+                        }
+                        $stmt_check->close();
+                    } elseif ($current_step['clearance_step'] === 'billing') {
+                        $stmt_check = $conn->prepare("SELECT COUNT(id) as uncleared_count FROM discharge_clearance WHERE admission_id = ? AND clearance_step IN ('nursing', 'pharmacy') AND is_cleared = 0");
+                        $stmt_check->bind_param("i", $admission_id);
+                        $stmt_check->execute();
+                        if ($stmt_check->get_result()->fetch_assoc()['uncleared_count'] > 0) {
+                            throw new Exception("Nursing and Pharmacy clearances must be completed before billing clearance.");
+                        }
+                        $stmt_check->close();
+                    }
+
                     $stmt = $conn->prepare("UPDATE discharge_clearance SET is_cleared = 1, cleared_by_user_id = ?, cleared_at = NOW(), notes = ? WHERE id = ? AND is_cleared = 0");
                     $stmt->bind_param("isi", $user_id, $notes, $discharge_id);
                     $stmt->execute();
 
                     if ($stmt->affected_rows > 0) {
+                        checkAndFinalizeDischarge($conn, $admission_id);
                         log_activity($conn, $user_id, 'process_discharge_clearance', null, "Processed discharge clearance #{$discharge_id}. Notes: {$notes}");
+                        $conn->commit();
+                        $transaction_active = false;
                         $response = ['success' => true, 'message' => 'Clearance processed successfully.'];
                     } else {
                         throw new Exception("Failed to process clearance. It might have been already processed.");
                     }
                     $stmt->close();
                     break;
+
                 case 'generateInvoice':
                     $conn->begin_transaction();
                     $transaction_active = true;
@@ -1359,11 +1676,10 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         }
                         $admission_id = (int)$_POST['admission_id'];
                         
-                        // Fetch admission details to calculate costs
+                        // Fetch admission details
                         $stmt_adm = $conn->prepare("
                             SELECT 
-                                a.patient_id,
-                                a.admission_date,
+                                a.patient_id, a.admission_date,
                                 COALESCE(a.discharge_date, NOW()) as effective_discharge_date,
                                 acc.price_per_day
                             FROM admissions a
@@ -1372,36 +1688,58 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         ");
                         $stmt_adm->bind_param("i", $admission_id);
                         $stmt_adm->execute();
-                        $admission_details = $stmt_adm->get_result()->fetch_assoc();
+                        $admission = $stmt_adm->get_result()->fetch_assoc();
                         $stmt_adm->close();
                         
-                        if (!$admission_details) {
-                            throw new Exception("Admission record not found.");
-                        }
+                        if (!$admission) throw new Exception("Admission record not found.");
                         
-                        // Calculate duration of stay in days
-                        $admission_date = new DateTime($admission_details['admission_date']);
-                        $discharge_date = new DateTime($admission_details['effective_discharge_date']);
-                        $duration = $admission_date->diff($discharge_date)->days;
-                        $duration = $duration >= 0 ? $duration + 1 : 1; // Minimum 1 day charge
+                        // 1. Calculate Accommodation Cost
+                        $admission_date = new DateTime($admission['admission_date']);
+                        $discharge_date = new DateTime($admission['effective_discharge_date']);
+                        $duration = max(1, $admission_date->diff($discharge_date)->days + 1);
+                        $accommodation_cost = $duration * ($admission['price_per_day'] ?? 0);
                         
-                        $accommodation_cost = $duration * ($admission_details['price_per_day'] ?? 0);
-                        
-                        // FUTURE: Add logic to fetch and sum costs for other services (prescriptions, lab tests).
-                        
-                        $total_amount = $accommodation_cost;
-                        $description = "Invoice for admission #" . $admission_id . ". Accommodation for " . $duration . " day(s).";
-                        
-                        $stmt_insert = $conn->prepare("
-                            INSERT INTO transactions (user_id, description, amount, type, status, admission_id) 
-                            VALUES (?, ?, ?, 'payment', 'pending', ?)
+                        // 2. Calculate Medicine Cost for this admission
+                        $stmt_med = $conn->prepare("
+                            SELECT SUM(pi.quantity_dispensed * m.unit_price) as total_med_cost
+                            FROM prescription_items pi
+                            JOIN prescriptions p ON pi.prescription_id = p.id
+                            JOIN medicines m ON pi.medicine_id = m.id
+                            WHERE p.admission_id = ? AND pi.quantity_dispensed > 0
                         ");
-                        $stmt_insert->bind_param("isdi", $admission_details['patient_id'], $description, $total_amount, $admission_id);
+                        $stmt_med->bind_param("i", $admission_id);
+                        $stmt_med->execute();
+                        $medicine_cost = $stmt_med->get_result()->fetch_assoc()['total_med_cost'] ?? 0.00;
+                        $stmt_med->close();
+
+                        // 3. Calculate Lab Test Cost for this admission
+                        $stmt_lab = $conn->prepare("
+                            SELECT SUM(cost) as total_lab_cost FROM lab_results 
+                            WHERE patient_id = ? AND test_date BETWEEN ? AND ?
+                        ");
+                        $stmt_lab->bind_param("iss", $admission['patient_id'], $admission['admission_date'], $admission['effective_discharge_date']);
+                        $stmt_lab->execute();
+                        $lab_cost = $stmt_lab->get_result()->fetch_assoc()['total_lab_cost'] ?? 0.00;
+                        $stmt_lab->close();
+
+                        // 4. Calculate Total Amount and Description
+                        $total_amount = $accommodation_cost + $medicine_cost + $lab_cost;
+                        $description = sprintf(
+                            "Final bill for admission #%d. Accommodation (%d days): ₹%.2f, Medicines: ₹%.2f, Lab Tests: ₹%.2f.",
+                            $admission_id, $duration, $accommodation_cost, $medicine_cost, $lab_cost
+                        );
+                        
+                        // 5. Insert the transaction
+                        $stmt_insert = $conn->prepare("
+                            INSERT INTO transactions (user_id, admission_id, description, amount, type, status) 
+                            VALUES (?, ?, ?, ?, 'payment', 'pending')
+                        ");
+                        $stmt_insert->bind_param("iisd", $admission['patient_id'], $admission_id, $description, $total_amount);
                         $stmt_insert->execute();
                         $new_invoice_id = $conn->insert_id;
                         $stmt_insert->close();
 
-                        log_activity($conn, $user_id, 'generate_invoice', $admission_details['patient_id'], "Generated invoice #{$new_invoice_id} for admission #{$admission_id}. Amount: {$total_amount}");
+                        log_activity($conn, $user_id, 'generate_invoice', $admission['patient_id'], "Generated invoice #{$new_invoice_id}. Amount: {$total_amount}");
                         
                         $conn->commit();
                         $transaction_active = false;
@@ -1409,6 +1747,165 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
 
                     } catch (Exception $e) {
                         if ($transaction_active) $conn->rollback();
+                        throw $e;
+                    }
+                    break;
+                
+                case 'processPayment':
+                    $conn->begin_transaction();
+                    $transaction_active = true;
+                    try {
+                        if (empty($_POST['transaction_id']) || empty($_POST['payment_mode'])) {
+                            throw new Exception("Transaction ID and payment mode are required.");
+                        }
+                        $transaction_id = (int)$_POST['transaction_id'];
+                        $payment_mode = $_POST['payment_mode'];
+
+                        // Update transaction status
+                        $stmt = $conn->prepare("UPDATE transactions SET status = 'paid', payment_mode = ?, paid_at = NOW() WHERE id = ? AND status = 'pending'");
+                        $stmt->bind_param("si", $payment_mode, $transaction_id);
+                        $stmt->execute();
+                        
+                        if ($stmt->affected_rows === 0) {
+                            throw new Exception("Payment failed. The invoice may already be paid or does not exist.");
+                        }
+                        $stmt->close();
+                        
+                        // --- PDF Generation and Emailing ---
+                        // Fetch patient email
+                        $stmt_user = $conn->prepare("SELECT u.email FROM users u JOIN transactions t ON u.id = t.user_id WHERE t.id = ?");
+                        $stmt_user->bind_param("i", $transaction_id);
+                        $stmt_user->execute();
+                        $patient_email = $stmt_user->get_result()->fetch_assoc()['email'];
+                        $stmt_user->close();
+
+                        if ($patient_email) {
+                            // Assumes send_mail.php is in the parent directory and configured
+                            require_once '../send_mail.php'; 
+                            
+                            // Generate the PDF content by including a template
+                            ob_start();
+                            // The included file will have access to $conn and $transaction_id
+                            include 'invoice_template.php'; 
+                            $html = ob_get_clean();
+
+                            $options = new Options();
+                            $options->set('isRemoteEnabled', true);
+                            $dompdf = new Dompdf($options);
+                            $dompdf->loadHtml($html);
+                            $dompdf->setPaper('A4', 'portrait');
+                            $dompdf->render();
+                            $pdf_output = $dompdf->output();
+                            
+                            // Send email with PDF attachment
+                            $subject = "Your MedSync Hospital Bill (Invoice #" . $transaction_id . ")";
+                            $body = "Dear Patient,<br><br>Thank you for your payment. Please find your detailed bill attached.<br><br>Sincerely,<br>MedSync Hospital";
+                            send_mail($patient_email, $subject, $body, $pdf_output, 'invoice-' . $transaction_id . '.pdf');
+                        }
+
+                        $conn->commit();
+                        $transaction_active = false;
+                        $response = ['success' => true, 'message' => 'Payment processed successfully. Receipt sent to patient.'];
+
+                    } catch (Exception $e) {
+                        if ($transaction_active) $conn->rollback();
+                        throw $e;
+                    }
+                    break;
+
+                case 'create_pharmacy_bill':
+                    $conn->begin_transaction();
+                    try {
+                        if (empty($_POST['prescription_id']) || empty($_POST['items']) || empty($_POST['payment_mode'])) {
+                            throw new Exception("Missing required billing data.");
+                        }
+                        $prescription_id = (int)$_POST['prescription_id'];
+                        $items_to_dispense = json_decode($_POST['items'], true);
+                        $payment_mode = $_POST['payment_mode'];
+                        $staff_id = $_SESSION['user_id'];
+                        $total_amount = 0;
+                        
+                        // 1. Check if prescription is already fully billed
+                        $stmt_check = $conn->prepare("SELECT id FROM pharmacy_bills WHERE prescription_id = ?");
+                        $stmt_check->bind_param("i", $prescription_id);
+                        $stmt_check->execute();
+                        if ($stmt_check->get_result()->num_rows > 0) {
+                            throw new Exception("This prescription has already been billed.");
+                        }
+                        $stmt_check->close();
+
+                        // 2. Process each item, update stock, and calculate total
+                        $patient_id_stmt = $conn->prepare("SELECT patient_id FROM prescriptions WHERE id = ?");
+                        $patient_id_stmt->bind_param("i", $prescription_id);
+                        $patient_id_stmt->execute();
+                        $patient_id = $patient_id_stmt->get_result()->fetch_assoc()['patient_id'];
+                        $patient_id_stmt->close();
+
+                        foreach ($items_to_dispense as $item) {
+                            $medicine_id = (int)$item['medicine_id'];
+                            $quantity_to_dispense = (int)$item['quantity'];
+
+                            if ($quantity_to_dispense <= 0) continue; // Skip items not being dispensed
+
+                            // Lock medicine row for safe stock update
+                            $stmt_med = $conn->prepare("SELECT quantity, unit_price FROM medicines WHERE id = ? FOR UPDATE");
+                            $stmt_med->bind_param("i", $medicine_id);
+                            $stmt_med->execute();
+                            $medicine = $stmt_med->get_result()->fetch_assoc();
+
+                            if ($medicine['quantity'] < $quantity_to_dispense) {
+                                throw new Exception("Insufficient stock for medicine ID {$medicine_id}.");
+                            }
+
+                            // Update medicine stock
+                            $new_stock = $medicine['quantity'] - $quantity_to_dispense;
+                            $stmt_update_stock = $conn->prepare("UPDATE medicines SET quantity = ? WHERE id = ?");
+                            $stmt_update_stock->bind_param("ii", $new_stock, $medicine_id);
+                            $stmt_update_stock->execute();
+                            $stmt_update_stock->close();
+
+                            // Update prescription item dispensed quantity
+                            $stmt_update_item = $conn->prepare("UPDATE prescription_items SET quantity_dispensed = quantity_dispensed + ? WHERE prescription_id = ? AND medicine_id = ?");
+                            $stmt_update_item->bind_param("iii", $quantity_to_dispense, $prescription_id, $medicine_id);
+                            $stmt_update_item->execute();
+                            $stmt_update_item->close();
+                            
+                            // Add to total amount
+                            $total_amount += $quantity_to_dispense * $medicine['unit_price'];
+                        }
+
+                        if ($total_amount <= 0) {
+                            throw new Exception("Cannot create a bill with zero total amount.");
+                        }
+
+                        // 3. Create transaction record
+                        $description = "Pharmacy Bill for Prescription #" . $prescription_id;
+                        $stmt_trans = $conn->prepare("INSERT INTO transactions (user_id, description, amount, status, payment_mode, paid_at) VALUES (?, ?, ?, 'paid', ?, NOW())");
+                        $stmt_trans->bind_param("isds", $patient_id, $description, $total_amount, $payment_mode);
+                        $stmt_trans->execute();
+                        $transaction_id = $conn->insert_id;
+                        $stmt_trans->close();
+
+                        // 4. Create pharmacy bill record
+                        $stmt_bill = $conn->prepare("INSERT INTO pharmacy_bills (prescription_id, transaction_id, created_by_staff_id, total_amount) VALUES (?, ?, ?, ?)");
+                        $stmt_bill->bind_param("iiid", $prescription_id, $transaction_id, $staff_id, $total_amount);
+                        $stmt_bill->execute();
+                        $bill_id = $conn->insert_id;
+                        $stmt_bill->close();
+                        
+                        // 5. Update overall prescription status
+                        // (You can add more complex logic here for partial vs fully dispensed)
+                        $stmt_update_presc = $conn->prepare("UPDATE prescriptions SET status = 'dispensed' WHERE id = ?");
+                        $stmt_update_presc->bind_param("i", $prescription_id);
+                        $stmt_update_presc->execute();
+                        $stmt_update_presc->close();
+
+                        log_activity($conn, $staff_id, 'create_pharmacy_bill', $patient_id, "Created pharmacy bill #{$bill_id} for prescription #{$prescription_id}. Amount: {$total_amount}");
+
+                        $conn->commit();
+                        $response = ['success' => true, 'message' => 'Bill created and medicine dispensed successfully.', 'bill_id' => $bill_id];
+                    } catch (Exception $e) {
+                        $conn->rollback();
                         throw $e;
                     }
                     break;
@@ -1422,7 +1919,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
         $response['message'] = $e->getMessage();
     }
 
-    if (isset($conn) && $conn->ping()) {
+    if (isset($conn) && $conn->query("SELECT 1")) {
         $conn->close();
     }
     echo json_encode($response);
@@ -1511,5 +2008,152 @@ if (!file_exists(dirname(__DIR__) . '/uploads/profile_pictures/' . $profile_pict
 // Generate a CSRF token if one doesn't exist
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+
+// --- PDF GENERATION LOGIC ---
+if (isset($_GET['action']) && $_GET['action'] === 'download_pharmacy_bill') {
+    if (empty($_GET['id'])) {
+        die('Bill ID is required to generate a PDF.');
+    }
+    $bill_id = (int)$_GET['id'];
+    $conn = getDbConnection();
+
+    // --- Data Fetching for the Bill ---
+    $bill_sql = "
+        SELECT 
+            pb.*, 
+            p.prescription_date,
+            patient.name as patient_name, patient.display_user_id as patient_display_id,
+            doctor.name as doctor_name,
+            staff.name as staff_name,
+            t.payment_mode
+        FROM pharmacy_bills pb
+        JOIN prescriptions p ON pb.prescription_id = p.id
+        JOIN transactions t ON pb.transaction_id = t.id
+        JOIN users patient ON p.patient_id = patient.id
+        JOIN users doctor ON p.doctor_id = doctor.id
+        JOIN users staff ON pb.created_by_staff_id = staff.id
+        WHERE pb.id = ?
+    ";
+    $stmt_bill = $conn->prepare($bill_sql);
+    $stmt_bill->bind_param("i", $bill_id);
+    $stmt_bill->execute();
+    $bill_data = $stmt_bill->get_result()->fetch_assoc();
+
+    $items_sql = "
+        SELECT 
+            m.name,
+            pi.quantity_dispensed,
+            m.unit_price,
+            (pi.quantity_dispensed * m.unit_price) as subtotal
+        FROM prescription_items pi
+        JOIN medicines m ON pi.medicine_id = m.id
+        WHERE pi.prescription_id = ? AND pi.quantity_dispensed > 0
+    ";
+    $stmt_items = $conn->prepare($items_sql);
+    $stmt_items->bind_param("i", $bill_data['prescription_id']);
+    $stmt_items->execute();
+    $items_data = $stmt_items->get_result()->fetch_all(MYSQLI_ASSOC);
+    $conn->close();
+
+    if (!$bill_data) {
+        die('Bill not found.');
+    }
+
+    // --- HTML Template for PDF (Adapted from admin.php) ---
+    $medsync_logo_path = '../images/logo.png';
+    $hospital_logo_path = '../images/hospital.png';
+    $medsync_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($medsync_logo_path));
+    $hospital_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($hospital_logo_path));
+
+    $html = '
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Pharmacy Bill</title>
+        <style>
+            @page { margin: 20px; }
+            body { font-family: "Poppins", sans-serif; color: #333; font-size: 14px; }
+            .header { position: fixed; top: 0; left: 0; right: 0; width: 100%; height: 120px; }
+            .medsync-logo { position: absolute; top: 10px; left: 20px; }
+            .medsync-logo img { width: 80px; }
+            .hospital-logo { position: absolute; top: 10px; right: 20px; }
+            .hospital-logo img { width: 70px; }
+            .hospital-details { text-align: center; margin-top: 0; }
+            .hospital-details h2 { margin: 0; font-size: 1.5em; color: #007BFF; }
+            .hospital-details p { margin: 2px 0; font-size: 0.85em; }
+            .report-title { text-align: center; margin-top: 130px; margin-bottom: 20px; }
+            .report-title h1 { margin: 0; font-size: 1.8em; }
+            .bill-details { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px; }
+            .bill-details p { margin: 5px 0; }
+            .data-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+            .data-table th, .data-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+            .data-table th { background-color: #f2f2f2; font-weight: bold; }
+            .total-section { text-align: right; margin-top: 20px; font-size: 1.2em; font-weight: bold; }
+            .footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 0.8em; color: #aaa; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="medsync-logo"><img src="' . $medsync_logo_base64 . '"></div>
+            <div class="hospital-details">
+                <h2>Calysta Health Institute</h2>
+                <p>Kerala, India</p>
+                <p>+91 45235 31245 | medsync.calysta@gmail.com</p>
+            </div>
+            <div class="hospital-logo"><img src="' . $hospital_logo_base64 . '"></div>
+        </div>
+
+        <div class="report-title">
+            <h1>Pharmacy Bill / Receipt</h1>
+        </div>
+
+        <div class="bill-details">
+            <p><strong>Bill ID:</strong> PHARM-' . htmlspecialchars(str_pad($bill_data['id'], 5, '0', STR_PAD_LEFT)) . '</p>
+            <p><strong>Patient:</strong> ' . htmlspecialchars($bill_data['patient_name']) . ' (' . htmlspecialchars($bill_data['patient_display_id']) . ')</p>
+            <p><strong>Prescribing Doctor:</strong> ' . htmlspecialchars($bill_data['doctor_name']) . '</p>
+            <p><strong>Date Issued:</strong> ' . htmlspecialchars(date("Y-m-d H:i", strtotime($bill_data['created_at']))) . '</p>
+            <p><strong>Issued By:</strong> ' . htmlspecialchars($bill_data['staff_name']) . '</p>
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Quantity</th>
+                    <th>Unit Price</th>
+                    <th>Subtotal</th>
+                </tr>
+            </thead>
+            <tbody>';
+    foreach ($items_data as $item) {
+        $html .= '<tr>
+                    <td>' . htmlspecialchars($item['name']) . '</td>
+                    <td>' . htmlspecialchars($item['quantity_dispensed']) . '</td>
+                    <td>₹' . htmlspecialchars(number_format($item['unit_price'], 2)) . '</td>
+                    <td>₹' . htmlspecialchars(number_format($item['subtotal'], 2)) . '</td>
+                  </tr>';
+    }
+    $html .= '</tbody></table>
+        <div class="total-section">
+            Total: ₹' . htmlspecialchars(number_format($bill_data['total_amount'], 2)) . '
+        </div>
+        <div class="footer">
+            MedSync Healthcare Platform | &copy; ' . date('Y') . ' Calysta Health Institute
+        </div>
+    </body>
+    </html>';
+
+    $options = new Options();
+    $options->set('isHtml5ParserEnabled', true);
+    $options->set('isRemoteEnabled', true);
+    $dompdf = new Dompdf($options);
+    $dompdf->loadHtml($html);
+    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->render();
+    $dompdf->stream('pharmacy_bill_' . $bill_id . '.pdf', ["Attachment" => 1]);
+    exit();
 }
 ?>

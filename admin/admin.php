@@ -1296,6 +1296,34 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $response = ['success' => true, 'data' => $data];
                     break;
 
+                case 'feedback_summary':
+                    $summary_sql = "SELECT 
+                                        AVG(overall_rating) as average_rating, 
+                                        COUNT(*) as total_reviews,
+                                        SUM(CASE WHEN overall_rating = 5 THEN 1 ELSE 0 END) as five_star,
+                                        SUM(CASE WHEN overall_rating = 4 THEN 1 ELSE 0 END) as four_star,
+                                        SUM(CASE WHEN overall_rating = 3 THEN 1 ELSE 0 END) as three_star,
+                                        SUM(CASE WHEN overall_rating = 2 THEN 1 ELSE 0 END) as two_star,
+                                        SUM(CASE WHEN overall_rating = 1 THEN 1 ELSE 0 END) as one_star
+                                    FROM feedback";
+                    $summary_result = $conn->query($summary_sql);
+                    $data = $summary_result->fetch_assoc();
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
+                case 'feedback_list':
+                    $sql = "SELECT 
+                                f.id, 
+                                IF(f.is_anonymous, 'Anonymous', p.name) as patient_name,
+                                f.overall_rating, f.comments, f.feedback_type, f.created_at
+                            FROM feedback f
+                            LEFT JOIN users p ON f.patient_id = p.id
+                            ORDER BY f.created_at DESC";
+                    $result = $conn->query($sql);
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
                 case 'report':
                     if (empty($_GET['type']) || empty($_GET['start_date']) || empty($_GET['end_date'])) {
                         throw new Exception('Report type, start date, and end date are required.');

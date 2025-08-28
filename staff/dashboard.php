@@ -34,12 +34,14 @@ require_once 'staff.php';
                 <ul>
                     <li><a href="#" class="nav-link active" data-page="dashboard"><i class="fas fa-tachometer-alt"></i>
                             <span>Dashboard</span></a></li>
+                    <li><a href="#" class="nav-link" data-page="live-tokens"><i class="fas fa-ticket-alt"></i> <span>Live Tokens</span></a></li>
                     <li><a href="#" class="nav-link" data-page="callbacks"><i class="fas fa-phone-volume"></i> <span>Callback
                             Requests</span></a></li>
                     <li><a href="#" class="nav-link" data-page="bed-management"><i class="fas fa-bed-pulse"></i> <span>Bed
                             Management</span></a></li>
                     <li><a href="#" class="nav-link" data-page="inventory"><i class="fas fa-boxes-stacked"></i>
                             <span>Inventory</span></a></li>
+                    <li><a href="#" class="nav-link" data-page="pharmacy"><i class="fas fa-pills"></i> <span>Pharmacy</span></a></li>
                     <li><a href="#" class="nav-link" data-page="billing"><i class="fas fa-file-invoice-dollar"></i>
                             <span>Billing</span></a></li>
                     <li><a href="#" class="nav-link" data-page="admissions"><i class="fas fa-person-booth"></i>
@@ -118,28 +120,28 @@ require_once 'staff.php';
                         <div class="stat-card beds">
                             <div class="icon"><i class="fas fa-bed"></i></div>
                             <div class="info">
-                                <div class="value">45</div>
+                                <div class="value" id="stat-available-beds">...</div>
                                 <div class="label">Available Beds</div>
                             </div>
                         </div>
                         <div class="stat-card inventory">
                             <div class="icon"><i class="fas fa-capsules"></i></div>
                             <div class="info">
-                                <div class="value">12</div>
+                                <div class="value" id="stat-low-stock">...</div>
                                 <div class="label">Low Stock Items</div>
                             </div>
                         </div>
                         <div class="stat-card discharges">
                             <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
                             <div class="info">
-                                <div class="value">8</div>
+                                <div class="value" id="stat-pending-discharges">...</div>
                                 <div class="label">Pending Discharges</div>
                             </div>
                         </div>
                         <div class="stat-card patients">
                             <div class="icon"><i class="fas fa-hospital-user"></i></div>
                             <div class="info">
-                                <div class="value">62</div>
+                                <div class="value" id="stat-active-patients">...</div>
                                 <div class="label">Active In-Patients</div>
                             </div>
                         </div>
@@ -151,33 +153,25 @@ require_once 'staff.php';
                                 <thead>
                                     <tr>
                                         <th>Patient</th>
-                                        <th>Room</th>
+                                        <th>Location</th>
                                         <th>Status</th>
                                         <th>Action</th>
                                     </tr>
                                 </thead>
-                                <tbody>
-                                    <tr>
-                                        <td data-label="Patient">Michael Brown</td>
-                                        <td data-label="Room">201-A</td>
-                                        <td data-label="Status"><span class="status pending-pharmacy">Pharmacy</span>
-                                        </td>
-                                        <td data-label="Action"><button class="action-btn">Clear</button></td>
-                                    </tr>
-                                    <tr>
-                                        <td data-label="Patient">Emily Davis</td>
-                                        <td data-label="Room">B-05</td>
-                                        <td data-label="Status"><span class="status pending-nursing">Nursing</span></td>
-                                        <td data-label="Action"><button class="action-btn">Clear</button></td>
-                                    </tr>
-                                    <tr>
-                                        <td data-label="Patient">Laura White</td>
-                                        <td data-label="Room">102-A</td>
-                                        <td data-label="Status"><span class="status pending-billing">Billing</span></td>
-                                        <td data-label="Action"><button class="action-btn">View</button></td>
-                                    </tr>
-                                </tbody>
+                                <tbody id="pending-discharges-table-body">
+                                    </tbody>
                             </table>
+                        </div>
+                        <div class="grid-card">
+                            <h3><i class="fas fa-chart-pie"></i> Bed Occupancy</h3>
+                            <div class="chart-container" style="position: relative; height:250px;">
+                                <canvas id="bedOccupancyChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="grid-card">
+                             <h3><i class="fas fa-history"></i> Recent Activity</h3>
+                             <div id="activity-feed-container" class="activity-feed">
+                                </div>
                         </div>
                         <div class="grid-card">
                             <h3><i class="fas fa-bolt"></i> Quick Actions</h3>
@@ -192,6 +186,22 @@ require_once 'staff.php';
                                         class="fas fa-bed-pulse"></i><span>Add New Bed</span></a>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="live-tokens-page" class="page">
+                <div class="content-panel">
+                    <div class="page-header">
+                        <h3><i class="fas fa-ticket-alt"></i> Live Token Queue</h3>
+                    </div>
+                    <div class="filters">
+                        <select id="token-doctor-filter">
+                            <option value="">-- Select a Doctor to View Queue --</option>
+                        </select>
+                    </div>
+                    <div id="token-display-container">
+                        <p class="no-items-message">Please select a doctor to see their live token queue for today.</p>
                     </div>
                 </div>
             </div>
@@ -223,12 +233,16 @@ require_once 'staff.php';
                 <div class="content-panel">
                     <div class="page-header">
                         <h3><i class="fas fa-bed-pulse"></i> Bed Management Overview</h3>
-                        <button class="btn btn-primary" id="add-new-bed-btn"><i class="fas fa-plus"></i> Add New Bed / Room</button>
+                        <div class="header-actions">
+                            <button class="btn btn-secondary" id="bulk-update-beds-btn" style="display: none;"><i class="fas fa-check-double"></i> Mark as Available</button>
+                            <button class="btn btn-primary" id="add-new-bed-btn"><i class="fas fa-plus"></i> Add New Bed / Room</button>
+                        </div>
                     </div>
                     <div class="filters">
+                        <input type="text" id="bed-search-filter" placeholder="Search by Patient or Bed No..." style="flex-grow: 2;">
                         <select id="bed-location-filter">
                             <option value="all">All Wards & Rooms</option>
-                            </select>
+                        </select>
                         <select id="bed-status-filter">
                             <option value="all">All Statuses</option>
                             <option value="available">Available</option>
@@ -287,6 +301,31 @@ require_once 'staff.php';
                                 </tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+
+            <div id="pharmacy-page" class="page">
+                <div class="content-panel">
+                    <div class="page-header">
+                        <h3><i class="fas fa-pills"></i> Pharmacy - Pending Prescriptions</h3>
+                    </div>
+                    <div class="filters">
+                        <input type="text" id="pharmacy-search" class="search-bar" placeholder="Search by patient name or ID...">
+                    </div>
+                    <table class="data-table" id="pharmacy-prescriptions-table">
+                        <thead>
+                            <tr>
+                                <th>Prescription ID</th>
+                                <th>Patient Name</th>
+                                <th>Doctor Name</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            </tbody>
+                    </table>
                 </div>
             </div>
 
@@ -903,6 +942,7 @@ require_once 'staff.php';
             </div>
         </div>
     </div>
+
     <div class="modal-overlay" id="discharge-clearance-modal">
         <div class="modal-container">
             <div class="modal-header">
@@ -959,7 +999,90 @@ require_once 'staff.php';
         </div>
     </div>
 
+    <div class="modal-overlay" id="pharmacy-billing-modal">
+        <div class="modal-container" style="max-width: 800px;">
+            <div class="modal-header">
+                <h4 id="billing-modal-title">Create Pharmacy Bill</h4>
+                <button class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="pharmacy-billing-form" novalidate>
+                    <input type="hidden" name="action" value="create_pharmacy_bill">
+                    <input type="hidden" name="prescription_id" id="billing-prescription-id">
+                    
+                    <div class="billing-patient-info">
+                        <p><strong>Patient:</strong> <span id="billing-patient-name"></span></p>
+                        <p><strong>Doctor:</strong> <span id="billing-doctor-name"></span></p>
+                    </div>
 
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Medicine</th>
+                                <th>Prescribed</th>
+                                <th>In Stock</th>
+                                <th>Dispense Qty</th>
+                                <th>Unit Price</th>
+                                <th>Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody id="billing-items-tbody">
+                            </tbody>
+                    </table>
+                    
+                    <div class="billing-summary">
+                        <h4>Total Amount: ₹<span id="billing-total-amount">0.00</span></h4>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="billing-payment-mode">Payment Mode</label>
+                        <select id="billing-payment-mode" name="payment_mode" required>
+                            <option value="cash">Cash</option>
+                            <option value="card">Card</option>
+                            <option value="online">Online</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary modal-close-btn">Cancel</button>
+                <button type="submit" form="pharmacy-billing-form" class="btn btn-primary">Complete Payment & Dispense</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="process-payment-modal">
+        <div class="modal-container" style="max-width: 450px;">
+            <div class="modal-header">
+                <h4>Process Payment for Invoice <span id="payment-invoice-id"></span></h4>
+                <button class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="process-payment-form" novalidate>
+                    <input type="hidden" name="action" value="processPayment">
+                    <input type="hidden" name="transaction_id" id="payment-transaction-id">
+                    
+                    <p>Total Amount Due:</p>
+                    <h3 style="color: var(--primary-color);">₹<span id="payment-amount">0.00</span></h3>
+                    
+                    <div class="form-group" style="margin-top: 1.5rem;">
+                        <label for="payment-mode">Payment Mode</label>
+                        <select id="payment-mode" name="payment_mode" required>
+                            <option value="cash">Cash</option>
+                            <option value="card">Card</option>
+                            <option value="online">Online</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary modal-close-btn">Cancel</button>
+                <button type="submit" form="process-payment-form" class="btn btn-primary">Confirm Payment</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="script.js"></script>
 </body>
 
