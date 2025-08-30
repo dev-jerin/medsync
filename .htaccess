@@ -1,51 +1,66 @@
 # ----------------------------------------------------------------------
-# MedSync Apache Configuration
+# MedSync Apache Configuration for Local Development
 # ----------------------------------------------------------------------
 
 # Turn on the rewrite engine
 RewriteEngine On
 
 # ----------------------------------------------------------------------
-# # Section 1: Set the base path for rewrite rules
+# Section 1: Set the base path for rewrite rules
 # ----------------------------------------------------------------------
-# This tells Apache the root folder of your project, which is crucial
-# for making rewrites work correctly inside a subfolder.
-RewriteBase /jerin-s05/medsync/jerin-s05-medsync-e1909df0cd4937c9243b498204e29d07/
-
+# This is the directory your project is in, relative to localhost.
+RewriteBase /medsync/
 
 # ----------------------------------------------------------------------
-# # Section 2: PHP Error Logging
+# Section 2: Maintenance Mode
 # ----------------------------------------------------------------------
-# Turn off displaying errors to the public for security.
+# To enable maintenance mode, create an empty file named ".maintenance" in your root directory.
+# To disable it, simply delete or rename that file.
+
+# Check if the .maintenance file exists
+RewriteCond %{DOCUMENT_ROOT}/medsync/.maintenance -f
+
+# Allow access to the maintenance page itself
+RewriteCond %{REQUEST_URI} !/maintenance\.php$
+
+# Allow access to CSS/images for the maintenance page
+RewriteCond %{REQUEST_URI} !/error/maintenance\.css$
+RewriteCond %{REQUEST_URI} !/images/
+
+# Redirect all other requests to the maintenance page
+RewriteRule ^.*$ /medsync/maintenance.php [L]
+
+# ----------------------------------------------------------------------
+# Section 3: PHP Error Logging
+# ----------------------------------------------------------------------
 php_flag display_errors off
-
-# Turn on logging of errors.
 php_flag log_errors on
-
-# Specify the name of the file where errors should be logged.
 php_value error_log log.txt
 
 # ----------------------------------------------------------------------
-# # Section 3: Secure Log File
+# Section 4: Secure Log File
 # ----------------------------------------------------------------------
-# This prevents anyone from viewing your error log file via a browser.
 <Files "log.txt">
     Require all denied
 </Files>
 
 # ----------------------------------------------------------------------
-# # Section 4: URL Rewriting (Clean URLs)
+# Section 5: Custom Error Document for 404 Not Found
 # ----------------------------------------------------------------------
-# Prevent directory listing for security
-Options -Indexes
+# This path must be from the web root (e.g., your htdocs folder).
+ErrorDocument 404 /medsync/404.php
+
+# ----------------------------------------------------------------------
+# Section 6: URL Rewriting (Clean URLs)
+# ----------------------------------------------------------------------
+Options -Indexes 
 
 # Rule 1: Remove index.php from the URL
-# Redirects "http://yourdomain.com/index.php" to "http://yourdomain.com/"
 RewriteCond %{THE_REQUEST} ^[A-Z]{3,}\s(.*)/index\.php [NC]
 RewriteRule ^ %1/ [R=301,L]
 
 # Rule 2: Remove .php extension from files
-# This internally rewrites "page" to "page.php"
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}\.php -f
 RewriteRule ^(.*)$ $1.php [L]
+

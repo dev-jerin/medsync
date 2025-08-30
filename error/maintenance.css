@@ -1,0 +1,50 @@
+/*
+ * MedSync - Maintenance Page Styles
+ */
+
+:root {
+    --primary-color: #0067FF;
+    --text-dark: #1a202c;
+    --text-muted: #6c757d;
+    --background-grey: #f7fafc;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    margin: 0;
+}
+
+.maintenance-page {
+    background-color: var(--background-grey);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+}
+
+.maintenance-container {
+    max-width: 600px;
+    width: 100%;
+}
+
+.maintenance-icon {
+    font-size: 5rem;
+    color: var(--primary-color);
+    opacity: 0.5;
+    margin-bottom: 2rem;
+}
+
+.maintenance-container h1 {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: var(--text-dark);
+    margin-bottom: 1rem;
+}
+
+.maintenance-container p {
+    font-size: 1.1rem;
+    color: var(--text-muted);
+    line-height: 1.6;
+}

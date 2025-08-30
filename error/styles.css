@@ -1,0 +1,53 @@
+/*
+ * MedSync - Error Page Styles
+ *
+ * This stylesheet provides a consistent and user-friendly design
+ * for error pages like 404 Not Found.
+ */
+
+:root {
+    --primary-color: #0067FF;
+    --text-dark: #1a202c;
+    --text-muted: #6c757d;
+    --background-grey: #f7fafc;
+}
+
+.error-page {
+    background-color: var(--background-grey);
+    padding: 120px 20px 60px 20px; /* Space for fixed header */
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.error-container {
+    max-width: 600px;
+    width: 100%;
+}
+
+.error-icon {
+    font-size: 5rem;
+    color: var(--primary-color);
+    opacity: 0.5;
+    margin-bottom: 2rem;
+}
+
+.error-container h1 {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: var(--text-dark);
+    margin-bottom: 1rem;
+}
+
+.error-container p {
+    font-size: 1.1rem;
+    color: var(--text-muted);
+    margin-bottom: 2.5rem;
+}
+
+.error-container .btn {
+    padding: 1rem 2.5rem;
+    font-size: 1.1rem;
+}
