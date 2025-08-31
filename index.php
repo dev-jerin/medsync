@@ -368,6 +368,8 @@ if (empty($_SESSION['csrf_token'])) {
             </div>
         </div>
     </footer>
+    <script> window.chtlConfig = { chatbotId: "4776578598" } </script>
+    <script async data-id="4776578598" id="chtl-script" type="text/javascript" src="https://chatling.ai/js/embed.js"></script>
 
     <script src="main/script.js"></script>
 </body>

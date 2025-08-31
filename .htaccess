@@ -1,66 +1,58 @@
 # ----------------------------------------------------------------------
-# MedSync Apache Configuration for Local Development
+# MedSync Apache Configuration v2.1
 # ----------------------------------------------------------------------
 
 # Turn on the rewrite engine
 RewriteEngine On
 
-# ----------------------------------------------------------------------
-# Section 1: Set the base path for rewrite rules
-# ----------------------------------------------------------------------
-# This is the directory your project is in, relative to localhost.
+# Set the base path for rewrite rules
 RewriteBase /medsync/
 
 # ----------------------------------------------------------------------
-# Section 2: Maintenance Mode
+# Section 2: Maintenance Mode (with correct 503 status)
 # ----------------------------------------------------------------------
-# To enable maintenance mode, create an empty file named ".maintenance" in your root directory.
-# To disable it, simply delete or rename that file.
-
-# Check if the .maintenance file exists
+# To enable, create an empty ".maintenance" file in your root directory.
 RewriteCond %{DOCUMENT_ROOT}/medsync/.maintenance -f
 
-# Allow access to the maintenance page itself
-RewriteCond %{REQUEST_URI} !/maintenance\.php$
-
-# Allow access to CSS/images for the maintenance page
-RewriteCond %{REQUEST_URI} !/error/maintenance\.css$
+# Allow access to the 503 page itself and its assets
+RewriteCond %{REQUEST_URI} !/error/503\.php$
+RewriteCond %{REQUEST_URI} !/error/styles\.css$
 RewriteCond %{REQUEST_URI} !/images/
 
-# Redirect all other requests to the maintenance page
-RewriteRule ^.*$ /medsync/maintenance.php [L]
+# Send a 503 Service Unavailable header, then show the 503 page.
+RewriteRule ^.*$ /medsync/error/503.php [R=503,L]
 
 # ----------------------------------------------------------------------
-# Section 3: PHP Error Logging
+# Section 3: PHP Error Logging & Security
 # ----------------------------------------------------------------------
 php_flag display_errors off
 php_flag log_errors on
 php_value error_log log.txt
 
-# ----------------------------------------------------------------------
-# Section 4: Secure Log File
-# ----------------------------------------------------------------------
+# Secure the log file from being accessed via browser
 <Files "log.txt">
     Require all denied
 </Files>
 
 # ----------------------------------------------------------------------
-# Section 5: Custom Error Document for 404 Not Found
+# Section 4: Custom Error Documents
 # ----------------------------------------------------------------------
-# This path must be from the web root (e.g., your htdocs folder).
-ErrorDocument 404 /medsync/404.php
+ErrorDocument 404 /medsync/error/404.php
+ErrorDocument 403 /medsync/error/403.php
+ErrorDocument 500 /medsync/error/500.php
+ErrorDocument 503 /medsync/error/503.php
 
 # ----------------------------------------------------------------------
-# Section 6: URL Rewriting (Clean URLs)
+# Section 5: URL Rewriting (Clean URLs)
 # ----------------------------------------------------------------------
+# Prevent directory listing
 Options -Indexes 
 
-# Rule 1: Remove index.php from the URL
+# Remove index.php from the URL
 RewriteCond %{THE_REQUEST} ^[A-Z]{3,}\s(.*)/index\.php [NC]
 RewriteRule ^ %1/ [R=301,L]
 
-# Rule 2: Remove .php extension from files
+# Remove .php extension from files
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}\.php -f
 RewriteRule ^(.*)$ $1.php [L]
-

@@ -1,6 +1,6 @@
 <?php
 // config.php initializes the session
-require_once 'config.php';
+require_once '../config.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -8,6 +8,8 @@ require_once 'config.php';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Page Not Found - MedSync</title>
+
+    <base href="/medsync/">
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,7 +20,8 @@ require_once 'config.php';
     <link rel="manifest" href="images/favicon/site.webmanifest">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
-    <link rel="stylesheet" href="main/styles.css"> <link rel="stylesheet" href="error/styles.css"> </head>
+    <link rel="stylesheet" href="main/styles.css"> <link rel="stylesheet" href="error/styles.css"> 
+</head>
 <body>
 
     <header class="header" id="header">
