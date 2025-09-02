@@ -3,7 +3,7 @@ require_once '../config.php';
 
 // If the user hasn't started the password reset process, redirect them.
 if (!isset($_SESSION['password_reset'])) {
-    header("Location: ../forgot_password.php");
+    header("Location: index.php");
     exit();
 }
 ?>
@@ -65,7 +65,7 @@ if (!isset($_SESSION['password_reset'])) {
             </form>
 
             <div class="extra-links">
-                <p>Didn't get a code? <a href="../forgot_password.php">Request a new one</a></p>
+                <p>Didn't get a code? <a href="index.php">Request a new one</a></p>
             </div>
         </div>
     </main>

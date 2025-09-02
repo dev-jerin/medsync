@@ -1,6 +1,6 @@
 <?php
 // Include the backend logic for session management and data retrieval.
-require_once 'staff.php';
+require_once 'api.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -60,7 +60,7 @@ require_once 'staff.php';
                 </ul>
             </nav>
             <div class="sidebar-footer">
-                <a href="../logout.php" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
+                <a href="../logout" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
             </div>
         </aside>
 

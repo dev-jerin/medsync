@@ -1,5 +1,5 @@
 <?php
-// This template is included by staff.php, so it should not be accessed directly.
+// This template is included by api.php, so it should not be accessed directly.
 if (!isset($conn) || !isset($transaction_id)) {
     die('This template cannot be accessed directly.');
 }

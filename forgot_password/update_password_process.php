@@ -76,7 +76,7 @@ HTML;
 
 // --- Security Checks ---
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token']) || !isset($_SESSION['reset_otp_verified']) || $_SESSION['reset_otp_verified'] !== true) {
-    header("Location: ../forgot_password.php");
+    header("Location: index.php");
     exit();
 }
 
@@ -86,12 +86,12 @@ $confirm_password = $_POST['confirm_password'];
 
 if (empty($password) || empty($confirm_password)) {
     $_SESSION['status'] = ['type' => 'error', 'text' => 'Both password fields are required.'];
-    header("Location: create_new_password.php");
+    header("Location: create_new_password");
     exit();
 }
 if ($password !== $confirm_password) {
     $_SESSION['status'] = ['type' => 'error', 'text' => 'Passwords do not match.'];
-    header("Location: create_new_password.php");
+    header("Location: create_new_password");
     exit();
 }
 
@@ -152,13 +152,12 @@ if ($stmt_update->execute()) {
     unset($_SESSION['reset_otp_verified']);
     
     $_SESSION['login_message'] = ['type' => 'success', 'text' => 'Your password has been reset successfully. Please log in with your new password.'];
-    header("Location: ../login.php");
+    header("Location: ../login");
     exit();
 } else {
     $_SESSION['status'] = ['type' => 'error', 'text' => 'Failed to update password. Please try again.'];
-    header("Location: create_new_password.php");
+    header("Location: create_new_password");
     exit();
 }
 
-$stmt_update->close();
-$conn->close();
+

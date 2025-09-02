@@ -17,7 +17,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 // --- Security Check: Validate CSRF Token ---
 if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
     $_SESSION['login_error'] = "Invalid session. Please try logging in again.";
-    header("Location: ../login.php");
+    header("Location: index.php");
     exit();
 }
 
@@ -28,7 +28,7 @@ $password = $_POST['password'];
 // --- Basic Validation ---
 if (empty($login_identifier) || empty($password)) {
     $_SESSION['login_error'] = "All fields are required.";
-    header("Location: ../login.php");
+    header("Location: index.php");
     exit();
 }
 
@@ -66,7 +66,7 @@ if ($result->num_rows === 1) {
                 'type' => 'error',
                 'text' => 'Your account is currently inactive. Please contact support for assistance.'
             ];
-            header("Location: ../login.php");
+            header("Location: index.php");
             exit();
         }
 
@@ -83,16 +83,16 @@ if ($result->num_rows === 1) {
         // Redirect to the appropriate dashboard in the parent directory
         switch ($user['role']) {
             case 'admin':
-                header("Location: ../admin/dashboard.php");
+                header("Location: ../admin/dashboard");
                 break;
             case 'doctor':
-                header("Location: ../doctor/dashboard.php");
+                header("Location: ../doctor/dashboard");
                 break;
             case 'staff':
-                header("Location: ../staff/dashboard.php");
+                header("Location: ../staff/dashboard");
                 break;
             case 'user':
-                header("Location: ../user/dashboard.php");
+                header("Location: ../user/dashboard");
                 break;
             default:
                 header("Location: ../index.php"); // Fallback
@@ -103,15 +103,12 @@ if ($result->num_rows === 1) {
     } else {
         // Invalid Password
         $_SESSION['login_error'] = "Invalid credentials. Please check your details and try again.";
-        header("Location: ../login.php");
+        header("Location: index.php");
         exit();
     }
 } else {
     // User Not Found
     $_SESSION['login_error'] = "Invalid credentials. Please check your details and try again.";
-    header("Location: ../login.php");
+    header("Location: index.php");
     exit();
 }
-
-$stmt->close();
-$conn->close();

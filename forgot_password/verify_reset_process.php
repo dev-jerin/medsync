@@ -17,7 +17,7 @@ if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST
     exit();
 }
 if (!isset($_SESSION['password_reset'])) {
-    header("Location: ../forgot_password.php");
+    header("Location: index.php");
     exit();
 }
 
@@ -29,14 +29,14 @@ $session_data = $_SESSION['password_reset'];
 if (time() - $session_data['timestamp'] > 600) {
     $_SESSION['status'] = ['type' => 'error', 'text' => 'OTP has expired. Please request a new one.'];
     unset($_SESSION['password_reset']); // Clear expired data
-    header("Location: ../forgot_password.php");
+    header("Location: index.php");
     exit();
 }
 
 // 2. Check if the submitted OTP is correct
 if ($submitted_otp != $session_data['otp']) {
     $_SESSION['status'] = ['type' => 'error', 'text' => 'Invalid OTP. Please check and try again.'];
-    header("Location: ../forgot_password/verify_reset_otp.php");
+    header("Location: ../forgot_password/verify_reset_otp");
     exit();
 }
 
@@ -45,7 +45,7 @@ if ($submitted_otp != $session_data['otp']) {
 $_SESSION['reset_otp_verified'] = true;
 
 // Redirect to the page for creating a new password
-header("Location: ../forgot_password/create_new_password.php");
+header("Location: ../forgot_password/create_new_password");
 exit();
 
 ?>

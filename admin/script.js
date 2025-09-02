@@ -213,7 +213,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const updateDashboardStats = async () => {
         try {
-            const response = await fetch('admin.php?fetch=dashboard_stats');
+            const response = await fetch('api.php?fetch=dashboard_stats');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
@@ -241,7 +241,7 @@ document.addEventListener("DOMContentLoaded", function () {
             
             // --- NEW: Fetch and display patient satisfaction ---
             try {
-                const feedbackResponse = await fetch('admin.php?fetch=feedback_summary');
+                const feedbackResponse = await fetch('api.php?fetch=feedback_summary');
                 const feedbackResult = await feedbackResponse.json();
                 if (feedbackResult.success && feedbackResult.data.total_reviews > 0) {
                     const avgRating = parseFloat(feedbackResult.data.average_rating).toFixed(1);
@@ -295,7 +295,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (doctorFilterSelect.options.length > 1) return;
 
         try {
-            const response = await fetch('admin.php?fetch=doctors_for_scheduling');
+            const response = await fetch('api.php?fetch=doctors_for_scheduling');
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
 
@@ -311,7 +311,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const tableBody = document.getElementById('appointments-table-body');
         tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading appointments...</td></tr>`;
         try {
-            const response = await fetch(`admin.php?fetch=appointments&doctor_id=${doctorId}`);
+            const response = await fetch(`api.php?fetch=appointments&doctor_id=${doctorId}`);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
@@ -356,7 +356,7 @@ document.addEventListener("DOMContentLoaded", function () {
         contentDiv.innerHTML = '<p>Loading profile...</p>';
         userDetailModal.classList.add('show');
         try {
-            const response = await fetch(`admin.php?fetch=user_details&id=${userId}`);
+            const response = await fetch(`api.php?fetch=user_details&id=${userId}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
 
@@ -430,7 +430,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const fetchDepartments = async () => {
         try {
-            const response = await fetch('admin.php?fetch=departments');
+            const response = await fetch('api.php?fetch=departments');
             const result = await response.json();
             if (result.success) {
                 const departmentSelect = document.getElementById('department_id');
@@ -521,7 +521,7 @@ document.addEventListener("DOMContentLoaded", function () {
         tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Loading...</td></tr>`;
 
         try {
-            const response = await fetch(`admin.php?fetch=users&role=${role}&search=${encodeURIComponent(searchTerm)}`);
+            const response = await fetch(`api.php?fetch=users&role=${role}&search=${encodeURIComponent(searchTerm)}`);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
@@ -592,7 +592,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const handleFormSubmit = async (formData, refreshTarget = null) => {
         try {
-            const response = await fetch('admin.php', { method: 'POST', body: formData });
+            const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
 
             if (result.success) {
@@ -638,7 +638,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const fetchMyProfile = async () => {
         try {
-            const response = await fetch(`admin.php?fetch=my_profile`);
+            const response = await fetch(`api.php?fetch=my_profile`);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
@@ -657,7 +657,7 @@ document.addEventListener("DOMContentLoaded", function () {
         e.preventDefault();
         const formData = new FormData(profileForm);
         try {
-            const response = await fetch('admin.php', { method: 'POST', body: formData });
+            const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
 
             if (result.success) {
@@ -730,7 +730,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const fetchMedicineInventory = async () => {
         medicineTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Loading...</td></tr>`;
         try {
-            const response = await fetch('admin.php?fetch=medicines');
+            const response = await fetch('api.php?fetch=medicines');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
@@ -808,7 +808,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const fetchBloodInventory = async () => {
         bloodTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Loading...</td></tr>`;
         try {
-            const response = await fetch('admin.php?fetch=blood_inventory');
+            const response = await fetch('api.php?fetch=blood_inventory');
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             if (result.data.length > 0) {
@@ -872,7 +872,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const fetchDepartmentsManagement = async () => {
         departmentTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center;">Loading...</td></tr>`;
         try {
-            const response = await fetch('admin.php?fetch=departments_management');
+            const response = await fetch('api.php?fetch=departments_management');
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
 
@@ -949,7 +949,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const fetchWards = async () => {
         wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading...</td></tr>`;
         try {
-            const response = await fetch('admin.php?fetch=wards');
+            const response = await fetch('api.php?fetch=wards');
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             if (result.data.length > 0) {
@@ -1004,9 +1004,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const populateAccommodationDropdowns = async () => {
         try {
             const [wardsRes, patientsRes, doctorsRes] = await Promise.all([
-                fetch('admin.php?fetch=wards'),
-                fetch('admin.php?fetch=patients_for_accommodations'),
-                fetch('admin.php?fetch=doctors_for_scheduling')
+                fetch('api.php?fetch=wards'),
+                fetch('api.php?fetch=patients_for_accommodations'),
+                fetch('api.php?fetch=doctors_for_scheduling')
             ]);
             const wardsResult = await wardsRes.json();
             const patientsResult = await patientsRes.json();
@@ -1096,7 +1096,7 @@ document.addEventListener("DOMContentLoaded", function () {
         addAccommodationBtn.innerHTML = `<i class="fas fa-plus"></i> Add New ${typeName}`;
 
         try {
-            const response = await fetch(`admin.php?fetch=accommodations&type=${type}`);
+            const response = await fetch(`api.php?fetch=accommodations&type=${type}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
 
@@ -1182,7 +1182,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         try {
             // UPDATED: Fetch call with new date parameters
-            const response = await fetch(`admin.php?fetch=report&type=${reportType}&start_date=${startDate}&end_date=${endDate}`);
+            const response = await fetch(`api.php?fetch=report&type=${reportType}&start_date=${startDate}&end_date=${endDate}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
 
@@ -1244,7 +1244,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const fetchActivityLogs = async () => {
         activityLogContainer.innerHTML = '<p style="text-align: center;">Loading logs...</p>';
         try {
-            const response = await fetch(`admin.php?fetch=activity&limit=50`);
+            const response = await fetch(`api.php?fetch=activity&limit=50`);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
@@ -1279,7 +1279,7 @@ document.addEventListener("DOMContentLoaded", function () {
         container.innerHTML = `<p style="text-align:center;">Loading feedback...</p>`;
 
         try {
-            const response = await fetch('admin.php?fetch=feedback_list');
+            const response = await fetch('api.php?fetch=feedback_list');
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
 
@@ -1324,7 +1324,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const fetchDoctorsForScheduling = async () => {
         try {
-            const response = await fetch('admin.php?fetch=doctors_for_scheduling');
+            const response = await fetch('api.php?fetch=doctors_for_scheduling');
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             doctorSelect.innerHTML = '<option value="">Select a Doctor...</option>';
@@ -1385,7 +1385,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         scheduleEditorContainer.innerHTML = '<p class="placeholder-text">Loading schedule...</p>';
         try {
-            const response = await fetch(`admin.php?fetch=fetch_doctor_schedule&doctor_id=${doctorId}`);
+            const response = await fetch(`api.php?fetch=fetch_doctor_schedule&doctor_id=${doctorId}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             renderScheduleEditor(result.data);
@@ -1472,7 +1472,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const staffTableBody = document.getElementById('staff-shifts-table-body');
         staffTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading...</td></tr>';
         try {
-            const response = await fetch('admin.php?fetch=staff_for_shifting');
+            const response = await fetch('api.php?fetch=staff_for_shifting');
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
 
@@ -1507,7 +1507,7 @@ document.addEventListener("DOMContentLoaded", function () {
             formData.append('staff_id', staffId);
             formData.append('shift', newShift);
             formData.append('csrf_token', csrfToken);
-            const result = await (await fetch('admin.php', { method: 'POST', body: formData })).json();
+            const result = await (await fetch('api.php', { method: 'POST', body: formData })).json();
             if (result.success) {
                 showNotification(result.message, 'success');
                 document.getElementById(`shift-status-${staffId}`).textContent = newShift;
@@ -1559,7 +1559,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const updateNotificationCount = async () => {
         try {
-            const result = await (await fetch('admin.php?fetch=unread_notification_count')).json();
+            const result = await (await fetch('api.php?fetch=unread_notification_count')).json();
             if (result.success && result.count > 0) {
                 notificationCountBadge.textContent = result.count;
                 notificationCountBadge.style.display = 'grid';
@@ -1574,7 +1574,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const loadAllNotifications = async () => {
         allNotificationsPanel.innerHTML = '<p style="text-align: center; padding: 2rem;">Loading messages...</p>';
         try {
-            const result = await (await fetch('admin.php?fetch=all_notifications')).json();
+            const result = await (await fetch('api.php?fetch=all_notifications')).json();
             if (!result.success) throw new Error(result.message);
 
             let content = `<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding-bottom: 1rem; margin-bottom: 1rem;"><h2 style="margin: 0;">All Notifications</h2></div>`;
@@ -1602,7 +1602,7 @@ document.addEventListener("DOMContentLoaded", function () {
             const formData = new FormData();
             formData.append('action', 'mark_notifications_read');
             formData.append('csrf_token', csrfToken);
-            const result = await (await fetch('admin.php', { method: 'POST', body: formData })).json();
+            const result = await (await fetch('api.php', { method: 'POST', body: formData })).json();
             if (result.success) {
                 notificationCountBadge.style.display = 'none';
                 handlePanelSwitch(notificationBell);
@@ -1622,7 +1622,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (searchTerm.length < 2) { userSearchResults.style.display = 'none'; return; }
         searchTimeout = setTimeout(async () => {
             try {
-                const result = await (await fetch(`admin.php?fetch=search_users&term=${encodeURIComponent(searchTerm)}`)).json();
+                const result = await (await fetch(`api.php?fetch=search_users&term=${encodeURIComponent(searchTerm)}`)).json();
                 if (!result.success) throw new Error(result.message);
                 if (result.data.length > 0) {
                     userSearchResults.innerHTML = result.data.map(user => `
@@ -1689,7 +1689,7 @@ document.addEventListener("DOMContentLoaded", function () {
         listContainer.innerHTML = `<p class="no-items-message">Searching...</p>`;
         
         try {
-            const response = await fetch(`admin.php?fetch=search_users&term=${encodeURIComponent(query)}`);
+            const response = await fetch(`api.php?fetch=search_users&term=${encodeURIComponent(query)}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             
@@ -1722,7 +1722,7 @@ document.addEventListener("DOMContentLoaded", function () {
         listContainer.innerHTML = `<p class="no-items-message">Loading conversations...</p>`;
 
         try {
-            const response = await fetch('admin.php?fetch=conversations');
+            const response = await fetch('api.php?fetch=conversations');
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             
@@ -1824,7 +1824,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const container = document.getElementById('chat-messages-container');
         container.innerHTML = '<p class="no-items-message">Loading messages...</p>';
         try {
-            const response = await fetch(`admin.php?fetch=messages&conversation_id=${conversationId}`);
+            const response = await fetch(`api.php?fetch=messages&conversation_id=${conversationId}`);
             const result = await response.json();
             if(!result.success) throw new Error(result.message);
             
@@ -1886,7 +1886,7 @@ document.addEventListener("DOMContentLoaded", function () {
         formData.append('csrf_token', csrfToken);
 
         try {
-            const response = await fetch('admin.php', { method: 'POST', body: formData });
+            const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             

@@ -1,6 +1,6 @@
 <?php
 /**
- * MedSync User/Patient Logic (user/user.php)
+ * MedSync User/Patient Logic (user/api.php)
  *
  * Handles backend logic for the patient dashboard shell.
  * - Enforces session security and role-based access control.
@@ -17,7 +17,7 @@ require_once '../config.php'; // Includes session_start() and database connectio
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'user') {
     session_unset();
     session_destroy();
-    header("Location: ../login.php?error=unauthorized");
+    header("Location: ../login/index.php?error=unauthorized");
     exit();
 }
 
@@ -26,7 +26,7 @@ $session_timeout = 1800; // 30 minutes
 if (isset($_SESSION['loggedin_time']) && (time() - $_SESSION['loggedin_time'] > $session_timeout)) {
     session_unset();
     session_destroy();
-    header("Location: ../login.php?error=session_expired");
+    header("Location: ../login/index.php?error=session_expired");
     exit();
 }
 // Update the 'loggedin_time' to reset the timeout counter.
@@ -56,7 +56,7 @@ if (isset($_SESSION['user_id'])) {
             // If the user_id in session doesn't exist in DB, force logout.
             session_unset();
             session_destroy();
-            header("Location: ../login.php?error=user_not_found");
+            header("Location: ../login/index.php?error=user_not_found");
             exit();
         }
         $stmt->close();
@@ -69,7 +69,7 @@ if (isset($_SESSION['user_id'])) {
     // If user_id is not in session, something is wrong. Force logout.
     session_unset();
     session_destroy();
-    header("Location: ../login.php?error=invalid_session");
+    header("Location: ../login/index.php?error=invalid_session");
     exit();
 }
 

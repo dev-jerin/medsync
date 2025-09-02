@@ -16,12 +16,12 @@ require_once 'otp_email_template.php';
 // --- Security Checks ---
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     $_SESSION['register_error'] = "Invalid request method.";
-    header("Location: ../register.php");
+    header("Location: index.php");
     exit();
 }
 if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
     $_SESSION['register_error'] = "CSRF validation failed. Please try again.";
-    header("Location: ../register.php");
+    header("Location: index.php");
     exit();
 }
 
@@ -41,17 +41,17 @@ $role_id = 1;
 // --- Server-Side Validation ---
 if (empty($name) || empty($username) || empty($email) || empty($phone) || empty($date_of_birth) || empty($gender) || empty($password)) {
     $_SESSION['register_error'] = "All fields are required.";
-    header("Location: ../register.php");
+    header("Location: index.php");
     exit();
 }
 if ($password !== $confirm_password) {
     $_SESSION['register_error'] = "Passwords do not match.";
-    header("Location: ../register.php");
+    header("Location: index.php");
     exit();
 }
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     $_SESSION['register_error'] = "Invalid email format.";
-    header("Location: ../register.php");
+    header("Location: index.php");
     exit();
 }
 
@@ -75,12 +75,12 @@ if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == 
             $profile_picture_filename = $new_filename;
         } else {
             $_SESSION['register_error'] = "Could not upload profile picture. Please try again.";
-            header("Location: ../register.php");
+            header("Location: index.php");
             exit();
         }
     } else {
         $_SESSION['register_error'] = "Invalid file type or size. Please upload a JPG, PNG, or GIF under 2MB.";
-        header("Location: ../register.php");
+        header("Location: index.php");
         exit();
     }
 }
@@ -97,7 +97,7 @@ if ($stmt_check->num_rows > 0) {
     $_SESSION['register_error'] = "Username or email is already taken.";
     $stmt_check->close();
     $conn->close();
-    header("Location: ../register.php");
+    header("Location: index.php");
     exit();
 }
 $stmt_check->close();
@@ -149,7 +149,7 @@ try {
     $mail->AltBody = "Your OTP for MedSync is: $otp. It's valid for 10 minutes.";
 
     $mail->send();
-    header("Location: ../register/verify_otp.php");
+    header("Location: ../register/verify_otp");
     exit();
 
 } catch (Exception $e) {
@@ -158,7 +158,7 @@ try {
         unlink('../uploads/profile_pictures/' . $profile_picture_filename);
     }
     $_SESSION['register_error'] = "Could not send OTP. Mailer Error: {$mail->ErrorInfo}";
-    header("Location: ../register.php");
+    header("Location: index.php");
     exit();
 } finally {
     $conn->close();

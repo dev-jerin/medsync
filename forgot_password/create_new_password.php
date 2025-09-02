@@ -5,7 +5,7 @@ require_once '../config.php';
 if (!isset($_SESSION['reset_otp_verified']) || $_SESSION['reset_otp_verified'] !== true) {
     // If the flag is not set, redirect them to the beginning of the flow.
     $_SESSION['status'] = ['type' => 'error', 'text' => 'Please verify your OTP first.'];
-    header("Location: ../forgot_password.php");
+    header("Location: index.php");
     exit();
 }
 ?>

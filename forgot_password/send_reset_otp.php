@@ -80,7 +80,7 @@ HTML;
 // --- Security Check: POST request and CSRF Token ---
 if ($_SERVER["REQUEST_METHOD"] !== "POST" || !isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
     $_SESSION['status'] = ['type' => 'error', 'text' => 'Invalid request. Please try again.'];
-    header("Location: ../forgot_password.php");
+    header("Location: index.php");
     exit();
 }
 
@@ -88,7 +88,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST" || !isset($_POST['csrf_token']) || !ha
 $email = trim($_POST['email']);
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     $_SESSION['status'] = ['type' => 'error', 'text' => 'Invalid email format.'];
-    header("Location: ../forgot_password.php");
+    header("Location: index.php");
     exit();
 }
 
@@ -105,7 +105,7 @@ if ($result->num_rows === 0) {
     // SECURITY NOTE: Show a generic success message even if the email doesn't exist
     // to prevent attackers from guessing registered email addresses.
     $_SESSION['status'] = ['type' => 'success', 'text' => 'If an account with that email exists, a password reset OTP has been sent.'];
-    header("Location: ../forgot_password.php");
+    header("Location: index.php");
     exit();
 }
 $user = $result->fetch_assoc();
@@ -128,7 +128,7 @@ try {
 
     if (empty($system_email) || empty($gmail_app_password)) {
         $_SESSION['status'] = ['type' => 'error', 'text' => "The mail service is not configured. Please contact support."];
-        header("Location: ../forgot_password.php");
+        header("Location: index.php");
         exit();
     }
 
@@ -151,14 +151,14 @@ try {
     $mail->send();
 
     // Redirect to the OTP verification page
-    header("Location: ../forgot_password/verify_reset_otp.php");
+    header("Location: ../forgot_password/verify_reset_otp");
     exit();
 
 } catch (Exception $e) {
     // Log the detailed error for the admin, but show a generic message to the user.
     error_log("Mailer Error on password reset for {$email}: {$mail->ErrorInfo}");
     $_SESSION['status'] = ['type' => 'error', 'text' => "Message could not be sent. Please try again later."];
-    header("Location: ../forgot_password.php");
+    header("Location: index.php");
     exit();
 } finally {
     $conn->close();

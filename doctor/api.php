@@ -1,6 +1,6 @@
 <?php
 /**
- * MedSync Doctor Logic (doctor.php)
+ * MedSync Doctor Logic (api.php)
  *
  * This script handles the backend logic for the doctor's dashboard.
  * - It enforces session security.
@@ -11,14 +11,14 @@ require_once '../config.php'; // Contains the database connection ($conn)
 // --- Security & Session Management ---
 // 1. Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
-    header("Location: ../login.php");
+    header("Location: ../login");
     exit();
 }
 
 // 2. Verify that the logged-in user has the correct role ('doctor').
 if ($_SESSION['role'] !== 'doctor') {
     session_destroy();
-    header("Location: ../login.php?error=unauthorized");
+    header("Location: ../login/index.php?error=unauthorized");
     exit();
 }
 
@@ -27,7 +27,7 @@ $session_timeout = 1800; // 30 minutes
 if (isset($_SESSION['loggedin_time']) && (time() - $_SESSION['loggedin_time'] > $session_timeout)) {
     session_unset();
     session_destroy();
-    header("Location: ../login.php?session_expired=true");
+    header("Location: ../login/index.php?session_expired=true");
     exit();
 }
 $_SESSION['loggedin_time'] = time();

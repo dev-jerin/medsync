@@ -4,7 +4,7 @@ require_once '../config.php';
 
 // If the user hasn't started the registration process, redirect them.
 if (!isset($_SESSION['registration_data'])) {
-    header("Location: ../register.php");
+    header("Location: index.php");
     exit();
 }
 ?>

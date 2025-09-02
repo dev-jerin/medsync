@@ -8,20 +8,20 @@ if (isset($_SESSION['user_id'])) {
     // Redirect based on user role
     switch ($_SESSION['role']) {
         case 'admin':
-            header("Location: admin/dashboard.php");
+            header("Location: admin/dashboard");
             break;
         case 'doctor':
-            header("Location: doctor/dashboard.php");
+            header("Location: doctor/dashboard");
             break;
         case 'staff':
-            header("Location: staff/dashboard.php");
+            header("Location: staff/dashboard");
             break;
         case 'user':
-            header("Location: user/dashboard.php");
+            header("Location: user/dashboard");
             break;
         default:
             // If role is not set or unknown, logout to be safe
-            header("Location: logout.php");
+            header("Location: logout");
             break;
     }
     exit(); // Stop further script execution after redirection
@@ -59,7 +59,7 @@ if (empty($_SESSION['csrf_token'])) {
 
     <header class="header" id="header">
         <nav class="container navbar">
-            <a href="index.php" class="logo">
+            <a href="index" class="logo">
                 <img src="images/logo.png" alt="MedSync Logo" class="logo-img">
                 <span>MedSync</span>
             </a>
@@ -73,8 +73,8 @@ if (empty($_SESSION['csrf_token'])) {
             </ul>
 
             <div class="nav-actions">
-                <a href="login.php" class="btn btn-secondary">Login</a>
-                <a href="register.php" class="btn btn-primary">Register</a>
+                <a href="login" class="btn btn-secondary">Login</a>
+                <a href="register" class="btn btn-primary">Register</a>
             </div>
 
             <div class="hamburger">
@@ -93,8 +93,8 @@ if (empty($_SESSION['csrf_token'])) {
             <li><a href="#faq">FAQ</a></li>
         </ul>
         <div class="nav-actions-mobile">
-            <a href="login.php" class="btn btn-secondary">Login</a>
-            <a href="register.php" class="btn btn-primary">Register</a>
+            <a href="login" class="btn btn-secondary">Login</a>
+            <a href="register" class="btn btn-primary">Register</a>
         </div>
     </div>
 
@@ -110,7 +110,7 @@ if (empty($_SESSION['csrf_token'])) {
                         Welcome to MedSync by Calysta Health Institute. Your journey to effortless health management starts here.
                     </p>
                     <div class="anim-fade-up" style="--delay: 0.4s;">
-                        <a href="register.php" class="btn btn-primary">Get Started Now</a>
+                        <a href="register" class="btn btn-primary">Get Started Now</a>
                     </div>
                 </div>
 
@@ -275,7 +275,7 @@ if (empty($_SESSION['csrf_token'])) {
                             unset($_SESSION['callback_message']);
                         }
                         ?>
-                        <form action="callback_request.php" method="POST">
+                        <form action="callback_request" method="POST">
                             <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                             <div class="form-group">
                                 <input type="text" id="name" name="name" class="form-control" placeholder=" " required>
@@ -332,9 +332,9 @@ if (empty($_SESSION['csrf_token'])) {
                     <ul>
                         <li><a href="#home">Home</a></li>
                         <li><a href="#services">Services</a></li>
-                        <li><a href="register.php">Register</a></li>
-                        <li><a href="privacy_policy.php">Privacy Policy</a></li>
-                        <li><a href="termsandconditions.php">Terms & Conditions</a></li>
+                        <li><a href="register">Register</a></li>
+                        <li><a href="privacy_policy">Privacy Policy</a></li>
+                        <li><a href="termsandconditions">Terms & Conditions</a></li>
                     </ul>
                 </div>
                 <div class="footer-col">

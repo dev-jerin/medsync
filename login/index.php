@@ -1,10 +1,10 @@
 <?php
 // config.php initializes the session and generates the CSRF token
-require_once 'config.php';
+require_once '../config.php';
 
 // If a user is already logged in, redirect them to their dashboard
 if (isset($_SESSION['user_id'])) {
-    header("Location: " . $_SESSION['role'] . "/dashboard.php");
+    header("Location: ../" . $_SESSION['role'] . "/dashboard");
     exit();
 }
 ?>
@@ -19,27 +19,27 @@ if (isset($_SESSION['user_id'])) {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="apple-touch-icon" sizes="180x180" href="images/favicon/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="images/favicon/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="images/favicon/favicon-16x16.png">
-    <link rel="manifest" href="images/favicon/site.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="../images/favicon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="../images/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../images/favicon/favicon-16x16.png">
+    <link rel="manifest" href="../images/favicon/site.webmanifest">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="main/styles.css"> <!-- Main styles for header/footer -->
-    <link rel="stylesheet" href="login/styles.css"> <!-- Page-specific styles -->
+    <link rel="stylesheet" href="../main/styles.css"> <!-- Main styles for header/footer -->
+    <link rel="stylesheet" href="styles.css"> <!-- Page-specific styles -->
 </head>
 <body>
 
     <!-- Header -->
     <header class="header" id="header">
         <nav class="container navbar">
-            <a href="index.php" class="logo">
-                <img src="images/logo.png" alt="MedSync Logo" class="logo-img">
+            <a href="../index.php" class="logo">
+                <img src="../images/logo.png" alt="MedSync Logo" class="logo-img">
                 <span>MedSync</span>
             </a>
             <div class="nav-actions">
-                <a href="register.php" class="btn btn-primary">Register</a>
+                <a href="../register" class="btn btn-primary">Register</a>
             </div>
         </nav>
     </header>
@@ -82,7 +82,7 @@ if (isset($_SESSION['user_id'])) {
                     }
                     ?>
 
-                    <form action="login/login_process.php" method="POST">
+                    <form action="login_process.php" method="POST">
                         <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                         
                         <div class="form-group">
@@ -97,20 +97,20 @@ if (isset($_SESSION['user_id'])) {
                         </div>
 
                         <div class="forgot-password-link">
-                            <a href="forgot_password.php">Forgot Password?</a>
+                            <a href="../forgot_password">Forgot Password?</a>
                         </div>
                         
                         <button type="submit" class="btn btn-primary btn-full-width">Login</button>
                     </form>
 
                     <div class="extra-links">
-                        <p>Don't have an account? <a href="register.php">Register Now</a></p>
+                        <p>Don't have an account? <a href="register">Register Now</a></p>
                     </div>
                 </div>
             </div>
         </div>
     </main>
     
-    <script src="login/script.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>

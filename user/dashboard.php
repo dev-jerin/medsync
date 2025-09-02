@@ -1,5 +1,5 @@
 <?php
-require_once 'user.php';
+require_once 'api.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -38,7 +38,7 @@ require_once 'user.php';
                 <a href="#" class="nav-link" data-page="profile"><i class="fas fa-user-cog"></i><span>Profile</span></a>
             </nav>
             <div class="sidebar-footer">
-                <a href="../logout.php" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
+                <a href="../logout" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
             </div>
         </aside>
 
@@ -75,7 +75,7 @@ require_once 'user.php';
                                 <i class="fas fa-user-edit"></i>
                                 <span>Edit Profile</span>
                             </a>
-                            <a href="../logout.php" class="dropdown-item">
+                            <a href="../logout" class="dropdown-item">
                                 <i class="fas fa-sign-out-alt"></i>
                                 <span>Logout</span>
                             </a>

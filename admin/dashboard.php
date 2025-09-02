@@ -1,12 +1,12 @@
 <?php
 // --- CONFIG & SESSION START ---
 require_once '../config.php'; // Adjusted path
-require_once 'admin.php'; // Include the new PHP logic file
+require_once 'api.php'; // Include the new PHP logic file
 
 // --- SESSION SECURITY & ROLE CHECK ---
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     session_destroy();
-    header("Location: ../login.php?error=unauthorized"); // Adjusted path
+    header("Location: ../login/index.php?error=unauthorized"); // Adjusted path
     exit();
 }
 
@@ -14,7 +14,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 $session_timeout = 1800; // 30 minutes
 if (isset($_SESSION['loggedin_time']) && (time() - $_SESSION['loggedin_time'] > $session_timeout)) {
     session_destroy();
-    header("Location: ../login.php?session_expired=true"); // Adjusted path
+    header("Location: ../login/index.php?session_expired=true"); // Adjusted path
     exit();
 }
 $_SESSION['loggedin_time'] = time();
@@ -146,7 +146,7 @@ $conn->close();
                             Notifications</a></li>
                 </ul>
             </nav>
-            <a href="../logout.php" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
+            <a href="../logout" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
         </aside>
 
         <main class="main-content">
@@ -488,7 +488,7 @@ $conn->close();
 
                     <button id="generate-report-btn" class="btn btn-primary"><i class="fas fa-sync"></i> Generate Report</button>
 
-                    <form id="download-pdf-form" method="GET" action="admin.php" target="_blank">
+                    <form id="download-pdf-form" method="GET" action="api.php" target="_blank">
                         <input type="hidden" name="action" value="download_pdf">
                         <input type="hidden" id="pdf-report-type" name="report_type">
                         <input type="hidden" id="pdf-start-date" name="start_date">

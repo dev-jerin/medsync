@@ -73,7 +73,7 @@ if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST
 }
 if (!isset($_SESSION['registration_data'])) {
     // Redirect if the registration process hasn't been started
-    header("Location: ../register.php");
+    header("Location: index.php");
     exit();
 }
 
@@ -87,7 +87,7 @@ if (time() - $session_data['timestamp'] > 600) {
     $_SESSION['verify_error'] = "Your OTP has expired. Please register again.";
     // Clear expired data
     unset($_SESSION['registration_data']);
-    header("Location: ../register.php");
+    header("Location: index.php");
     exit();
 }
 
@@ -167,7 +167,7 @@ try {
         // Clean up session and redirect to login with a success message
         unset($_SESSION['registration_data']);
         $_SESSION['register_success'] = "Registration successful! Your User ID is " . $display_user_id . ". You can now log in.";
-        header("Location: ../login.php");
+        header("Location: index.php");
         exit();
 
     } else {

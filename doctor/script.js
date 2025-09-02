@@ -111,8 +111,8 @@ document.addEventListener("DOMContentLoaded", function() {
 
         try {
             const [locationsRes, occupancyRes] = await Promise.all([
-                fetch('doctor.php?action=get_locations'),
-                fetch('doctor.php?action=get_occupancy_data')
+                fetch('api.php?action=get_locations'),
+                fetch('api.php?action=get_occupancy_data')
             ]);
 
             if (!locationsRes.ok || !occupancyRes.ok) throw new Error('Failed to fetch management data.');
@@ -261,7 +261,7 @@ document.addEventListener("DOMContentLoaded", function() {
             formData.append('status', newStatus);
 
             try {
-                const response = await fetch('doctor.php', { method: 'POST', body: formData });
+                const response = await fetch('api.php', { method: 'POST', body: formData });
                 const result = await response.json();
 
                 if (result.success) {

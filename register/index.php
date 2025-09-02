@@ -1,12 +1,12 @@
 <?php
 // config.php initializes the session and CSRF token
-require_once 'config.php';
+require_once '../config.php';
 
 // If a user is already logged in, redirect them to their dashboard
 if (isset($_SESSION['user_id'])) {
     // A robust solution would be to redirect based on the role stored in the session
     $role = $_SESSION['role'];
-    header("Location: {$role}/dashboard.php");
+    header("Location: ../{$role}/dashboard");
     exit();
 }
 ?>
@@ -21,27 +21,27 @@ if (isset($_SESSION['user_id'])) {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="apple-touch-icon" sizes="180x180" href="images/favicon/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="images/favicon/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="images/favicon/favicon-16x16.png">
-    <link rel="manifest" href="images/favicon/site.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="../images/favicon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="../images/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../images/favicon/favicon-16x16.png">
+    <link rel="manifest" href="../images/favicon/site.webmanifest">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="main/styles.css"> <!-- Main styles for header/footer -->
-    <link rel="stylesheet" href="register/styles.css"> <!-- Page-specific styles -->
+    <link rel="stylesheet" href="../main/styles.css"> <!-- Main styles for header/footer -->
+    <link rel="stylesheet" href="styles.css"> <!-- Page-specific styles -->
 </head>
 <body>
 
     <!-- Header -->
     <header class="header" id="header">
         <nav class="container navbar">
-            <a href="index.php" class="logo">
-                <img src="images/logo.png" alt="MedSync Logo" class="logo-img">
+            <a href="../index.php" class="logo">
+                <img src="../images/logo.png" alt="MedSync Logo" class="logo-img">
                 <span>MedSync</span>
             </a>
             <div class="nav-actions">
-                <a href="login.php" class="btn btn-secondary">Login</a>
+                <a href="../login" class="btn btn-secondary">Login</a>
             </div>
         </nav>
     </header>
@@ -62,7 +62,7 @@ if (isset($_SESSION['user_id'])) {
                 <div class="auth-form-container">
                     <div class="auth-header">
                         <h1>Create Your Account</h1>
-                        <p>Let's get you started. Already have an account? <a href="login.php">Log in</a>.</p>
+                        <p>Let's get you started. Already have an account? <a href="../login">Log in</a>.</p>
                     </div>
 
                     <?php
@@ -72,14 +72,14 @@ if (isset($_SESSION['user_id'])) {
                     }
                     ?>
 
-                    <form id="registerForm" action="register/register_process.php" method="POST" enctype="multipart/form-data">
+                    <form id="registerForm" action="register_process.php" method="POST" enctype="multipart/form-data">
                         <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
 
                         <!-- Profile Picture Uploader -->
                         <div class="form-group profile-picture-uploader">
                             <label for="profile_picture_input">Profile Picture</label>
                             <div class="profile-picture-container">
-                                <img src="uploads/profile_pictures/default.png" alt="Profile Preview" id="profile_picture_preview" class="profile-picture-preview">
+                                <img src="../uploads/profile_pictures/default.png" alt="Profile Preview" id="profile_picture_preview" class="profile-picture-preview">
                                 <input type="file" id="profile_picture_input" name="profile_picture" accept="image/jpeg, image/png, image/gif" style="display: none;">
                                 <button type="button" class="btn-change-pic" onclick="document.getElementById('profile_picture_input').click();"></button>
                             </div>
@@ -149,6 +149,6 @@ if (isset($_SESSION['user_id'])) {
         </div>
     </main>
     
-    <script src="register/script.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>

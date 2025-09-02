@@ -36,7 +36,7 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         try {
-            const response = await fetch('staff.php?fetch=dashboard_stats');
+            const response = await fetch('api.php?fetch=dashboard_stats');
             const result = await response.json();
 
             if (result.success) {
@@ -243,7 +243,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     const fetchUnreadNotificationCount = async () => {
         try {
-            const response = await fetch('staff.php?fetch=unread_notification_count');
+            const response = await fetch('api.php?fetch=unread_notification_count');
             const result = await response.json();
             if (result.success && result.data.count > 0) {
                 notificationBadge.textContent = result.data.count > 9 ? '9+' : result.data.count;
@@ -302,7 +302,7 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!container) return;
         container.innerHTML = '<p class="no-items-message">Loading...</p>';
         try {
-            const response = await fetch(`staff.php?fetch=notifications&limit=${limit}`);
+            const response = await fetch(`api.php?fetch=notifications&limit=${limit}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             renderNotifications(result.data, container);
@@ -344,7 +344,7 @@ document.addEventListener("DOMContentLoaded", function() {
              formData.append('action', 'markNotificationsRead');
              formData.append('csrf_token', csrfToken);
              try {
-                const response = await fetch('staff.php', { method: 'POST', body: formData });
+                const response = await fetch('api.php', { method: 'POST', body: formData });
                 const result = await response.json();
                 if(!result.success) throw new Error(result.message);
 
@@ -391,7 +391,7 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!callbacksTableBody) return;
         callbacksTableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">Loading requests...</td></tr>`;
         try {
-            const response = await fetch('staff.php?fetch=callbacks');
+            const response = await fetch('api.php?fetch=callbacks');
             if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
             const result = await response.json();
 
@@ -448,7 +448,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 formData.append('csrf_token', csrfToken);
 
                 try {
-                    const response = await fetch('staff.php', { method: 'POST', body: formData });
+                    const response = await fetch('api.php', { method: 'POST', body: formData });
                     const result = await response.json();
                     if (!response.ok || !result.success) throw new Error(result.message);
                     fetchCallbackRequests();
@@ -504,7 +504,7 @@ document.addEventListener("DOMContentLoaded", function() {
         formData.append('csrf_token', csrfToken);
 
         try {
-            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             
@@ -537,7 +537,7 @@ document.addEventListener("DOMContentLoaded", function() {
         listContainer.innerHTML = `<p class="no-items-message">Loading conversations...</p>`;
 
         try {
-            const response = await fetch('staff.php?fetch=conversations');
+            const response = await fetch('api.php?fetch=conversations');
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             
@@ -639,7 +639,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const container = document.getElementById('chat-messages-container');
         container.innerHTML = '<p class="no-items-message">Loading messages...</p>';
         try {
-            const response = await fetch(`staff.php?fetch=messages&conversation_id=${conversationId}`);
+            const response = await fetch(`api.php?fetch=messages&conversation_id=${conversationId}`);
             const result = await response.json();
             if(!result.success) throw new Error(result.message);
             
@@ -701,7 +701,7 @@ document.addEventListener("DOMContentLoaded", function() {
         formData.append('csrf_token', csrfToken);
 
         try {
-            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             
@@ -765,7 +765,7 @@ document.addEventListener("DOMContentLoaded", function() {
             tableBody.innerHTML = `<tr><td colspan="3" style="text-align: center;">Loading activity...</td></tr>`;
 
             try {
-                const response = await fetch('staff.php?fetch=audit_log');
+                const response = await fetch('api.php?fetch=audit_log');
                 const result = await response.json();
 
                 if (result.success) {
@@ -806,7 +806,7 @@ document.addEventListener("DOMContentLoaded", function() {
             saveButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
 
             try {
-                const response = await fetch('staff.php', { method: 'POST', body: formData });
+                const response = await fetch('api.php', { method: 'POST', body: formData });
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
                 showFeedback(this, result.message, true);
@@ -831,7 +831,7 @@ document.addEventListener("DOMContentLoaded", function() {
             saveButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
 
             try {
-                const response = await fetch('staff.php', { method: 'POST', body: formData });
+                const response = await fetch('api.php', { method: 'POST', body: formData });
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
                 showFeedback(this, result.message, true);
@@ -852,7 +852,7 @@ document.addEventListener("DOMContentLoaded", function() {
             formData.append('csrf_token', csrfToken);
 
             try {
-                const response = await fetch('staff.php', { method: 'POST', body: formData });
+                const response = await fetch('api.php', { method: 'POST', body: formData });
                 const result = await response.json();
                 if (!response.ok || !result.success) throw new Error(result.message);
                 
@@ -919,7 +919,7 @@ document.addEventListener("DOMContentLoaded", function() {
         userTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">Loading users...</td></tr>`;
 
         try {
-            const response = await fetch(`staff.php?fetch=get_users&role=${role}&search=${search}`);
+            const response = await fetch(`api.php?fetch=get_users&role=${role}&search=${search}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             renderUsers(result.data);
@@ -1028,7 +1028,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
         const handleUserFormSubmit = async (formData) => {
             try {
-                const response = await fetch('staff.php', { method: 'POST', body: formData });
+                const response = await fetch('api.php', { method: 'POST', body: formData });
                 const result = await response.json();
                 if(!result.success) throw new Error(result.message);
                 alert(result.message);
@@ -1065,7 +1065,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const fetchAndRenderMedicines = async (search = '') => {
             medicinesTableBody.innerHTML = `<tr><td colspan="4" style="text-align: center;">Loading medicines...</td></tr>`;
             try {
-                const response = await fetch(`staff.php?fetch=medicines&search=${encodeURIComponent(search)}`);
+                const response = await fetch(`api.php?fetch=medicines&search=${encodeURIComponent(search)}`);
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
                 renderMedicines(result.data);
@@ -1112,7 +1112,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const fetchAndRenderBlood = async () => {
             bloodTableBody.innerHTML = `<tr><td colspan="4" style="text-align: center;">Loading blood stock...</td></tr>`;
             try {
-                const response = await fetch('staff.php?fetch=blood_inventory');
+                const response = await fetch('api.php?fetch=blood_inventory');
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
                 renderBlood(result.data);
@@ -1194,7 +1194,7 @@ document.addEventListener("DOMContentLoaded", function() {
             const formData = new FormData(form);
             formData.append('csrf_token', csrfToken);
             try {
-                const response = await fetch('staff.php', { method: 'POST', body: formData });
+                const response = await fetch('api.php', { method: 'POST', body: formData });
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
                 alert(result.message);
@@ -1305,7 +1305,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 formData.append('status', 'available');
                 formData.append('csrf_token', csrfToken);
                 try {
-                    const response = await fetch('staff.php', { method: 'POST', body: formData });
+                    const response = await fetch('api.php', { method: 'POST', body: formData });
                     const result = await response.json();
                     if (!result.success) throw new Error(result.message);
                     alert(result.message);
@@ -1324,7 +1324,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const gridContainer = document.getElementById('bed-grid-container');
         gridContainer.innerHTML = '<p class="no-items-message">Loading bed data...</p>';
         try {
-            const response = await fetch('staff.php?fetch=bed_management_data');
+            const response = await fetch('api.php?fetch=bed_management_data');
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             bedManagementData = result.data;
@@ -1491,7 +1491,7 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         try {
-            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             
@@ -1561,7 +1561,7 @@ document.addEventListener("DOMContentLoaded", function() {
         formData.append('status', newStatus);
         formData.append('csrf_token', csrfToken);
         try {
-            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             await fetchAndRenderBedData(); // Just refresh on success
@@ -1579,7 +1579,7 @@ document.addEventListener("DOMContentLoaded", function() {
         formData.append('status', 'occupied');
 
         try {
-            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             
@@ -1612,7 +1612,7 @@ document.addEventListener("DOMContentLoaded", function() {
         formData.append('status', 'cleaning');
 
         try {
-            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             
@@ -1656,7 +1656,7 @@ document.addEventListener("DOMContentLoaded", function() {
         tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">Loading admissions...</td></tr>`;
 
         try {
-            const response = await fetch(`staff.php?fetch=admissions&search=${encodeURIComponent(search)}`);
+            const response = await fetch(`api.php?fetch=admissions&search=${encodeURIComponent(search)}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             renderAdmissions(result.data);
@@ -1764,7 +1764,7 @@ document.addEventListener("DOMContentLoaded", function() {
         tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">Loading lab results...</td></tr>`;
 
         try {
-            const response = await fetch(`staff.php?fetch=lab_results&search=${encodeURIComponent(search)}`);
+            const response = await fetch(`api.php?fetch=lab_results&search=${encodeURIComponent(search)}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             renderLabs(result.data);
@@ -1819,7 +1819,7 @@ document.addEventListener("DOMContentLoaded", function() {
         // Fetch doctor data if not already cached
         if (!labFormData || !labFormData.doctors) {
             try {
-                const response = await fetch('staff.php?fetch=lab_form_data');
+                const response = await fetch('api.php?fetch=lab_form_data');
                 const result = await response.json();
                 if (!result.success) throw new Error(result.message);
                 labFormData = result.data;
@@ -1874,7 +1874,7 @@ document.addEventListener("DOMContentLoaded", function() {
         resultsContainer.style.display = 'block';
 
         try {
-            const response = await fetch(`staff.php?fetch=search_patients&query=${encodeURIComponent(query)}`);
+            const response = await fetch(`api.php?fetch=search_patients&query=${encodeURIComponent(query)}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             
@@ -1921,7 +1921,7 @@ document.addEventListener("DOMContentLoaded", function() {
         formData.append('csrf_token', csrfToken);
 
         try {
-            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
             if (!response.ok || !result.success) throw new Error(result.message || 'An unknown error occurred');
 
@@ -1940,7 +1940,7 @@ document.addEventListener("DOMContentLoaded", function() {
         formData.append('csrf_token', csrfToken);
 
         try {
-            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             
@@ -1994,7 +1994,7 @@ document.addEventListener("DOMContentLoaded", function() {
         tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">Loading discharge requests...</td></tr>`;
 
         try {
-            const response = await fetch(`staff.php?fetch=discharge_requests&search=${encodeURIComponent(search)}&status=${status}`);
+            const response = await fetch(`api.php?fetch=discharge_requests&search=${encodeURIComponent(search)}&status=${status}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             renderDischarges(result.data);
@@ -2063,7 +2063,7 @@ document.addEventListener("DOMContentLoaded", function() {
         formData.append('csrf_token', csrfToken);
 
         try {
-            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             alert(result.message);
@@ -2119,7 +2119,7 @@ document.addEventListener("DOMContentLoaded", function() {
         tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">Loading invoices...</td></tr>`;
 
         try {
-            const response = await fetch(`staff.php?fetch=invoices&search=${encodeURIComponent(search)}`);
+            const response = await fetch(`api.php?fetch=invoices&search=${encodeURIComponent(search)}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             renderInvoices(result.data);
@@ -2214,7 +2214,7 @@ document.addEventListener("DOMContentLoaded", function() {
         resultsContainer.style.display = 'block';
 
         try {
-            const response = await fetch(`staff.php?fetch=billable_patients&search=${encodeURIComponent(query)}`);
+            const response = await fetch(`api.php?fetch=billable_patients&search=${encodeURIComponent(query)}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             
@@ -2263,7 +2263,7 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         try {
-            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
             if (!response.ok || !result.success) throw new Error(result.message || 'An unknown error occurred');
 
@@ -2291,7 +2291,7 @@ document.addEventListener("DOMContentLoaded", function() {
         formData.append('csrf_token', csrfToken);
 
         try {
-            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
             if (!response.ok || !result.success) throw new Error(result.message);
             
@@ -2340,7 +2340,7 @@ document.addEventListener("DOMContentLoaded", function() {
         tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">Loading...</td></tr>`;
 
         try {
-            const response = await fetch(`staff.php?fetch=pending_prescriptions&search=${encodeURIComponent(search)}`);
+            const response = await fetch(`api.php?fetch=pending_prescriptions&search=${encodeURIComponent(search)}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             
@@ -2378,7 +2378,7 @@ document.addEventListener("DOMContentLoaded", function() {
         modal.classList.add('show');
 
         try {
-            const response = await fetch(`staff.php?fetch=prescription_details&id=${prescriptionId}`);
+            const response = await fetch(`api.php?fetch=prescription_details&id=${prescriptionId}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             
@@ -2454,7 +2454,7 @@ document.addEventListener("DOMContentLoaded", function() {
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
 
         try {
-            const response = await fetch('staff.php', { method: 'POST', body: formData });
+            const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
             if (!response.ok || !result.success) throw new Error(result.message);
 
@@ -2465,7 +2465,7 @@ document.addEventListener("DOMContentLoaded", function() {
             );
             
             if (confirmed) {
-                window.open(`staff.php?action=download_pharmacy_bill&id=${result.bill_id}`, '_blank');
+                window.open(`api.php?action=download_pharmacy_bill&id=${result.bill_id}`, '_blank');
             }
 
             fetchAndRenderPendingPrescriptions();
@@ -2489,7 +2489,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const doctorFilter = document.getElementById('token-doctor-filter');
         
         // Fetch doctors for the filter dropdown
-        fetch('staff.php?fetch=active_doctors')
+        fetch('api.php?fetch=active_doctors')
             .then(res => res.json())
             .then(result => {
                 if (result.success) {
@@ -2519,7 +2519,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const container = document.getElementById('token-display-container');
         
         try {
-            const response = await fetch(`staff.php?fetch=fetch_tokens&doctor_id=${doctorId}`);
+            const response = await fetch(`api.php?fetch=fetch_tokens&doctor_id=${doctorId}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
 

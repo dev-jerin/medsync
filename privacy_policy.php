@@ -5,7 +5,7 @@ require_once 'config.php';
 
 // If a user is already logged in, redirect them to their dashboard
 if (isset($_SESSION['user_id'])) {
-    header("Location: " . $_SESSION['role'] . "/dashboard.php");
+    header("Location: " . $_SESSION['role'] . "/dashboard");
     exit();
 }
 ?>
@@ -52,8 +52,8 @@ if (isset($_SESSION['user_id'])) {
             </ul>
 
             <div class="nav-actions">
-                <a href="login.php" class="btn btn-secondary">Login</a>
-                <a href="register.php" class="btn btn-primary">Register</a>
+                <a href="login" class="btn btn-secondary">Login</a>
+                <a href="register" class="btn btn-primary">Register</a>
             </div>
 
             <div class="hamburger">
@@ -73,8 +73,8 @@ if (isset($_SESSION['user_id'])) {
             <li><a href="index.php#faq">FAQ</a></li>
         </ul>
         <div class="nav-actions-mobile">
-            <a href="login.php" class="btn btn-secondary">Login</a>
-            <a href="register.php" class="btn btn-primary">Register</a>
+            <a href="login" class="btn btn-secondary">Login</a>
+            <a href="register" class="btn btn-primary">Register</a>
         </div>
     </div>
 
@@ -167,9 +167,9 @@ if (isset($_SESSION['user_id'])) {
                     <h4>Quick Links</h4>
                     <ul>
                         <li><a href="index.php">Home</a></li>
-                        <li><a href="register.php">Register</a></li>
-                        <li><a href="privacy_policy.php">Privacy Policy</a></li>
-                        <li><a href="termsandconditions.php">Terms & Conditions</a></li>
+                        <li><a href="register">Register</a></li>
+                        <li><a href="privacy_policy">Privacy Policy</a></li>
+                        <li><a href="termsandconditions">Terms & Conditions</a></li>
                     </ul>
                 </div>
                 <div class="footer-col">

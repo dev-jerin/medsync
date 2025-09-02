@@ -1,6 +1,6 @@
 <?php
 /**
- * MedSync Staff Logic (staff.php)
+ * MedSync Staff Logic (api.php)
  *
  * This script handles the backend logic for the staff dashboard.
  * - Enforces session security and role-based access.
@@ -1930,7 +1930,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
 // --- Standard Page Load Security & Session Management ---
 
 if (!isset($_SESSION['user_id'])) {
-    header("Location: ../login.php?error=not_loggedin");
+    header("Location: ../login/index.php?error=not_loggedin");
     exit();
 }
 
@@ -1944,7 +1944,7 @@ $role_check_stmt->close();
 if (!in_array($current_user_role, ['staff', 'admin'])) {
     session_unset();
     session_destroy();
-    header("Location: ../login.php?error=unauthorized");
+    header("Location: ../login/index.php?error=unauthorized");
     exit();
 }
 $_SESSION['role'] = $current_user_role;
@@ -1954,7 +1954,7 @@ $session_timeout = 1800; // 30 minutes
 if (isset($_SESSION['loggedin_time']) && (time() - $_SESSION['loggedin_time'] > $session_timeout)) {
     session_unset();
     session_destroy();
-    header("Location: ../login.php?error=session_expired");
+    header("Location: ../login/index.php?error=session_expired");
     exit();
 }
 $_SESSION['loggedin_time'] = time();
@@ -1983,7 +1983,7 @@ $conn->close();
 if (!$user) {
     session_unset();
     session_destroy();
-    header("Location: ../login.php?error=user_not_found");
+    header("Location: ../login/index.php?error=user_not_found");
     exit();
 }
 
@@ -2061,7 +2061,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pharmacy_bill') {
         die('Bill not found.');
     }
 
-    // --- HTML Template for PDF (Adapted from admin.php) ---
+    // --- HTML Template for PDF (Adapted from api.php) ---
     $medsync_logo_path = '../images/logo.png';
     $hospital_logo_path = '../images/hospital.png';
     $medsync_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($medsync_logo_path));
