@@ -16,7 +16,7 @@ function send_mail($to, $subject, $body, $attachment_string = null, $attachment_
     $stmt->execute();
     $app_password = $stmt->get_result()->fetch_assoc()['setting_value'];
     $stmt->close();
-    $conn->close();
+    // Note: Do not close the global connection here, as it may be used elsewhere in the script.
 
     if (!$app_password) {
         // Log error or handle it gracefully

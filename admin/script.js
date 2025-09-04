@@ -1,7 +1,6 @@
 document.addEventListener("DOMContentLoaded", function () {
     // --- CORE UI ELEMENTS & STATE ---
     const csrfToken = document.querySelector('input[name="csrf_token"]').value;
-    // CORRECTED: Read the user ID from the hidden input field in dashboard.php
     const currentUserId = parseInt(document.getElementById('current-user-id').value, 10);
     const hamburgerBtn = document.getElementById('hamburger-btn');
     const sidebar = document.getElementById('sidebar');
@@ -13,9 +12,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const userSearchInput = document.getElementById('user-search-input');
 
     let currentRole = 'user';
-    let currentAccommodationType = 'bed'; // 'bed' or 'room'
+    let currentAccommodationType = 'bed';
     let userRolesChart = null;
-    // REMOVED: reportChart is no longer needed
     let messengerInitialized = false;
     let activeConversationId = null;
     let activeReceiverId = null;
@@ -34,7 +32,7 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     const convert24hTo12h = (timeString) => {
-        if (!timeString) return { hour: 9, minute: '00', period: 'AM' }; // Default for new slots
+        if (!timeString) return { hour: 9, minute: '00', period: 'AM' };
         const [hours24, minutes] = timeString.split(':');
         const period = parseInt(hours24, 10) >= 12 ? 'PM' : 'AM';
         let hours12 = parseInt(hours24, 10) % 12;
@@ -47,7 +45,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (period === 'PM' && hour !== 12) {
             hour += 12;
         }
-        if (period === 'AM' && hour === 12) { // Midnight case (12 AM)
+        if (period === 'AM' && hour === 12) {
             hour = 0;
         }
         return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
@@ -73,13 +71,100 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     };
     
-    // A small delay to avoid sending too many requests while typing
     userSearchInput.addEventListener('keyup', () => {
         setTimeout(() => {
             fetchUsers(currentRole, userSearchInput.value.trim());
         }, 300);
     });
 
+    // --- REAL-TIME VALIDATION LOGIC ---
+    const validateField = (field, ignoreRequired = false) => {
+        const errorContainer = field.nextElementSibling;
+        let errorMessage = '';
+
+        if (!ignoreRequired && field.required && field.value.trim() === '') {
+            errorMessage = 'This field is required.';
+        } 
+        else if (field.value.trim() !== '' && field.minLength > 0 && field.value.length < field.minLength) {
+            errorMessage = `Must be at least ${field.minLength} characters long.`;
+        }
+        else if (field.type === 'email' && field.value.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(field.value)) {
+            errorMessage = 'Please enter a valid email address.';
+        }
+        else if (field.type === 'tel' && field.pattern && !new RegExp(field.pattern).test(field.value)) {
+             errorMessage = 'Please use the format +CountryCodeNumber (e.g., +919876543210).';
+        }
+
+        if (errorMessage) {
+            field.classList.add('invalid');
+            if (errorContainer) errorContainer.textContent = errorMessage;
+            return false;
+        } else {
+            field.classList.remove('invalid');
+            if (errorContainer) errorContainer.textContent = '';
+            return true;
+        }
+    };
+
+    // --- GENERIC HELPER: REUSABLE MODAL HANDLER ---
+    const setupModal = (config) => {
+        const { modalId, openBtnId, formId, onOpen } = config;
+        const modal = document.getElementById(modalId);
+        const openBtn = document.getElementById(openBtnId);
+        const form = document.getElementById(formId);
+
+        if (!modal) return null;
+
+        const open = (mode, data = {}) => {
+            if (form) {
+                form.reset();
+                form.querySelectorAll('.invalid').forEach(el => el.classList.remove('invalid'));
+                form.querySelectorAll('.error-message').forEach(el => el.textContent = '');
+            }
+            if (onOpen) onOpen(mode, data);
+            modal.classList.add('show');
+        };
+
+        if (openBtn) openBtn.addEventListener('click', () => open('add'));
+        
+        modal.querySelector('.modal-close-btn')?.addEventListener('click', () => modal.classList.remove('show'));
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.classList.remove('show');
+        });
+
+        return open;
+    };
+
+    // --- GENERIC HELPER: REUSABLE DATA FETCHER & RENDERER ---
+    const fetchAndRender = async (config) => {
+        const { endpoint, target, renderRow, columns, emptyMessage } = config;
+        if (target) {
+            target.innerHTML = `<tr><td colspan="${columns}" class="loading-cell"><div class="spinner"></div><span>Loading...</span></td></tr>`;
+        }
+
+        try {
+            const response = await fetch(endpoint);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+
+            if (target) {
+                if (result.data.length > 0) {
+                    target.innerHTML = result.data.map(renderRow).join('');
+                } else {
+                    target.innerHTML = `<tr><td colspan="${columns}" style="text-align:center;">${emptyMessage}</td></tr>`;
+                }
+            }
+            return result.data; // Return data for non-rendering fetches
+        } catch (error) {
+            console.error('Fetch error:', error);
+            if (target) {
+                target.innerHTML = `<tr><td colspan="${columns}" style="text-align:center;">Failed to load data: ${error.message}</td></tr>`;
+            }
+            return null; // Return null on error
+        }
+    };
+    
     // --- THEME TOGGLE ---
     const themeToggle = document.getElementById('theme-toggle');
     const applyTheme = (theme) => {
@@ -124,7 +209,6 @@ document.addEventListener("DOMContentLoaded", function () {
         const targetId = clickedLink.dataset.target;
         if (!targetId) return;
 
-        // Update active link styling in the sidebar
         document.querySelectorAll('.sidebar-nav a.active, .sidebar-nav .nav-dropdown-toggle.active').forEach(a => a.classList.remove('active'));
 
         const sidebarLink = document.querySelector(`.sidebar .nav-link[data-target="${targetId}"]`);
@@ -160,7 +244,7 @@ document.addEventListener("DOMContentLoaded", function () {
             else if (inventoryType === 'wards') fetchWards();
         } else if (targetId.startsWith('accommodations-')) {
             panelToShowId = 'accommodations-panel';
-            const type = targetId.split('-')[1]; // 'bed' or 'room'
+            const type = targetId.split('-')[1];
             currentAccommodationType = type;
             title = `${type.charAt(0).toUpperCase() + type.slice(1)} Management`;
             welcomeMessage.style.display = 'none';
@@ -179,7 +263,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (targetId === 'reports') generateReport();
             if (targetId === 'activity') fetchActivityLogs();
             if (targetId === 'feedback') fetchFeedback();
-            if (targetId === 'schedules' && doctorSelect.options.length <= 1) fetchDoctorsForScheduling();
+            if (targetId === 'schedules' && document.getElementById('doctor-select').options.length <= 1) fetchDoctorsForScheduling();
         }
 
         document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
@@ -239,7 +323,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 lowBloodStat.style.display = 'flex';
             }
             
-            // --- NEW: Fetch and display patient satisfaction ---
             try {
                 const feedbackResponse = await fetch('api.php?fetch=feedback_summary');
                 const feedbackResult = await feedbackResponse.json();
@@ -251,7 +334,6 @@ document.addEventListener("DOMContentLoaded", function () {
             } catch (error) {
                 console.error('Could not fetch feedback summary:', error);
             }
-
 
             const chartData = [
                 stats.role_counts.user || 0,
@@ -290,6 +372,43 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     };
 
+    // --- GENERIC FORM SUBMISSION ---
+    const handleFormSubmit = async (formData, refreshTarget = null) => {
+        try {
+            const response = await fetch('api.php', { method: 'POST', body: formData });
+            const result = await response.json();
+
+            if (result.success) {
+                showNotification(result.message, 'success');
+                
+                const action = formData.get('action');
+                if (action === 'sendNotification' || action === 'sendIndividualNotification') {
+                    updateNotificationCount();
+                }
+
+                // Close any open modal
+                document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
+
+                // Refresh the relevant data view
+                if (refreshTarget) {
+                    if (refreshTarget.startsWith('users-')) fetchUsers(refreshTarget.split('-')[1]);
+                    else if (refreshTarget.startsWith('accommodations-')) fetchAccommodations(refreshTarget.split('-')[1]);
+                    else if (refreshTarget === 'blood') fetchBloodInventory();
+                    else if (refreshTarget === 'departments_management') fetchDepartmentsManagement();
+                    else if (refreshTarget === 'medicine') fetchMedicineInventory();
+                    else if (refreshTarget === 'wards') fetchWards();
+                }
+                updateDashboardStats();
+            } else {
+                throw new Error(result.message || 'An unknown error occurred.');
+            }
+        } catch (error) {
+            console.error('Submit error:', error);
+            showNotification(error.message, 'error');
+        }
+    };
+
+    // --- APPOINTMENT MANAGEMENT ---
     const fetchDoctorsForAppointmentFilter = async () => {
         const doctorFilterSelect = document.getElementById('appointment-doctor-filter');
         if (doctorFilterSelect.options.length > 1) return;
@@ -307,53 +426,46 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     };
 
-    const fetchAppointments = async (doctorId = 'all') => {
-        const tableBody = document.getElementById('appointments-table-body');
-        tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading appointments...</td></tr>`;
-        try {
-            const response = await fetch(`api.php?fetch=appointments&doctor_id=${doctorId}`);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-
-            if (result.data.length > 0) {
-                tableBody.innerHTML = result.data.map(appt => {
-                    const status = appt.status.charAt(0).toUpperCase() + appt.status.slice(1);
-                    return `
-                <tr>
-                    <td>${appt.id}</td>
-                    <td>${appt.patient_name} (${appt.patient_display_id})</td>
-                    <td>${appt.doctor_name}</td>
-                    <td>${new Date(appt.appointment_date).toLocaleString()}</td>
-                    <td><span class="status-badge ${appt.status.toLowerCase()}">${status}</span></td>
-                </tr>
-            `}).join('');
-            } else {
-                tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No appointments found.</td></tr>`;
-            }
-        } catch (error) {
-            console.error('Fetch error:', error);
-            tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Failed to load appointments: ${error.message}</td></tr>`;
-        }
+    const renderAppointmentRow = (appt) => {
+        const status = appt.status.charAt(0).toUpperCase() + appt.status.slice(1);
+        return `
+            <tr>
+                <td>${appt.id}</td>
+                <td>${appt.patient_name} (${appt.patient_display_id})</td>
+                <td>${appt.doctor_name}</td>
+                <td>${new Date(appt.appointment_date).toLocaleString()}</td>
+                <td><span class="status-badge ${appt.status.toLowerCase()}">${status}</span></td>
+            </tr>
+        `;
     };
 
-    // --- USER MANAGEMENT (CRUD & Detail View) ---
-    const userModal = document.getElementById('user-modal');
-    const userForm = document.getElementById('user-form');
-    const userDetailModal = document.getElementById('user-detail-modal');
-    const addUserBtn = document.getElementById('add-user-btn');
-    const quickAddUserBtn = document.getElementById('quick-add-user-btn');
+    const fetchAppointments = (doctorId = 'all') => {
+        fetchAndRender({
+            endpoint: `api.php?fetch=appointments&doctor_id=${doctorId}`,
+            target: document.getElementById('appointments-table-body'),
+            renderRow: renderAppointmentRow,
+            columns: 5,
+            emptyMessage: 'No appointments found.'
+        });
+    };
     
-    const modalTitle = document.getElementById('modal-title');
-    const passwordGroup = document.getElementById('password-group');
-    const activeGroup = document.getElementById('is_active-group');
+    document.getElementById('appointment-doctor-filter').addEventListener('change', (e) => fetchAppointments(e.target.value));
+
+    // --- USER MANAGEMENT ---
+    const userDetailModal = document.getElementById('user-detail-modal');
+    const userForm = document.getElementById('user-form');
+    
     const roleSelect = document.getElementById('role');
     const doctorFields = document.getElementById('doctor-fields');
     const staffFields = document.getElementById('staff-fields');
+    
+    userForm.querySelectorAll('input').forEach(input => {
+        input.addEventListener('input', () => validateField(input));
+    });
 
     const openDetailedProfileModal = async (userId) => {
         const contentDiv = document.getElementById('user-detail-content');
-        contentDiv.innerHTML = '<p>Loading profile...</p>';
+        contentDiv.innerHTML = '<div class="loading-cell" style="padding: 4rem 0;"><div class="spinner"></div><span>Loading Profile...</span></div>';
         userDetailModal.classList.add('show');
         try {
             const response = await fetch(`api.php?fetch=user_details&id=${userId}`);
@@ -375,37 +487,37 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             contentDiv.innerHTML = `
-                    <div class="user-detail-header">
-                        <img src="${pfpPath}" alt="Profile Picture" class="user-detail-pfp" onerror="this.src='../uploads/profile_pictures/default.png'">
-                        <div class="user-detail-info">
-                            <h4>${user.name}</h4>
-                            <p>${user.username} (${user.display_user_id})</p>
-                            <p>${user.email}</p>
-                        </div>
+                <div class="user-detail-header">
+                    <img src="${pfpPath}" alt="Profile Picture" class="user-detail-pfp" onerror="this.src='../uploads/profile_pictures/default.png'">
+                    <div class="user-detail-info">
+                        <h4>${user.name}</h4>
+                        <p>${user.username} (${user.display_user_id})</p>
+                        <p>${user.email}</p>
                     </div>
-                    <div class="detail-tabs">
-                        <button class="detail-tab-button active" data-tab="activity">Activity Log</button>
-                        ${roleSpecificTabs}
+                </div>
+                <div class="detail-tabs">
+                    <button class="detail-tab-button active" data-tab="activity">Activity Log</button>
+                    ${roleSpecificTabs}
+                </div>
+                <div id="activity-tab" class="detail-tab-content active">
+                    <h3>Recent Activity</h3>
+                    <div id="user-detail-activity-log">
+                    ${activity.length > 0 ? activity.map(log => {
+                        let iconClass = 'fa-plus';
+                        if (log.action.includes('update')) iconClass = 'fa-pencil-alt';
+                        if (log.action.includes('delete') || log.action.includes('deactivate')) iconClass = 'fa-trash-alt';
+                        return `<div class="log-item">
+                                    <div class="log-icon"><i class="fas ${iconClass}"></i></div>
+                                    <div class="log-details">
+                                        <p>${log.details}</p>
+                                        <div class="log-meta">${new Date(log.created_at).toLocaleString()}</div>
+                                    </div>
+                                </div>`
+                    }).join('') : '<p>No activity recorded for this user.</p>'}
                     </div>
-                    <div id="activity-tab" class="detail-tab-content active">
-                        <h3>Recent Activity</h3>
-                        <div id="user-detail-activity-log">
-                        ${activity.length > 0 ? activity.map(log => {
-                let iconClass = 'fa-plus';
-                if (log.action.includes('update')) iconClass = 'fa-pencil-alt';
-                if (log.action.includes('delete') || log.action.includes('deactivate')) iconClass = 'fa-trash-alt';
-                return `<div class="log-item">
-                                <div class="log-icon"><i class="fas ${iconClass}"></i></div>
-                                <div class="log-details">
-                                    <p>${log.details}</p>
-                                    <div class="log-meta">${new Date(log.created_at).toLocaleString()}</div>
-                                </div>
-                            </div>`
-            }).join('') : '<p>No activity recorded for this user.</p>'}
-                        </div>
-                    </div>
-                    ${roleSpecificContent}
-                `;
+                </div>
+                ${roleSpecificContent}
+            `;
 
             contentDiv.querySelectorAll('.detail-tab-button').forEach(button => {
                 button.addEventListener('click', () => {
@@ -446,115 +558,107 @@ document.addEventListener("DOMContentLoaded", function () {
             console.error('Failed to fetch departments:', error);
         }
     };
-
-    const openUserModal = (mode, user = {}) => {
-        userForm.reset();
-        roleSelect.value = currentRole;
-        roleSelect.disabled = (mode === 'edit');
-
-        if (mode === 'add') {
-            modalTitle.textContent = `Add New ${currentRole.charAt(0).toUpperCase() + currentRole.slice(1)}`;
-            document.getElementById('form-action').value = 'addUser';
-            document.getElementById('password').required = true;
-            passwordGroup.style.display = 'block';
-            activeGroup.style.display = 'none';
-        } else { // edit mode
-            const removePfpBtn = document.getElementById('remove-pfp-btn');
-            removePfpBtn.style.display = (user.profile_picture && user.profile_picture !== 'default.png') ? 'block' : 'none';
-            removePfpBtn.onclick = async () => {
-                const confirmed = await showConfirmation('Remove Picture', `Are you sure you want to remove the profile picture for ${user.username}?`);
-                if (confirmed) {
-                    const formData = new FormData();
-                    formData.append('action', 'removeProfilePicture');
-                    formData.append('id', user.id);
-                    formData.append('csrf_token', csrfToken);
-                    handleFormSubmit(formData, `users-${currentRole}`);
-                    closeModal(userModal);
+    
+    const openUserModal = setupModal({
+        modalId: 'user-modal',
+        openBtnId: 'add-user-btn',
+        formId: 'user-form',
+        onOpen: (mode, user) => {
+            const modalTitle = document.getElementById('modal-title');
+            const passwordGroup = document.getElementById('password-group');
+            const activeGroup = document.getElementById('is_active-group');
+            
+            roleSelect.value = currentRole;
+            roleSelect.disabled = (mode === 'edit');
+    
+            if (mode === 'add') {
+                modalTitle.textContent = `Add New ${currentRole.charAt(0).toUpperCase() + currentRole.slice(1)}`;
+                document.getElementById('form-action').value = 'addUser';
+                document.getElementById('password').required = true;
+                passwordGroup.style.display = 'block';
+                activeGroup.style.display = 'none';
+            } else {
+                const removePfpBtn = document.getElementById('remove-pfp-btn');
+                removePfpBtn.style.display = (user.profile_picture && user.profile_picture !== 'default.png') ? 'block' : 'none';
+                removePfpBtn.onclick = async () => {
+                    const confirmed = await showConfirmation('Remove Picture', `Are you sure you want to remove the profile picture for ${user.username}?`);
+                    if (confirmed) {
+                        const formData = new FormData();
+                        formData.append('action', 'removeProfilePicture');
+                        formData.append('id', user.id);
+                        formData.append('csrf_token', csrfToken);
+                        handleFormSubmit(formData, `users-${currentRole}`);
+                    }
+                };
+    
+                modalTitle.textContent = `Edit ${user.username}`;
+                document.getElementById('form-action').value = 'updateUser';
+                document.getElementById('user-id').value = user.id;
+                document.getElementById('name').value = user.name || '';
+                document.getElementById('username').value = user.username;
+                document.getElementById('email').value = user.email;
+                document.getElementById('phone').value = user.phone || '';
+                document.getElementById('date_of_birth').value = user.date_of_birth || '';
+                document.getElementById('gender').value = user.gender || '';
+                document.getElementById('password').required = false;
+                passwordGroup.style.display = 'block';
+                activeGroup.style.display = 'block';
+                document.getElementById('is_active').value = user.active;
+    
+                if (user.role === 'doctor') {
+                    document.getElementById('specialty').value = user.specialty || '';
+                    document.getElementById('qualifications').value = user.qualifications || '';
+                    document.getElementById('department_id').value = user.department_id || '';
+                    document.getElementById('is_available').value = user.availability !== null ? user.availability : 1;
+                } else if (user.role === 'staff') {
+                    document.getElementById('shift').value = user.shift || 'day';
+                    document.getElementById('assigned_department_id').value = user.assigned_department_id || '';
                 }
-            };
-
-            modalTitle.textContent = `Edit ${user.username}`;
-            document.getElementById('form-action').value = 'updateUser';
-            document.getElementById('user-id').value = user.id;
-            document.getElementById('name').value = user.name || '';
-            document.getElementById('username').value = user.username;
-            document.getElementById('email').value = user.email;
-            document.getElementById('phone').value = user.phone || '';
-            document.getElementById('date_of_birth').value = user.date_of_birth || '';
-            document.getElementById('gender').value = user.gender || '';
-            document.getElementById('password').required = false;
-            passwordGroup.style.display = 'block';
-            activeGroup.style.display = 'block';
-            document.getElementById('is_active').value = user.active;
-
-            if (user.role === 'doctor') {
-                document.getElementById('specialty').value = user.specialty || '';
-                document.getElementById('qualifications').value = user.qualifications || '';
-                document.getElementById('department_id').value = user.department_id || '';
-                document.getElementById('is_available').value = user.availability !== null ? user.availability : 1;
-            } else if (user.role === 'staff') {
-                document.getElementById('shift').value = user.shift || 'day';
-                document.getElementById('assigned_department_id').value = user.assigned_department_id || '';
             }
+            toggleRoleFields();
         }
-        toggleRoleFields();
-        userModal.classList.add('show');
-    };
+    });
 
-    const closeModal = (modalElement) => modalElement.classList.remove('show');
-
-    addUserBtn.addEventListener('click', () => openUserModal('add'));
-    quickAddUserBtn.addEventListener('click', (e) => {
+    document.getElementById('quick-add-user-btn').addEventListener('click', (e) => {
         e.preventDefault();
         document.querySelector('.nav-link[data-target="users-user"]').click();
         setTimeout(() => openUserModal('add'), 100);
     });
-    userModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(userModal));
-    userModal.addEventListener('click', (e) => { if (e.target === userModal) closeModal(userModal); });
-    userDetailModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(userDetailModal));
-    userDetailModal.addEventListener('click', (e) => { if (e.target === userDetailModal) closeModal(userDetailModal); });
 
-    const fetchUsers = async (role, searchTerm = '') => {
+    userDetailModal.querySelector('.modal-close-btn').addEventListener('click', () => userDetailModal.classList.remove('show'));
+    userDetailModal.addEventListener('click', (e) => { if (e.target === userDetailModal) userDetailModal.classList.remove('show'); });
+
+    const renderUserRow = (user) => `
+        <tr class="clickable-row" data-user-id="${user.id}">
+            <td>
+                <div style="display: flex; align-items: center;">
+                    <img src="../uploads/profile_pictures/${user.profile_picture || 'default.png'}" alt="pfp" class="user-list-pfp" onerror="this.onerror=null;this.src='../uploads/profile_pictures/default.png';">
+                    ${user.name || 'N/A'}
+                </div>
+            </td>
+            <td>${user.display_user_id || 'N/A'}</td>
+            <td>${user.username}</td>
+            <td>${user.email}</td>
+            <td>${user.phone || 'N/A'}</td>
+            <td><span class="status-badge ${user.active == 1 ? 'active' : 'inactive'}">${user.active == 1 ? 'Active' : 'Inactive'}</span></td>
+            <td>${new Date(user.created_at).toLocaleDateString()}</td>
+            <td class="action-buttons">
+                <button class="btn-edit" data-user='${JSON.stringify(user)}' title="Edit"><i class="fas fa-edit"></i></button>
+                <button class="btn-delete" data-user='${JSON.stringify(user)}' title="Deactivate"><i class="fas fa-trash-alt"></i></button>
+            </td>
+        </tr>
+    `;
+
+    const fetchUsers = (role, searchTerm = '') => {
         currentRole = role;
         document.getElementById('user-table-title').textContent = `${role.charAt(0).toUpperCase() + role.slice(1)}s`;
-        const tableBody = document.getElementById('user-table-body');
-        tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Loading...</td></tr>`;
-
-        try {
-            const response = await fetch(`api.php?fetch=users&role=${role}&search=${encodeURIComponent(searchTerm)}`);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-
-            if (result.data.length > 0) {
-                tableBody.innerHTML = result.data.map(user => `
-                        <tr class="clickable-row" data-user-id="${user.id}">
-                            <td>
-                                <div style="display: flex; align-items: center;">
-                                    <img src="../uploads/profile_pictures/${user.profile_picture || 'default.png'}" alt="pfp" class="user-list-pfp" onerror="this.onerror=null;this.src='../uploads/profile_pictures/default.png';">
-                                    ${user.name || 'N/A'}
-                                </div>
-                            </td>
-                            <td>${user.display_user_id || 'N/A'}</td>
-                            <td>${user.username}</td>
-                            <td>${user.email}</td>
-                            <td>${user.phone || 'N/A'}</td>
-                            <td><span class="status-badge ${user.active == 1 ? 'active' : 'inactive'}">${user.active == 1 ? 'Active' : 'Inactive'}</span></td>
-                            <td>${new Date(user.created_at).toLocaleDateString()}</td>
-                            <td class="action-buttons">
-                                <button class="btn-edit" data-user='${JSON.stringify(user)}' title="Edit"><i class="fas fa-edit"></i></button>
-                                <button class="btn-delete" data-user='${JSON.stringify(user)}' title="Deactivate"><i class="fas fa-trash-alt"></i></button>
-                            </td>
-                        </tr>
-                    `).join('');
-            } else {
-                tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">No users found for this role.</td></tr>`;
-            }
-        } catch (error) {
-            console.error('Fetch error:', error);
-            tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Failed to load users: ${error.message}</td></tr>`;
-            showNotification(error.message, 'error');
-        }
+        fetchAndRender({
+            endpoint: `api.php?fetch=users&role=${role}&search=${encodeURIComponent(searchTerm)}`,
+            target: document.getElementById('user-table-body'),
+            renderRow: renderUserRow,
+            columns: 8,
+            emptyMessage: 'No users found for this role.'
+        });
     };
 
     document.getElementById('user-table-body').addEventListener('click', async (e) => {
@@ -566,8 +670,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (editBtn) {
             e.stopPropagation();
-            const user = JSON.parse(editBtn.dataset.user);
-            openUserModal('edit', user);
+            openUserModal('edit', JSON.parse(editBtn.dataset.user));
             return;
         }
 
@@ -590,59 +693,35 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
-    const handleFormSubmit = async (formData, refreshTarget = null) => {
-        try {
-            const response = await fetch('api.php', { method: 'POST', body: formData });
-            const result = await response.json();
-
-            if (result.success) {
-                showNotification(result.message, 'success');
-                
-                const action = formData.get('action');
-                if (action === 'sendNotification' || action === 'sendIndividualNotification') {
-                    updateNotificationCount();
-                }
-
-                if (action.toLowerCase().includes('user')) closeModal(userModal);
-                else if (action.toLowerCase().includes('medicine')) closeModal(medicineModal);
-                else if (action.toLowerCase().includes('blood')) closeModal(bloodModal);
-                else if (action.toLowerCase().includes('ward')) closeModal(wardFormModal);
-                else if (action.toLowerCase().includes('accommodation')) closeModal(document.getElementById('accommodation-modal'));
-                else if (action.toLowerCase().includes('department')) closeModal(departmentModal);
-
-                if (refreshTarget) {
-                    if (refreshTarget.startsWith('users-')) fetchUsers(refreshTarget.split('-')[1]);
-                    else if (refreshTarget.startsWith('accommodations-')) fetchAccommodations(refreshTarget.split('-')[1]);
-                    else if (refreshTarget === 'blood') fetchBloodInventory();
-                    else if (refreshTarget === 'departments_management') fetchDepartmentsManagement();
-                    else if (refreshTarget === 'medicine') fetchMedicineInventory();
-                    else if (refreshTarget === 'wards') fetchWards();
-                }
-                updateDashboardStats();
-            } else {
-                throw new Error(result.message || 'An unknown error occurred.');
-            }
-        } catch (error) {
-            console.error('Submit error:', error);
-            showNotification(error.message, 'error');
-        }
-    };
-
     userForm.addEventListener('submit', (e) => {
         e.preventDefault();
+        
+        let isFormValid = true;
+        userForm.querySelectorAll('input').forEach(input => {
+            if(input.required || input.minLength > -1 || input.pattern) {
+                if (input.id === 'password' && document.getElementById('form-action').value === 'updateUser' && input.value.trim() === '') {
+                    if (!validateField(input, true)) isFormValid = false;
+                } else {
+                    if (!validateField(input)) isFormValid = false;
+                }
+            }
+        });
+
+        if (!isFormValid) {
+            showNotification('Please correct the errors before saving.', 'error');
+            return;
+        }
+
         handleFormSubmit(new FormData(userForm), `users-${currentRole}`);
     });
 
-    // --- ADMIN PROFILE EDIT ---
-    const profileForm = document.getElementById('profile-form');
 
+    // --- ADMIN PROFILE EDIT ---
     const fetchMyProfile = async () => {
         try {
             const response = await fetch(`api.php?fetch=my_profile`);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
-
             const profile = result.data;
             document.getElementById('profile-name').value = profile.name || '';
             document.getElementById('profile-email').value = profile.email || '';
@@ -653,117 +732,78 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     };
 
-    profileForm.addEventListener('submit', async (e) => {
+    document.getElementById('profile-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const formData = new FormData(profileForm);
-        try {
-            const response = await fetch('api.php', { method: 'POST', body: formData });
-            const result = await response.json();
+        const formData = new FormData(e.target);
+        handleFormSubmit(formData);
+        document.getElementById('welcome-message').textContent = `Hello, ${formData.get('name')}!`;
+        document.querySelector('.user-profile-widget .user-info strong').textContent = formData.get('name');
+    });
 
-            if (result.success) {
-                showNotification(result.message, 'success');
-                document.getElementById('welcome-message').textContent = `Hello, ${formData.get('name')}!`;
-                document.querySelector('.user-profile-widget .user-info strong').textContent = formData.get('name');
-            } else {
-                throw new Error(result.message || 'An unknown error occurred.');
-            }
-        } catch (error) {
-            console.error('Profile update error:', error);
-            showNotification(error.message, 'error');
+    document.getElementById('system-settings-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const confirmed = await showConfirmation('Update Settings', 'Are you sure you want to save these system settings? This may affect system functionality like sending emails.');
+        if (confirmed) {
+            const formData = new FormData(e.target);
+            handleFormSubmit(formData);
+            document.getElementById('gmail_app_password').value = '';
         }
     });
 
-    const systemSettingsForm = document.getElementById('system-settings-form');
-    if (systemSettingsForm) {
-        systemSettingsForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const confirmed = await showConfirmation('Update Settings', 'Are you sure you want to save these system settings? This may affect system functionality like sending emails.');
-            if (confirmed) {
-                const formData = new FormData(systemSettingsForm);
-                handleFormSubmit(formData);
-                document.getElementById('gmail_app_password').value = '';
+    // --- INVENTORY MANAGEMENT (MEDICINE) ---
+    const openMedicineModal = setupModal({
+        modalId: 'medicine-modal',
+        openBtnId: 'add-medicine-btn',
+        formId: 'medicine-form',
+        onOpen: (mode, medicine) => {
+            document.getElementById('medicine-modal-title').textContent = mode === 'add' ? 'Add New Medicine' : `Edit ${medicine.name}`;
+            document.getElementById('medicine-form-action').value = mode === 'add' ? 'addMedicine' : 'updateMedicine';
+            if (mode === 'add') {
+                document.getElementById('medicine-low-stock-threshold').value = 10;
+            } else {
+                document.getElementById('medicine-id').value = medicine.id;
+                document.getElementById('medicine-name').value = medicine.name;
+                document.getElementById('medicine-description').value = medicine.description || '';
+                document.getElementById('medicine-quantity').value = medicine.quantity;
+                document.getElementById('medicine-unit-price').value = medicine.unit_price;
+                document.getElementById('medicine-low-stock-threshold').value = medicine.low_stock_threshold;
             }
-        });
-    }
-
-    // --- INVENTORY MANAGEMENT ---
-    const medicineModal = document.getElementById('medicine-modal');
-    const medicineForm = document.getElementById('medicine-form');
-    const addMedicineBtn = document.getElementById('add-medicine-btn');
-    const medicineTableBody = document.getElementById('medicine-table-body');
-    const departmentModal = document.getElementById('department-modal');
-    const departmentForm = document.getElementById('department-form');
-    const addDepartmentBtn = document.getElementById('add-department-btn');
-    const departmentTableBody = document.getElementById('department-table-body');
-    const bloodModal = document.getElementById('blood-modal');
-    const bloodForm = document.getElementById('blood-form');
-    const addBloodBtn = document.getElementById('add-blood-btn');
-    const bloodTableBody = document.getElementById('blood-table-body');
-
-    const openMedicineModal = (mode, medicine = {}) => {
-        medicineForm.reset();
-        if (mode === 'add') {
-            document.getElementById('medicine-modal-title').textContent = 'Add New Medicine';
-            document.getElementById('medicine-form-action').value = 'addMedicine';
-            document.getElementById('medicine-low-stock-threshold').value = 10;
-        } else {
-            document.getElementById('medicine-modal-title').textContent = `Edit ${medicine.name}`;
-            document.getElementById('medicine-form-action').value = 'updateMedicine';
-            document.getElementById('medicine-id').value = medicine.id;
-            document.getElementById('medicine-name').value = medicine.name;
-            document.getElementById('medicine-description').value = medicine.description || '';
-            document.getElementById('medicine-quantity').value = medicine.quantity;
-            document.getElementById('medicine-unit-price').value = medicine.unit_price;
-            document.getElementById('medicine-low-stock-threshold').value = medicine.low_stock_threshold;
         }
-        medicineModal.classList.add('show');
-    };
-
-    addMedicineBtn.addEventListener('click', () => openMedicineModal('add'));
-    medicineModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(medicineModal));
-    medicineModal.addEventListener('click', (e) => { if (e.target === medicineModal) closeModal(medicineModal); });
-    medicineForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        handleFormSubmit(new FormData(medicineForm), 'medicine');
     });
 
-    const fetchMedicineInventory = async () => {
-        medicineTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Loading...</td></tr>`;
-        try {
-            const response = await fetch('api.php?fetch=medicines');
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
+    document.getElementById('medicine-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        handleFormSubmit(new FormData(e.target), 'medicine');
+    });
 
-            if (result.data.length > 0) {
-                medicineTableBody.innerHTML = result.data.map(med => {
-                    const isLowStock = parseInt(med.quantity) <= parseInt(med.low_stock_threshold);
-                    const statusClass = isLowStock ? 'low-stock' : 'in-stock';
-                    const quantityClass = isLowStock ? 'quantity-low' : 'quantity-good';
-                    return `
-                        <tr data-medicine='${JSON.stringify(med)}'>
-                            <td>${med.name}</td>
-                            <td>${med.description || 'N/A'}</td>
-                            <td><span class="${quantityClass}">${med.quantity}</span></td>
-                            <td><span class="status-badge ${statusClass}">${isLowStock ? 'Low Stock' : 'In Stock'}</span></td>
-                            <td>₹ ${parseFloat(med.unit_price).toFixed(2)}</td>
-                            <td>${med.low_stock_threshold}</td>
-                            <td>${new Date(med.updated_at).toLocaleString()}</td>
-                            <td class="action-buttons">
-                                <button class="btn-edit-medicine btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
-                                <button class="btn-delete-medicine btn-delete" title="Delete"><i class="fas fa-trash-alt"></i></button>
-                            </td>
-                        </tr>
-                    `}).join('');
-            } else {
-                medicineTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">No medicines found.</td></tr>`;
-            }
-        } catch (error) {
-            medicineTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Failed to load medicines: ${error.message}</td></tr>`;
-        }
+    const renderMedicineRow = (med) => {
+        const isLowStock = parseInt(med.quantity) <= parseInt(med.low_stock_threshold);
+        return `
+            <tr data-medicine='${JSON.stringify(med)}'>
+                <td>${med.name}</td>
+                <td>${med.description || 'N/A'}</td>
+                <td><span class="${isLowStock ? 'quantity-low' : 'quantity-good'}">${med.quantity}</span></td>
+                <td><span class="status-badge ${isLowStock ? 'low-stock' : 'in-stock'}">${isLowStock ? 'Low Stock' : 'In Stock'}</span></td>
+                <td>₹ ${parseFloat(med.unit_price).toFixed(2)}</td>
+                <td>${med.low_stock_threshold}</td>
+                <td>${new Date(med.updated_at).toLocaleString()}</td>
+                <td class="action-buttons">
+                    <button class="btn-edit-medicine btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
+                    <button class="btn-delete-medicine btn-delete" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                </td>
+            </tr>
+        `;
     };
 
-    medicineTableBody.addEventListener('click', async (e) => {
+    const fetchMedicineInventory = () => fetchAndRender({
+        endpoint: 'api.php?fetch=medicines',
+        target: document.getElementById('medicine-table-body'),
+        renderRow: renderMedicineRow,
+        columns: 8,
+        emptyMessage: 'No medicines found.'
+    });
+
+    document.getElementById('medicine-table-body').addEventListener('click', async (e) => {
         const row = e.target.closest('tr');
         if (!row) return;
         const medicine = JSON.parse(row.dataset.medicine);
@@ -782,120 +822,104 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
-    const openBloodModal = (blood = {}) => {
-        bloodForm.reset();
-        document.getElementById('blood-modal-title').textContent = `Update Blood Unit`;
-        document.getElementById('blood-group').value = blood.blood_group || 'A+';
-        document.getElementById('blood-group').disabled = !!blood.blood_group;
-        document.getElementById('blood-quantity-ml').value = blood.quantity_ml || 0;
-        document.getElementById('blood-low-stock-threshold-ml').value = blood.low_stock_threshold_ml || 5000;
-        bloodModal.classList.add('show');
-    };
+    // --- INVENTORY MANAGEMENT (BLOOD) ---
+    const openBloodModal = setupModal({
+        modalId: 'blood-modal',
+        openBtnId: 'add-blood-btn',
+        formId: 'blood-form',
+        onOpen: (mode, blood) => { 
+            document.getElementById('blood-modal-title').textContent = `Update Blood Unit`;
+            document.getElementById('blood-group').value = blood.blood_group || 'A+';
+            document.getElementById('blood-group').disabled = !!blood.blood_group;
+            document.getElementById('blood-quantity-ml').value = blood.quantity_ml || 0;
+            document.getElementById('blood-low-stock-threshold-ml').value = blood.low_stock_threshold_ml || 5000;
+        }
+    });
 
-    addBloodBtn.addEventListener('click', () => openBloodModal());
-    bloodModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(bloodModal));
-    bloodModal.addEventListener('click', (e) => { if (e.target === bloodModal) closeModal(bloodModal); });
-
-    bloodForm.addEventListener('submit', (e) => {
+    document.getElementById('blood-form').addEventListener('submit', (e) => {
         e.preventDefault();
-        const formData = new FormData(bloodForm);
-        if (document.getElementById('blood-group').disabled) {
-            formData.set('blood_group', document.getElementById('blood-group').value);
+        const formData = new FormData(e.target);
+        const bloodGroupSelect = document.getElementById('blood-group');
+        if (bloodGroupSelect.disabled) {
+            formData.set('blood_group', bloodGroupSelect.value);
         }
         handleFormSubmit(formData, 'blood');
     });
 
-    const fetchBloodInventory = async () => {
-        bloodTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Loading...</td></tr>`;
-        try {
-            const response = await fetch('api.php?fetch=blood_inventory');
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-            if (result.data.length > 0) {
-                bloodTableBody.innerHTML = result.data.map(blood => {
-                    const isLowStock = parseInt(blood.quantity_ml) < parseInt(blood.low_stock_threshold_ml);
-                    const statusClass = isLowStock ? 'low-stock' : 'in-stock';
-                    const quantityClass = isLowStock ? 'quantity-low' : 'quantity-good';
-                    return `
-                        <tr data-blood='${JSON.stringify(blood)}'>
-                            <td>${blood.blood_group}</td>
-                            <td><span class="${quantityClass}">${blood.quantity_ml}</span> ml</td>
-                            <td><span class="status-badge ${statusClass}">${isLowStock ? 'Low Stock' : 'In Stock'}</span></td>
-                            <td>${blood.low_stock_threshold_ml} ml</td>
-                            <td>${new Date(blood.last_updated).toLocaleString()}</td>
-                            <td class="action-buttons">
-                                <button class="btn-edit-blood btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
-                            </td>
-                        </tr>
-                    `}).join('');
-            } else {
-                bloodTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No blood inventory records found.</td></tr>`;
-            }
-        } catch (error) {
-            bloodTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Failed to load blood inventory.</td></tr>`;
-        }
+    const renderBloodRow = (blood) => {
+        const isLowStock = parseInt(blood.quantity_ml) < parseInt(blood.low_stock_threshold_ml);
+        return `
+            <tr data-blood='${JSON.stringify(blood)}'>
+                <td>${blood.blood_group}</td>
+                <td><span class="${isLowStock ? 'quantity-low' : 'quantity-good'}">${blood.quantity_ml}</span> ml</td>
+                <td><span class="status-badge ${isLowStock ? 'low-stock' : 'in-stock'}">${isLowStock ? 'Low Stock' : 'In Stock'}</span></td>
+                <td>${blood.low_stock_threshold_ml} ml</td>
+                <td>${new Date(blood.last_updated).toLocaleString()}</td>
+                <td class="action-buttons">
+                    <button class="btn-edit-blood btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
+                </td>
+            </tr>
+        `;
     };
 
-    bloodTableBody.addEventListener('click', async (e) => {
+    const fetchBloodInventory = () => fetchAndRender({
+        endpoint: 'api.php?fetch=blood_inventory',
+        target: document.getElementById('blood-table-body'),
+        renderRow: renderBloodRow,
+        columns: 6,
+        emptyMessage: 'No blood inventory records found.'
+    });
+
+    document.getElementById('blood-table-body').addEventListener('click', (e) => {
         if (e.target.closest('.btn-edit-blood')) {
             const blood = JSON.parse(e.target.closest('tr').dataset.blood);
-            openBloodModal(blood);
+            openBloodModal('edit', blood);
         }
     });
 
-    const openDepartmentModal = (mode, department = {}) => {
-        departmentForm.reset();
-        if (mode === 'add') {
-            document.getElementById('department-modal-title').textContent = 'Add New Department';
-            document.getElementById('department-form-action').value = 'addDepartment';
-            document.getElementById('department-active-group').style.display = 'none';
-        } else {
-            document.getElementById('department-modal-title').textContent = `Edit ${department.name}`;
-            document.getElementById('department-form-action').value = 'updateDepartment';
-            document.getElementById('department-id').value = department.id;
-            document.getElementById('department-name').value = department.name;
-            document.getElementById('department-is-active').value = department.is_active;
-            document.getElementById('department-active-group').style.display = 'block';
-        }
-        departmentModal.classList.add('show');
-    };
-
-    addDepartmentBtn.addEventListener('click', () => openDepartmentModal('add'));
-    departmentModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(departmentModal));
-    departmentModal.addEventListener('click', (e) => { if (e.target === departmentModal) closeModal(departmentModal); });
-
-    departmentForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        handleFormSubmit(new FormData(departmentForm), 'departments_management');
-    });
-
-    const fetchDepartmentsManagement = async () => {
-        departmentTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center;">Loading...</td></tr>`;
-        try {
-            const response = await fetch('api.php?fetch=departments_management');
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-
-            if (result.data.length > 0) {
-                departmentTableBody.innerHTML = result.data.map(dept => `
-                        <tr data-department='${JSON.stringify(dept)}'>
-                            <td>${dept.name}</td>
-                            <td><span class="status-badge ${dept.is_active == 1 ? 'active' : 'inactive'}">${dept.is_active == 1 ? 'Active' : 'Inactive'}</span></td>
-                            <td class="action-buttons">
-                                <button class="btn-edit-department btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
-                                <button class="btn-delete-department btn-delete" title="Disable"><i class="fas fa-trash-alt"></i></button>
-                            </td>
-                        </tr>
-                    `).join('');
-            } else {
-                departmentTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center;">No departments found.</td></tr>`;
+    // --- INVENTORY MANAGEMENT (DEPARTMENTS) ---
+    const openDepartmentModal = setupModal({
+        modalId: 'department-modal',
+        openBtnId: 'add-department-btn',
+        formId: 'department-form',
+        onOpen: (mode, dept) => {
+            document.getElementById('department-modal-title').textContent = mode === 'add' ? 'Add New Department' : `Edit ${dept.name}`;
+            document.getElementById('department-form-action').value = mode === 'add' ? 'addDepartment' : 'updateDepartment';
+            const activeGroup = document.getElementById('department-active-group');
+            activeGroup.style.display = mode === 'edit' ? 'block' : 'none';
+            if (mode === 'edit') {
+                document.getElementById('department-id').value = dept.id;
+                document.getElementById('department-name').value = dept.name;
+                document.getElementById('department-is-active').value = dept.is_active;
             }
-        } catch (error) {
-            departmentTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color: var(--danger-color);">Failed to load departments.</td></tr>`;
         }
-    };
+    });
+    
+    document.getElementById('department-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        handleFormSubmit(new FormData(e.target), 'departments_management');
+    });
 
-    departmentTableBody.addEventListener('click', async (e) => {
+    const renderDepartmentRow = (dept) => `
+        <tr data-department='${JSON.stringify(dept)}'>
+            <td>${dept.name}</td>
+            <td><span class="status-badge ${dept.is_active == 1 ? 'active' : 'inactive'}">${dept.is_active == 1 ? 'Active' : 'Inactive'}</span></td>
+            <td class="action-buttons">
+                <button class="btn-edit-department btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
+                <button class="btn-delete-department btn-delete" title="Disable"><i class="fas fa-trash-alt"></i></button>
+            </td>
+        </tr>
+    `;
+
+    const fetchDepartmentsManagement = () => fetchAndRender({
+        endpoint: 'api.php?fetch=departments_management',
+        target: document.getElementById('department-table-body'),
+        renderRow: renderDepartmentRow,
+        columns: 3,
+        emptyMessage: 'No departments found.'
+    });
+
+    document.getElementById('department-table-body').addEventListener('click', async (e) => {
         const row = e.target.closest('tr');
         if (!row) return;
         const department = JSON.parse(row.dataset.department);
@@ -914,71 +938,58 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
-    // --- Ward Management ---
-    const addWardBtn = document.getElementById('add-ward-btn');
-    const wardFormModal = document.getElementById('ward-form-modal');
-    const wardForm = document.getElementById('ward-form');
-    const wardTableBody = document.getElementById('ward-table-body');
-
-    const openWardForm = (mode, ward = {}) => {
-        wardForm.reset();
-        wardFormModal.querySelector('#ward-form-modal-title').textContent = mode === 'add' ? 'Add New Ward' : `Edit ${ward.name}`;
-        wardForm.querySelector('#ward-form-action').value = mode === 'add' ? 'addWard' : 'updateWard';
-        const activeGroup = wardForm.querySelector('#ward-active-group');
-
-        if (mode === 'edit') {
-            wardForm.querySelector('#ward-id-input').value = ward.id;
-            wardForm.querySelector('#ward-name-input').value = ward.name;
-            wardForm.querySelector('#ward-capacity-input').value = ward.capacity;
-            wardForm.querySelector('#ward-description-input').value = ward.description || '';
-            wardForm.querySelector('#ward-is-active-input').value = ward.is_active;
-            activeGroup.style.display = 'block';
-        } else {
-            activeGroup.style.display = 'none';
+    // --- INVENTORY MANAGEMENT (WARDS) ---
+    const openWardModal = setupModal({
+        modalId: 'ward-form-modal',
+        openBtnId: 'add-ward-btn',
+        formId: 'ward-form',
+        onOpen: (mode, ward) => {
+            document.getElementById('ward-form-modal-title').textContent = mode === 'add' ? 'Add New Ward' : `Edit ${ward.name}`;
+            document.getElementById('ward-form-action').value = mode === 'add' ? 'addWard' : 'updateWard';
+            const activeGroup = document.getElementById('ward-active-group');
+            activeGroup.style.display = mode === 'edit' ? 'block' : 'none';
+            if (mode === 'edit') {
+                document.getElementById('ward-id-input').value = ward.id;
+                document.getElementById('ward-name-input').value = ward.name;
+                document.getElementById('ward-capacity-input').value = ward.capacity;
+                document.getElementById('ward-description-input').value = ward.description || '';
+                document.getElementById('ward-is-active-input').value = ward.is_active;
+            }
         }
-        wardFormModal.classList.add('show');
-    };
-
-    addWardBtn.addEventListener('click', () => openWardForm('add'));
-    wardFormModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(wardFormModal));
-    wardForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        handleFormSubmit(new FormData(wardForm), 'wards');
     });
 
-    const fetchWards = async () => {
-        wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Loading...</td></tr>`;
-        try {
-            const response = await fetch('api.php?fetch=wards');
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-            if (result.data.length > 0) {
-                wardTableBody.innerHTML = result.data.map(ward => `
-                        <tr data-ward='${JSON.stringify(ward)}'>
-                            <td>${ward.name}</td>
-                            <td>${ward.capacity}</td>
-                            <td>${ward.description || 'N/A'}</td>
-                            <td><span class="status-badge ${ward.is_active == 1 ? 'active' : 'inactive'}">${ward.is_active == 1 ? 'Active' : 'Inactive'}</span></td>
-                            <td class="action-buttons">
-                                <button class="btn-edit-ward btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
-                                <button class="btn-delete-ward btn-delete" title="Delete"><i class="fas fa-trash-alt"></i></button>
-                            </td>
-                        </tr>
-                    `).join('');
-            } else {
-                wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No wards found.</td></tr>`;
-            }
-        } catch (error) {
-            wardTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Failed to load wards.</td></tr>`;
-        }
-    };
+    document.getElementById('ward-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        handleFormSubmit(new FormData(e.target), 'wards');
+    });
 
-    wardTableBody.addEventListener('click', async (e) => {
+    const renderWardRow = (ward) => `
+        <tr data-ward='${JSON.stringify(ward)}'>
+            <td>${ward.name}</td>
+            <td>${ward.capacity}</td>
+            <td>${ward.description || 'N/A'}</td>
+            <td><span class="status-badge ${ward.is_active == 1 ? 'active' : 'inactive'}">${ward.is_active == 1 ? 'Active' : 'Inactive'}</span></td>
+            <td class="action-buttons">
+                <button class="btn-edit-ward btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
+                <button class="btn-delete-ward btn-delete" title="Delete"><i class="fas fa-trash-alt"></i></button>
+            </td>
+        </tr>
+    `;
+
+    const fetchWards = () => fetchAndRender({
+        endpoint: 'api.php?fetch=wards',
+        target: document.getElementById('ward-table-body'),
+        renderRow: renderWardRow,
+        columns: 5,
+        emptyMessage: 'No wards found.'
+    });
+
+    document.getElementById('ward-table-body').addEventListener('click', async (e) => {
         const row = e.target.closest('tr');
         if (!row) return;
         const ward = JSON.parse(row.dataset.ward);
         if (e.target.closest('.btn-edit-ward')) {
-            openWardForm('edit', ward);
+            openWardModal('edit', ward);
         }
         if (e.target.closest('.btn-delete-ward')) {
             const confirmed = await showConfirmation('Delete Ward', `Are you sure you want to delete ward "${ward.name}"?`);
@@ -992,11 +1003,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
-    // --- UNIFIED ACCOMMODATION MANAGEMENT ---
-    const accommodationModal = document.getElementById('accommodation-modal');
-    const accommodationForm = document.getElementById('accommodation-form');
-    const addAccommodationBtn = document.getElementById('add-accommodation-btn');
-    const accommodationsContainer = document.getElementById('accommodations-container');
+    // --- ACCOMMODATIONS MANAGEMENT ---
     const accommodationStatusSelect = document.getElementById('accommodation-status');
     const accommodationPatientGroup = document.getElementById('accommodation-patient-group');
     const accommodationDoctorGroup = document.getElementById('accommodation-doctor-group');
@@ -1034,7 +1041,7 @@ document.addEventListener("DOMContentLoaded", function () {
             console.error('Failed to populate accommodation dropdowns:', error);
         }
     };
-
+    
     accommodationStatusSelect.addEventListener('change', () => {
         const showPatient = ['occupied', 'reserved'].includes(accommodationStatusSelect.value);
         const showDoctor = accommodationStatusSelect.value === 'occupied';
@@ -1044,64 +1051,63 @@ document.addEventListener("DOMContentLoaded", function () {
         document.getElementById('accommodation-doctor-id').required = showDoctor;
     });
 
-    const openAccommodationModal = async (mode, item = {}, type) => {
-        accommodationForm.reset();
-        await populateAccommodationDropdowns();
-        
-        const typeName = type.charAt(0).toUpperCase() + type.slice(1);
-        document.getElementById('accommodation-modal-title').textContent = mode === 'add' ? `Add New ${typeName}` : `Edit ${typeName} ${item.number}`;
-        document.getElementById('accommodation-form-action').value = mode === 'add' ? 'addAccommodation' : 'updateAccommodation';
-        document.getElementById('accommodation-type').value = type;
-        document.getElementById('accommodation-number-label').textContent = `${typeName} Number`;
-
-        const wardGroup = document.getElementById('accommodation-ward-group');
-        wardGroup.style.display = type === 'bed' ? 'block' : 'none';
-        document.getElementById('accommodation-ward-id').required = (type === 'bed');
-
-        accommodationPatientGroup.style.display = 'none';
-        accommodationDoctorGroup.style.display = 'none';
-
-        if (mode === 'edit') {
-            document.getElementById('accommodation-id').value = item.id;
-            document.getElementById('accommodation-number').value = item.number;
-            document.getElementById('accommodation-price-per-day').value = item.price_per_day;
+    const openAccommodationModal = setupModal({
+        modalId: 'accommodation-modal',
+        openBtnId: 'add-accommodation-btn',
+        formId: 'accommodation-form',
+        onOpen: async (mode, item) => {
+            const type = item.type || currentAccommodationType;
+            await populateAccommodationDropdowns();
             
-            setTimeout(() => { // Allow dropdowns to populate
-                document.getElementById('accommodation-status').value = item.status;
-                if (type === 'bed') {
-                    document.getElementById('accommodation-ward-id').value = item.ward_id;
-                }
-                accommodationStatusSelect.dispatchEvent(new Event('change')); // Trigger visibility change
-                document.getElementById('accommodation-patient-id').value = item.patient_id || '';
-                document.getElementById('accommodation-doctor-id').value = item.doctor_id || '';
-            }, 150);
-        } else {
-            document.getElementById('accommodation-price-per-day').value = '0.00';
+            const typeName = type.charAt(0).toUpperCase() + type.slice(1);
+            document.getElementById('accommodation-modal-title').textContent = mode === 'add' ? `Add New ${typeName}` : `Edit ${typeName} ${item.number}`;
+            document.getElementById('accommodation-form-action').value = mode === 'add' ? 'addAccommodation' : 'updateAccommodation';
+            document.getElementById('accommodation-type').value = type;
+            document.getElementById('accommodation-number-label').textContent = `${typeName} Number`;
+    
+            const wardGroup = document.getElementById('accommodation-ward-group');
+            wardGroup.style.display = type === 'bed' ? 'block' : 'none';
+            document.getElementById('accommodation-ward-id').required = (type === 'bed');
+    
+            accommodationPatientGroup.style.display = 'none';
+            accommodationDoctorGroup.style.display = 'none';
+    
+            if (mode === 'edit') {
+                document.getElementById('accommodation-id').value = item.id;
+                document.getElementById('accommodation-number').value = item.number;
+                document.getElementById('accommodation-price-per-day').value = item.price_per_day;
+                
+                setTimeout(() => { // Timeout to allow dropdowns to populate
+                    document.getElementById('accommodation-status').value = item.status;
+                    if (type === 'bed') {
+                        document.getElementById('accommodation-ward-id').value = item.ward_id;
+                    }
+                    accommodationStatusSelect.dispatchEvent(new Event('change'));
+                    document.getElementById('accommodation-patient-id').value = item.patient_id || '';
+                    document.getElementById('accommodation-doctor-id').value = item.doctor_id || '';
+                }, 150);
+            } else {
+                document.getElementById('accommodation-price-per-day').value = '0.00';
+            }
         }
-        
-        accommodationModal.classList.add('show');
-    };
+    });
 
-    addAccommodationBtn.addEventListener('click', () => openAccommodationModal('add', {}, currentAccommodationType));
-    accommodationModal.querySelector('.modal-close-btn').addEventListener('click', () => closeModal(accommodationModal));
-    accommodationForm.addEventListener('submit', (e) => {
+    document.getElementById('accommodation-form').addEventListener('submit', (e) => {
         e.preventDefault();
-        handleFormSubmit(new FormData(accommodationForm), `accommodations-${currentAccommodationType}`);
+        handleFormSubmit(new FormData(e.target), `accommodations-${currentAccommodationType}`);
     });
 
     const fetchAccommodations = async (type) => {
-        accommodationsContainer.innerHTML = `<p style="text-align:center;">Loading ${type}s...</p>`;
+        const container = document.getElementById('accommodations-container');
         const typeName = type.charAt(0).toUpperCase() + type.slice(1);
+        container.innerHTML = `<div class="loading-cell" style="padding: 4rem 0; grid-column: 1 / -1;"><div class="spinner"></div><span>Loading ${typeName}s...</span></div>`;
         document.getElementById('accommodations-title').textContent = `${typeName} Management`;
-        addAccommodationBtn.innerHTML = `<i class="fas fa-plus"></i> Add New ${typeName}`;
+        document.getElementById('add-accommodation-btn').innerHTML = `<i class="fas fa-plus"></i> Add New ${typeName}`;
 
         try {
-            const response = await fetch(`api.php?fetch=accommodations&type=${type}`);
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-
-            if (result.data.length > 0) {
-                accommodationsContainer.innerHTML = result.data.map(item => {
+            const data = await fetchAndRender({ endpoint: `api.php?fetch=accommodations&type=${type}` });
+            if (data && data.length > 0) {
+                container.innerHTML = data.map(item => {
                     let patientInfo = '';
                     if (item.status === 'occupied' && item.patient_name) {
                         let doctorInfo = item.doctor_name ? `<br><small>Doctor: ${item.doctor_name}</small>` : '';
@@ -1109,7 +1115,6 @@ document.addEventListener("DOMContentLoaded", function () {
                     } else if (item.status === 'reserved' && item.patient_name) {
                         patientInfo = `<div class="patient-info">Reserved for: ${item.patient_name}</div>`;
                     }
-
                     const cardClass = type === 'bed' ? 'bed-card' : 'room-card';
                     const iconClass = type === 'bed' ? 'fa-bed' : 'fa-door-closed';
 
@@ -1128,20 +1133,20 @@ document.addEventListener("DOMContentLoaded", function () {
                     `;
                 }).join('');
             } else {
-                accommodationsContainer.innerHTML = `<p style="text-align:center;">No ${type}s found. Add some to get started.</p>`;
+                container.innerHTML = `<p style="text-align:center; grid-column: 1 / -1;">No ${type}s found. Add some to get started.</p>`;
             }
         } catch (error) {
-            accommodationsContainer.innerHTML = `<p style="text-align:center;">Failed to load ${type}s: ${error.message}</p>`;
+            container.innerHTML = `<p style="text-align:center; grid-column: 1 / -1;">Failed to load ${type}s: ${error.message}</p>`;
         }
     };
 
-    accommodationsContainer.addEventListener('click', async (e) => {
+    document.getElementById('accommodations-container').addEventListener('click', async (e) => {
         const card = e.target.closest('.bed-card, .room-card');
         if (!card) return;
 
         const item = JSON.parse(card.dataset.item);
         if (e.target.closest('.btn-edit-item')) {
-            openAccommodationModal('edit', item, item.type);
+            openAccommodationModal('edit', item);
         }
         if (e.target.closest('.btn-delete-item')) {
             const typeName = item.type.charAt(0).toUpperCase() + item.type.slice(1);
@@ -1155,76 +1160,67 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         }
     });
-
+    
     // --- REPORTING ---
-    const generateReportBtn = document.getElementById('generate-report-btn');
-    const summaryCardsContainer = document.getElementById('report-summary-cards');
-
     const generateReport = async () => {
         const reportType = document.getElementById('report-type').value;
-        // NEW: Get values from new date inputs
         const startDate = document.getElementById('start-date').value;
         const endDate = document.getElementById('end-date').value;
 
-        // Basic validation
         if (!startDate || !endDate) {
             showNotification('Please select both a start and end date.', 'error');
             return;
         }
 
-        // NEW: Update hidden inputs for PDF form
         document.getElementById('pdf-report-type').value = reportType;
         document.getElementById('pdf-start-date').value = startDate;
         document.getElementById('pdf-end-date').value = endDate;
-
-        summaryCardsContainer.innerHTML = '<p>Loading summary...</p>';
-        document.getElementById('report-table-container').innerHTML = '';
+        
+        const summaryCardsContainer = document.getElementById('report-summary-cards');
+        const tableContainer = document.getElementById('report-table-container');
+        summaryCardsContainer.innerHTML = `<div class="loading-cell" style="padding: 4rem 0; grid-column: 1 / -1;"><div class="spinner"></div><span>Generating Summary...</span></div>`;
+        tableContainer.innerHTML = `<div class="loading-cell" style="padding: 4rem 0;"><div class="spinner"></div><span>Generating Table...</span></div>`;
 
         try {
-            // UPDATED: Fetch call with new date parameters
             const response = await fetch(`api.php?fetch=report&type=${reportType}&start_date=${startDate}&end_date=${endDate}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
 
-            // UPDATED: chartData is no longer expected from the backend
             const { summary, tableData } = result.data;
 
             summaryCardsContainer.innerHTML = '';
             if (reportType === 'financial') {
                 summaryCardsContainer.innerHTML = `
-                        <div class="summary-card"><span class="label">Total Revenue</span><span class="value">₹${parseFloat(summary.total_revenue || 0).toLocaleString('en-IN')}</span></div>
-                        <div class="summary-card"><span class="label">Total Refunds</span><span class="value">₹${parseFloat(summary.total_refunds || 0).toLocaleString('en-IN')}</span></div>
-                        <div class="summary-card"><span class="label">Net Revenue</span><span class="value">₹${(parseFloat(summary.total_revenue || 0) - parseFloat(summary.total_refunds || 0)).toLocaleString('en-IN')}</span></div>
-                        <div class="summary-card"><span class="label">Transactions</span><span class="value">${summary.total_transactions || 0}</span></div>
-                    `;
+                    <div class="summary-card"><span class="label">Total Revenue</span><span class="value">₹${parseFloat(summary.total_revenue || 0).toLocaleString('en-IN')}</span></div>
+                    <div class="summary-card"><span class="label">Total Refunds</span><span class="value">₹${parseFloat(summary.total_refunds || 0).toLocaleString('en-IN')}</span></div>
+                    <div class="summary-card"><span class="label">Net Revenue</span><span class="value">₹${(parseFloat(summary.total_revenue || 0) - parseFloat(summary.total_refunds || 0)).toLocaleString('en-IN')}</span></div>
+                    <div class="summary-card"><span class="label">Transactions</span><span class="value">${summary.total_transactions || 0}</span></div>
+                `;
             } else if (reportType === 'patient') {
                 summaryCardsContainer.innerHTML = `
-                        <div class="summary-card"><span class="label">Total Appointments</span><span class="value">${summary.total_appointments || 0}</span></div>
-                        <div class="summary-card"><span class="label">Completed</span><span class="value">${summary.completed || 0}</span></div>
-                        <div class="summary-card"><span class="label">Cancelled</span><span class="value">${summary.cancelled || 0}</span></div>
-                    `;
+                    <div class="summary-card"><span class="label">Total Appointments</span><span class="value">${summary.total_appointments || 0}</span></div>
+                    <div class="summary-card"><span class="label">Completed</span><span class="value">${summary.completed || 0}</span></div>
+                    <div class="summary-card"><span class="label">Cancelled</span><span class="value">${summary.cancelled || 0}</span></div>
+                `;
             } else if (reportType === 'resource') {
                 const bed_occupancy_rate = summary.total_beds > 0 ? ((summary.occupied_beds / summary.total_beds) * 100).toFixed(1) : 0;
                 const room_occupancy_rate = summary.total_rooms > 0 ? ((summary.occupied_rooms / summary.total_rooms) * 100).toFixed(1) : 0;
                 summaryCardsContainer.innerHTML = `
-                        <div class="summary-card"><span class="label">Occupied Beds</span><span class="value">${summary.occupied_beds || 0} / ${summary.total_beds || 0} (${bed_occupancy_rate}%)</span></div>
-                        <div class="summary-card"><span class="label">Occupied Rooms</span><span class="value">${summary.occupied_rooms || 0} / ${summary.total_rooms || 0} (${room_occupancy_rate}%)</span></div>
-                    `;
+                    <div class="summary-card"><span class="label">Occupied Beds</span><span class="value">${summary.occupied_beds || 0} / ${summary.total_beds || 0} (${bed_occupancy_rate}%)</span></div>
+                    <div class="summary-card"><span class="label">Occupied Rooms</span><span class="value">${summary.occupied_rooms || 0} / ${summary.total_rooms || 0} (${room_occupancy_rate}%)</span></div>
+                `;
             }
 
-            // REMOVED: All Chart.js related code has been deleted.
-
-            const tableContainer = document.getElementById('report-table-container');
             if (tableData.length > 0) {
                 const headers = Object.keys(tableData[0]);
                 tableContainer.innerHTML = `
-                            <h3 style="margin-top: 2.5rem; margin-bottom: 1.5rem;">Detailed Report Data</h3>
-                            <div class="table-container">
-                                <table class="data-table">
-                                    <thead><tr>${headers.map(h => `<th>${h.replace(/_/g, ' ').toUpperCase()}</th>`).join('')}</tr></thead>
-                                    <tbody>${tableData.map(row => `<tr>${headers.map(h => `<td>${row[h]}</td>`).join('')}</tr>`).join('')}</tbody>
-                                </table>
-                            </div>`;
+                    <h3 style="margin-top: 2.5rem; margin-bottom: 1.5rem;">Detailed Report Data</h3>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr>${headers.map(h => `<th>${h.replace(/_/g, ' ').toUpperCase()}</th>`).join('')}</tr></thead>
+                            <tbody>${tableData.map(row => `<tr>${headers.map(h => `<td>${row[h]}</td>`).join('')}</tr>`).join('')}</tbody>
+                        </table>
+                    </div>`;
             } else {
                  tableContainer.innerHTML = `<p style="text-align:center; padding: 2rem; color: var(--text-muted);">No data found for the selected date range.</p>`;
             }
@@ -1235,102 +1231,77 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     };
 
-    generateReportBtn.addEventListener('click', generateReport);
+    document.getElementById('generate-report-btn').addEventListener('click', generateReport);
 
-    // --- ACTIVITY LOG (AUDIT TRAIL) ---
-    const activityLogContainer = document.getElementById('activity-log-container');
-    const refreshLogsBtn = document.getElementById('refresh-logs-btn');
+    // --- ACTIVITY LOGS ---
+    const renderActivityLogRow = (log) => {
+        let iconClass = 'fa-plus', iconBgClass = 'create';
+        if (log.action.includes('update')) { iconClass = 'fa-pencil-alt'; iconBgClass = 'update'; }
+        else if (log.action.includes('delete') || log.action.includes('deactivate')) { iconClass = 'fa-trash-alt'; iconBgClass = 'delete'; }
+        return `
+            <div class="log-item">
+                <div class="log-icon ${iconBgClass}"><i class="fas ${iconClass}"></i></div>
+                <div class="log-details">
+                    <p>${log.details}</p>
+                    <div class="log-meta">By: <strong>${log.admin_username}</strong> on ${new Date(log.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</div>
+                </div>
+            </div>`;
+    };
 
     const fetchActivityLogs = async () => {
-        activityLogContainer.innerHTML = '<p style="text-align: center;">Loading logs...</p>';
-        try {
-            const response = await fetch(`api.php?fetch=activity&limit=50`);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-
-            if (result.data.length > 0) {
-                activityLogContainer.innerHTML = result.data.map(log => {
-                    let iconClass = 'fa-plus', iconBgClass = 'create';
-                    if (log.action.includes('update')) { iconClass = 'fa-pencil-alt'; iconBgClass = 'update'; }
-                    else if (log.action.includes('delete') || log.action.includes('deactivate')) { iconClass = 'fa-trash-alt'; iconBgClass = 'delete'; }
-                    return `
-                        <div class="log-item">
-                            <div class="log-icon ${iconBgClass}"><i class="fas ${iconClass}"></i></div>
-                            <div class="log-details">
-                                <p>${log.details}</p>
-                                <div class="log-meta">By: <strong>${log.admin_username}</strong> on ${new Date(log.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</div>
-                            </div>
-                        </div>`;
-                }).join('');
-            } else {
-                activityLogContainer.innerHTML = `<p style="text-align: center;">No recent activity found.</p>`;
-            }
-        } catch (error) {
-            activityLogContainer.innerHTML = `<p style="text-align: center; color: var(--danger-color);">Failed to load activity logs.</p>`;
+        const container = document.getElementById('activity-log-container');
+        container.innerHTML = `<div class="loading-cell" style="padding: 4rem 0;"><div class="spinner"></div><span>Loading Activity...</span></div>`;
+        const data = await fetchAndRender({ endpoint: `api.php?fetch=activity&limit=50` });
+        if(data) {
+            container.innerHTML = data.length > 0 ? data.map(renderActivityLogRow).join('') : `<p style="text-align: center;">No recent activity found.</p>`;
+        } else {
+            container.innerHTML = `<p style="text-align: center; color: var(--danger-color);">Failed to load activity logs.</p>`;
         }
     };
 
-    refreshLogsBtn.addEventListener('click', fetchActivityLogs);
+    document.getElementById('refresh-logs-btn').addEventListener('click', fetchActivityLogs);
 
-    // --- NEW: FETCH FEEDBACK ---
+    // --- FEEDBACK ---
     const fetchFeedback = async () => {
         const container = document.getElementById('feedback-container');
-        container.innerHTML = `<p style="text-align:center;">Loading feedback...</p>`;
-
-        try {
-            const response = await fetch('api.php?fetch=feedback_list');
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-
-            if (result.data.length > 0) {
-                container.innerHTML = result.data.map(item => {
-                    const ratingStars = '<i class="fas fa-star"></i>'.repeat(item.overall_rating) +
-                                      '<i class="far fa-star"></i>'.repeat(5 - item.overall_rating);
-                    
-                    return `
-                        <div class="feedback-item ${item.feedback_type}">
-                            <div class="feedback-header">
-                                <span class="patient-name">${item.patient_name}</span>
-                                <div class="feedback-meta">
-                                    <span class="feedback-type-badge ${item.feedback_type}">${item.feedback_type}</span>
-                                    <span class="star-rating">${ratingStars}</span>
-                                    <span>${new Date(item.created_at).toLocaleDateString()}</span>
-                                </div>
+        container.innerHTML = `<div class="loading-cell" style="padding: 4rem 0;"><div class="spinner"></div><span>Loading Feedback...</span></div>`;
+        const data = await fetchAndRender({ endpoint: 'api.php?fetch=feedback_list' });
+        if (data) {
+            container.innerHTML = data.length > 0 ? data.map(item => {
+                const ratingStars = '<i class="fas fa-star"></i>'.repeat(item.overall_rating) + '<i class="far fa-star"></i>'.repeat(5 - item.overall_rating);
+                return `
+                    <div class="feedback-item ${item.feedback_type}">
+                        <div class="feedback-header">
+                            <span class="patient-name">${item.patient_name}</span>
+                            <div class="feedback-meta">
+                                <span class="feedback-type-badge ${item.feedback_type}">${item.feedback_type}</span>
+                                <span class="star-rating">${ratingStars}</span>
+                                <span>${new Date(item.created_at).toLocaleDateString()}</span>
                             </div>
-                            <p class="feedback-comment">${item.comments || 'No comment provided.'}</p>
                         </div>
-                    `;
-                }).join('');
-            } else {
-                container.innerHTML = `<p style="text-align:center;">No patient feedback has been submitted yet.</p>`;
-            }
-        } catch (error) {
-            container.innerHTML = `<p style="text-align:center; color: var(--danger-color);">Failed to load feedback: ${error.message}</p>`;
+                        <p class="feedback-comment">${item.comments || 'No comment provided.'}</p>
+                    </div>
+                `;
+            }).join('') : `<p style="text-align:center;">No patient feedback has been submitted yet.</p>`;
+        } else {
+             container.innerHTML = `<p style="text-align:center; color: var(--danger-color);">Failed to load feedback.</p>`;
         }
     };
 
-    // --- SCHEDULES & NOTIFICATIONS PANELS ---
-    const schedulesPanel = document.getElementById('schedules-panel');
+    // --- SCHEDULES & NOTIFICATIONS ---
     const doctorSelect = document.getElementById('doctor-select');
     const scheduleEditorContainer = document.getElementById('doctor-schedule-editor');
     const saveScheduleBtn = document.getElementById('save-schedule-btn');
-    const notificationsPanel = document.getElementById('notifications-panel');
-    const notificationForm = document.getElementById('notification-form');
-    const individualNotificationForm = document.getElementById('individual-notification-form');
-    const userSearch = document.getElementById('user-search');
-    const userSearchResults = document.getElementById('user-search-results');
-    const recipientUserIdInput = document.getElementById('recipient-user-id');
 
     const fetchDoctorsForScheduling = async () => {
         try {
-            const response = await fetch('api.php?fetch=doctors_for_scheduling');
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-            doctorSelect.innerHTML = '<option value="">Select a Doctor...</option>';
-            result.data.forEach(d => doctorSelect.innerHTML += `<option value="${d.id}">${d.name} (${d.display_user_id})</option>`);
-        } catch (error) {
-            doctorSelect.innerHTML = '<option value="">Could not load doctors</option>';
+            const data = await fetchAndRender({endpoint: 'api.php?fetch=doctors_for_scheduling'});
+            if(data) {
+                doctorSelect.innerHTML = '<option value="">Select a Doctor...</option>';
+                data.forEach(d => doctorSelect.innerHTML += `<option value="${d.id}">${d.name} (${d.display_user_id})</option>`);
+            }
+        } catch(e) {
+             doctorSelect.innerHTML = '<option value="">Could not load doctors</option>';
         }
     };
 
@@ -1383,7 +1354,7 @@ document.addEventListener("DOMContentLoaded", function () {
             document.querySelector('.schedule-actions').style.display = 'none';
             return;
         }
-        scheduleEditorContainer.innerHTML = '<p class="placeholder-text">Loading schedule...</p>';
+        scheduleEditorContainer.innerHTML = `<div class="loading-cell" style="padding: 4rem 0;"><div class="spinner"></div><span>Loading Schedule...</span></div>`;
         try {
             const response = await fetch(`api.php?fetch=fetch_doctor_schedule&doctor_id=${doctorId}`);
             const result = await response.json();
@@ -1468,35 +1439,27 @@ document.addEventListener("DOMContentLoaded", function () {
         handleFormSubmit(formData);
     });
 
-    const fetchStaffShifts = async () => {
-        const staffTableBody = document.getElementById('staff-shifts-table-body');
-        staffTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading...</td></tr>';
-        try {
-            const response = await fetch('api.php?fetch=staff_for_shifting');
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
+    const renderStaffShiftRow = (staff) => `
+        <tr data-staff-id="${staff.id}">
+            <td>${staff.name}</td>
+            <td>${staff.display_user_id}</td>
+            <td id="shift-status-${staff.id}">${staff.shift}</td>
+            <td>
+                <select class="shift-select" data-id="${staff.id}">
+                    <option value="day" ${staff.shift === 'day' ? 'selected' : ''}>Day</option>
+                    <option value="night" ${staff.shift === 'night' ? 'selected' : ''}>Night</option>
+                    <option value="off" ${staff.shift === 'off' ? 'selected' : ''}>Off</option>
+                </select>
+            </td>
+        </tr>`;
 
-            if (result.data.length > 0) {
-                staffTableBody.innerHTML = result.data.map(staff => `
-                    <tr data-staff-id="${staff.id}">
-                        <td>${staff.name}</td>
-                        <td>${staff.display_user_id}</td>
-                        <td id="shift-status-${staff.id}">${staff.shift}</td>
-                        <td>
-                            <select class="shift-select" data-id="${staff.id}">
-                                <option value="day" ${staff.shift === 'day' ? 'selected' : ''}>Day</option>
-                                <option value="night" ${staff.shift === 'night' ? 'selected' : ''}>Night</option>
-                                <option value="off" ${staff.shift === 'off' ? 'selected' : ''}>Off</option>
-                            </select>
-                        </td>
-                    </tr>`).join('');
-            } else {
-                staffTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No active staff found.</td></tr>';
-            }
-        } catch (error) {
-            staffTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--danger-color);">Failed to load shifts.</td></tr>`;
-        }
-    };
+    const fetchStaffShifts = () => fetchAndRender({
+        endpoint: 'api.php?fetch=staff_for_shifting',
+        target: document.getElementById('staff-shifts-table-body'),
+        renderRow: renderStaffShiftRow,
+        columns: 4,
+        emptyMessage: 'No active staff found.'
+    });
 
     document.getElementById('staff-shifts-table-body').addEventListener('change', async (e) => {
         if (e.target.classList.contains('shift-select')) {
@@ -1518,7 +1481,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
-    [schedulesPanel, notificationsPanel].forEach(panel => {
+    [document.getElementById('schedules-panel'), document.getElementById('notifications-panel')].forEach(panel => {
         panel.querySelectorAll('.schedule-tab-button').forEach(button => {
             button.addEventListener('click', function () {
                 const tabId = this.dataset.tab;
@@ -1531,28 +1494,28 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
 
-    notificationForm.addEventListener('submit', async (e) => {
+    document.getElementById('notification-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const formData = new FormData(notificationForm);
+        const formData = new FormData(e.target);
         const confirmed = await showConfirmation('Send Notification', `Send broadcast to all ${formData.get('role')}s?`);
         if (confirmed) {
             handleFormSubmit(formData);
-            notificationForm.reset();
+            e.target.reset();
         }
     });
 
-    individualNotificationForm.addEventListener('submit', async (e) => {
+    document.getElementById('individual-notification-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const formData = new FormData(individualNotificationForm);
+        const formData = new FormData(e.target);
         if (!formData.get('recipient_user_id')) return showNotification('Please select a valid user.', 'error');
         const confirmed = await showConfirmation('Send Message', `Send message to ${document.getElementById('user-search').value}?`);
         if (confirmed) {
             handleFormSubmit(formData);
-            individualNotificationForm.reset();
+            e.target.reset();
         }
     });
 
-    // --- NOTIFICATION CENTER LOGIC ---
+    // --- NOTIFICATION CENTER ---
     const notificationBell = document.getElementById('notification-bell-wrapper');
     const notificationCountBadge = document.getElementById('notification-count');
     const allNotificationsPanel = document.getElementById('all-notifications-panel');
@@ -1572,14 +1535,12 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     const loadAllNotifications = async () => {
-        allNotificationsPanel.innerHTML = '<p style="text-align: center; padding: 2rem;">Loading messages...</p>';
-        try {
-            const result = await (await fetch('api.php?fetch=all_notifications')).json();
-            if (!result.success) throw new Error(result.message);
-
+        allNotificationsPanel.innerHTML = `<div class="loading-cell" style="padding: 4rem 0;"><div class="spinner"></div><span>Loading Notifications...</span></div>`;
+        const data = await fetchAndRender({ endpoint: 'api.php?fetch=all_notifications' });
+        if (data) {
             let content = `<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding-bottom: 1rem; margin-bottom: 1rem;"><h2 style="margin: 0;">All Notifications</h2></div>`;
-            if (result.data.length > 0) {
-                content += result.data.map(notif => `
+            if (data.length > 0) {
+                content += data.map(notif => `
                     <div class="notification-item" style="display: flex; gap: 1rem; padding: 1.5rem; border-bottom: 1px solid var(--border-light); ${notif.is_read == 0 ? 'background-color: var(--bg-grey);' : ''}">
                         <div style="font-size: 1.5rem; color: var(--primary-color); padding-top: 5px;"><i class="fas fa-envelope-open-text"></i></div>
                         <div style="flex-grow: 1;">
@@ -1591,7 +1552,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 content += '<p style="text-align: center; padding: 2rem;">You have no notifications.</p>';
             }
             allNotificationsPanel.innerHTML = content;
-        } catch (error) {
+        } else {
             allNotificationsPanel.innerHTML = '<p style="text-align: center; color: var(--danger-color);">Could not load notifications.</p>';
         }
     };
@@ -1616,6 +1577,10 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     let searchTimeout;
+    const userSearch = document.getElementById('user-search');
+    const userSearchResults = document.getElementById('user-search-results');
+    const recipientUserIdInput = document.getElementById('recipient-user-id');
+
     userSearch.addEventListener('keyup', () => {
         clearTimeout(searchTimeout);
         const searchTerm = userSearch.value.trim();
@@ -1655,14 +1620,15 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
-    document.getElementById('appointment-doctor-filter').addEventListener('change', (e) => fetchAppointments(e.target.value));
-
     // --- MESSENGER LOGIC ---
     function initializeMessenger() {
         if (messengerInitialized) return;
 
         fetchAndRenderConversations();
         
+        const chatArea = document.querySelector('.chat-area');
+        const backBtn = document.getElementById('back-to-conversations-btn');
+
         const searchInput = document.getElementById('messenger-user-search');
         searchInput.addEventListener('input', () => {
             clearTimeout(searchDebounceTimer);
@@ -1672,9 +1638,13 @@ document.addEventListener("DOMContentLoaded", function () {
         const listContainer = document.getElementById('conversation-list-items');
         listContainer.addEventListener('click', handleListItemClick);
         
-        const messageForm = document.getElementById('message-form');
-        messageForm.addEventListener('submit', handleSendMessage);
+        document.getElementById('message-form').addEventListener('submit', handleSendMessage);
         
+        backBtn.addEventListener('click', () => {
+            chatArea.classList.remove('active');
+            activeConversationId = null; 
+        });
+
         messengerInitialized = true;
     }
 
@@ -1686,80 +1656,59 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
         
-        listContainer.innerHTML = `<p class="no-items-message">Searching...</p>`;
+        listContainer.innerHTML = `<div class="loading-cell"><div class="spinner"></div><span>Searching...</span></div>`;
         
         try {
-            const response = await fetch(`api.php?fetch=search_users&term=${encodeURIComponent(query)}`);
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-            
-            if(result.data.length === 0) {
-                 listContainer.innerHTML = `<p class="no-items-message">No users found.</p>`;
-                 return;
+            const data = await fetchAndRender({endpoint: `api.php?fetch=search_users&term=${encodeURIComponent(query)}`});
+            if(data) {
+                listContainer.innerHTML = data.length > 0 ? data.map(user => {
+                    const avatarUrl = `../uploads/profile_pictures/${user.profile_picture || 'default.png'}`;
+                    return `
+                        <div class="search-result-item" data-user-id="${user.id}" data-user-name="${user.name}" data-user-avatar="${avatarUrl}" data-user-display-id="${user.role}">
+                            <img src="${avatarUrl}" alt="${user.name}" class="user-avatar" onerror="this.src='../uploads/profile_pictures/default.png'">
+                            <div class="conversation-details">
+                                <span class="user-name">${user.name}</span>
+                                <span class="last-message">${user.role} - ${user.display_user_id}</span>
+                            </div>
+                        </div>`;
+                }).join('') : `<p class="no-items-message">No users found.</p>`;
             }
-            listContainer.innerHTML = result.data.map(renderSearchResultItem).join('');
         } catch (error) {
             console.error("Search error:", error);
             listContainer.innerHTML = `<p class="no-items-message" style="color: var(--danger-color)">Search failed.</p>`;
         }
     }
     
-    function renderSearchResultItem(user) {
-        const avatarUrl = `../uploads/profile_pictures/${user.profile_picture || 'default.png'}`;
-        return `
-            <div class="search-result-item" data-user-id="${user.id}" data-user-name="${user.name}" data-user-avatar="${avatarUrl}" data-user-display-id="${user.role}">
-                <img src="${avatarUrl}" alt="${user.name}" class="user-avatar" onerror="this.src='../uploads/profile_pictures/default.png'">
-                <div class="conversation-details">
-                    <span class="user-name">${user.name}</span>
-                    <span class="last-message">${user.role} - ${user.display_user_id}</span>
-                </div>
-            </div>
-        `;
-    }
-
     async function fetchAndRenderConversations() {
         const listContainer = document.getElementById('conversation-list-items');
-        listContainer.innerHTML = `<p class="no-items-message">Loading conversations...</p>`;
+        listContainer.innerHTML = `<div class="loading-cell"><div class="spinner"></div><span>Loading Conversations...</span></div>`;
 
         try {
-            const response = await fetch('api.php?fetch=conversations');
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-            
-            if (result.data.length === 0) {
-                listContainer.innerHTML = `<p class="no-items-message">No conversations yet. Search for a user to start chatting.</p>`;
-                return;
+            const data = await fetchAndRender({ endpoint: 'api.php?fetch=conversations' });
+            if (data) {
+                listContainer.innerHTML = data.length > 0 ? data.map(conv => {
+                    const avatarUrl = `../uploads/profile_pictures/${conv.other_user_profile_picture || 'default.png'}`;
+                    const lastMessageTime = conv.last_message_time ? new Date(conv.last_message_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                    return `
+                        <div class="conversation-item ${conv.conversation_id === activeConversationId ? 'active' : ''}" data-conversation-id="${conv.conversation_id}" data-user-id="${conv.other_user_id}" data-user-name="${conv.other_user_name}" data-user-avatar="${avatarUrl}" data-user-display-id="${conv.other_user_role}">
+                            <img src="${avatarUrl}" alt="${conv.other_user_name}" class="user-avatar" onerror="this.src='../uploads/profile_pictures/default.png'">
+                            <div class="conversation-details">
+                                <span class="user-name">${conv.other_user_name}</span>
+                                <span class="last-message">${conv.last_message || 'No messages yet'}</span>
+                            </div>
+                            <div class="conversation-meta">
+                                <span class="message-time">${lastMessageTime}</span>
+                                ${conv.unread_count > 0 ? `<div class="unread-indicator">${conv.unread_count}</div>` : ''}
+                            </div>
+                        </div>`;
+                }).join('') : `<p class="no-items-message">No conversations yet. Search for a user to start chatting.</p>`;
             }
-            listContainer.innerHTML = result.data.map(renderConversationItem).join('');
-
         } catch (error) {
             console.error("Failed to fetch conversations:", error);
             listContainer.innerHTML = `<p class="no-items-message" style="color: var(--danger-color)">Could not load conversations.</p>`;
         }
     }
     
-    function formatMessageTime(dateString) {
-        if (!dateString) return '';
-        const date = new Date(dateString);
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-
-    function renderConversationItem(conv) {
-        const avatarUrl = `../uploads/profile_pictures/${conv.other_user_profile_picture || 'default.png'}`;
-        return `
-            <div class="conversation-item ${conv.conversation_id === activeConversationId ? 'active' : ''}" data-conversation-id="${conv.conversation_id}" data-user-id="${conv.other_user_id}" data-user-name="${conv.other_user_name}" data-user-avatar="${avatarUrl}" data-user-display-id="${conv.other_user_role}">
-                <img src="${avatarUrl}" alt="${conv.other_user_name}" class="user-avatar" onerror="this.src='../uploads/profile_pictures/default.png'">
-                <div class="conversation-details">
-                    <span class="user-name">${conv.other_user_name}</span>
-                    <span class="last-message">${conv.last_message || 'No messages yet'}</span>
-                </div>
-                <div class="conversation-meta">
-                    <span class="message-time">${formatMessageTime(conv.last_message_time)}</span>
-                    ${conv.unread_count > 0 ? `<div class="unread-indicator">${conv.unread_count}</div>` : ''}
-                </div>
-            </div>`;
-    }
-
     function handleListItemClick(e) {
         const item = e.target.closest('.conversation-item, .search-result-item');
         if (!item) return;
@@ -1771,17 +1720,20 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         
         const conversationId = item.dataset.conversationId ? parseInt(item.dataset.conversationId, 10) : null;
-        const userId = parseInt(item.dataset.userId, 10);
-        const userName = item.dataset.userName;
-        const userAvatar = item.dataset.userAvatar;
-        const userDisplayId = item.dataset.userDisplayId;
-        
-        selectConversation(conversationId, userId, userName, userAvatar, userDisplayId);
+        selectConversation(
+            conversationId,
+            parseInt(item.dataset.userId, 10),
+            item.dataset.userName,
+            item.dataset.userAvatar,
+            item.dataset.userDisplayId
+        );
     }
     
     function selectConversation(conversationId, userId, userName, userAvatar, userDisplayId) {
         activeConversationId = conversationId;
         activeReceiverId = userId;
+        
+        document.querySelector('.chat-area').classList.add('active');
 
         document.querySelectorAll('#conversation-list-items .conversation-item').forEach(el => {
             el.classList.toggle('active', parseInt(el.dataset.conversationId, 10) === conversationId);
@@ -1822,23 +1774,28 @@ document.addEventListener("DOMContentLoaded", function () {
 
     async function fetchAndRenderMessages(conversationId) {
         const container = document.getElementById('chat-messages-container');
-        container.innerHTML = '<p class="no-items-message">Loading messages...</p>';
+        container.innerHTML = `<div class="loading-cell" style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center;"><div class="spinner"></div><span>Loading Messages...</span></div>`;
         try {
-            const response = await fetch(`api.php?fetch=messages&conversation_id=${conversationId}`);
-            const result = await response.json();
-            if(!result.success) throw new Error(result.message);
+            const data = await fetchAndRender({endpoint: `api.php?fetch=messages&conversation_id=${conversationId}`});
+            if(!data) throw new Error("Could not fetch messages.");
             
             let messagesHtml = '';
             let lastMessageDateStr = null;
 
-            if (result.data.length > 0) {
-                result.data.forEach(message => {
+            if (data.length > 0) {
+                data.forEach(message => {
                     const currentMessageDateStr = new Date(message.created_at).toDateString();
                     if (currentMessageDateStr !== lastMessageDateStr) {
                         messagesHtml += `<div class="message-date-separator">${formatDateSeparator(message.created_at)}</div>`;
                         lastMessageDateStr = currentMessageDateStr;
                     }
-                    messagesHtml += renderMessageItem(message);
+                    const sentOrReceived = message.sender_id === currentUserId ? 'sent' : 'received';
+                    messagesHtml += `
+                        <div class="message ${sentOrReceived}">
+                            <div class="message-content"><p>${message.message_text}</p></div>
+                            <span class="message-timestamp">${new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                    `;
                 });
                  container.dataset.lastDate = lastMessageDateStr;
             } else {
@@ -1855,18 +1812,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
     
-    function renderMessageItem(message) {
-        const sentOrReceived = message.sender_id === currentUserId ? 'sent' : 'received';
-        return `
-            <div class="message ${sentOrReceived}">
-                <div class="message-content">
-                    <p>${message.message_text}</p>
-                </div>
-                <span class="message-timestamp">${formatMessageTime(message.created_at)}</span>
-            </div>
-        `;
-    }
-
     async function handleSendMessage(e) {
         e.preventDefault();
         const form = e.target;
@@ -1905,10 +1850,14 @@ document.addEventListener("DOMContentLoaded", function () {
                      container.insertAdjacentHTML('beforeend', `<div class="message-date-separator">${formatDateSeparator(result.data.created_at)}</div>`);
                      container.dataset.lastDate = currentDateStr;
                 }
-
-                container.insertAdjacentHTML('beforeend', renderMessageItem(result.data));
+                const sentOrReceived = result.data.sender_id === currentUserId ? 'sent' : 'received';
+                container.insertAdjacentHTML('beforeend', `
+                    <div class="message ${sentOrReceived}">
+                        <div class="message-content"><p>${result.data.message_text}</p></div>
+                        <span class="message-timestamp">${new Date(result.data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>`);
                 container.scrollTop = container.scrollHeight;
-                fetchAndRenderConversations();
+                fetchAndRenderConversations(); 
             }
 
         } catch (error) {

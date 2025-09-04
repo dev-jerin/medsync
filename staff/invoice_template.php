@@ -33,7 +33,11 @@ if (!$invoice) {
     <meta charset="UTF-8">
     <title>Invoice - <?php echo htmlspecialchars($invoice['id']); ?></title>
     <style>
-        body { font-family: 'Helvetica', 'Arial', sans-serif; color: #333; font-size: 12px; }
+        @font-face {
+            font-family: 'DejaVu Sans';
+            src: url('https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/DejaVuSans.ttf') format('truetype');
+        }
+        body { font-family: 'DejaVu Sans', 'Helvetica', 'Arial', sans-serif; color: #333; font-size: 12px; }
         .container { width: 100%; margin: 0 auto; padding: 20px; }
         .header { text-align: center; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 30px; }
         .header h1 { margin: 0; font-size: 24px; color: #0056b3; }
@@ -92,13 +96,13 @@ if (!$invoice) {
                             }
                         ?>
                     </td>
-                    <td>₹<?php echo number_format($invoice['amount'], 2); ?></td>
+                    <td>&#8377;<?php echo number_format($invoice['amount'], 2); ?></td>
                 </tr>
             </tbody>
         </table>
 
         <div class="total-section">
-            <h2>Total Paid: ₹<?php echo number_format($invoice['amount'], 2); ?></h2>
+            <h2>Total Paid: &#8377;<?php echo number_format($invoice['amount'], 2); ?></h2>
         </div>
 
         <div class="footer">

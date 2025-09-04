@@ -1,13 +1,12 @@
 <?php
 // --- CONFIG & SESSION START ---
-// Note: This file is included by dashboard.php, so session_start() is already called in config.php.
 require_once '../config.php';
-require_once '../vendor/autoload.php'; // Autoload Composer dependencies
+require_once '../vendor/autoload.php'; 
 
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
-// The session security and role check is now in dashboard.php before this file is included.
+
 
 /**
  * Logs a specific action to the activity_logs table.
@@ -23,7 +22,6 @@ function log_activity($conn, $user_id, $action, $target_user_id = null, $details
 {
     $stmt = $conn->prepare("INSERT INTO activity_logs (user_id, action, target_user_id, details) VALUES (?, ?, ?, ?)");
     if (!$stmt) {
-        // Handle error, e.g., log to a file, but don't stop the main execution
         error_log("Failed to prepare statement for activity log: " . $conn->error);
         return false;
     }
@@ -200,7 +198,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
 
                     } catch (Exception $e) {
                         $conn->rollback();
-                        throw new Exception('Database error on user creation: ' . $e->getMessage());
+                        $response = ['success' => false, 'message' => $e->getMessage()];
                     }
                     break;
 
@@ -238,7 +236,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $conn->commit();
                     } catch (Exception $e) {
                         $conn->rollback();
-                        throw $e; // Rethrow the exception to be caught by the main handler
+                        throw $e; 
                     }
                     break;
 
@@ -356,7 +354,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
 
                     } catch (Exception $e) {
                         $conn->rollback();
-                        throw new Exception('Failed to update user: ' . $e->getMessage());
+                        $response = ['success' => false, 'message' => $e->getMessage()];
                     }
                     break;
 
@@ -904,7 +902,6 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
 
                 case 'mark_notifications_read':
                     $admin_id = $_SESSION['user_id'];
-                    // This query updates the is_read flag to 1 for all unread (is_read = 0) notifications for this admin.
                     $sql = "UPDATE notifications SET is_read = 1 WHERE (recipient_user_id = ? OR recipient_role = 'admin' OR recipient_role = 'all') AND is_read = 0";
                     $stmt = $conn->prepare($sql);
 
@@ -924,7 +921,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                 case 'dismiss_all_notifications':
                     $admin_user_id = $_SESSION['user_id'];
 
-                    // First, find all notification IDs that are currently unread/undismissed for this admin
+
                     $sql_get_ids = "SELECT n.id 
                                     FROM notifications n
                                     LEFT JOIN notification_dismissals nd ON n.id = nd.notification_id AND nd.user_id = ?
@@ -941,7 +938,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt_get_ids->close();
 
                     if (!empty($notification_ids)) {
-                        // Now, insert a dismissal record for each of these notifications
+                        
                         $sql_dismiss = "INSERT INTO notification_dismissals (user_id, notification_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE user_id=user_id";
                         $stmt_dismiss = $conn->prepare($sql_dismiss);
                         foreach ($notification_ids as $notif_id) {
@@ -954,7 +951,18 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     log_activity($conn, $admin_user_id_for_log, 'dismiss_notifications', null, "Dismissed all unread notifications.");
                     $response = ['success' => true, 'message' => 'Notifications dismissed.'];
                     break;
+                
+                case 'download_pdf':
+                    // This action is now protected by the CSRF check at the top of the POST block.
+                    if (empty($_POST['report_type']) || empty($_POST['start_date']) || empty($_POST['end_date'])) {
+                        die('Report type and date range are required to generate a PDF.');
+                    }
 
+                    header_remove('Content-Type');
+            
+                    generatePdfReport($conn, $_POST['report_type'], $_POST['start_date'], $_POST['end_date']);
+                    exit(); // Stop script execution after sending the PDF
+                    
             }
         } elseif (isset($_GET['fetch'])) {
             $fetch_target = $_GET['fetch'];
@@ -1452,27 +1460,20 @@ $sql = "SELECT u.id, u.name, u.profile_picture, u.display_user_id, r.role_name a
         }
 
     } catch (Throwable $e) {
-        http_response_code(400);
-        $response['message'] = $e->getMessage();
+        error_log("API Error: " . $e->getMessage() . " in " . $e->getFile() . " on line " . $e->getLine());
+
+        http_response_code(500); // Use 500 for internal server errors
+        $response['message'] = 'An unexpected error occurred. Please try again later or contact support.';
     }
 
     restore_error_handler();
     echo json_encode($response);
     exit();
 }
-// ===================================================================================
-// --- PDF GENERATION LOGIC ---
-// ===================================================================================
-if (isset($_GET['action']) && $_GET['action'] === 'download_pdf') {
-    if (empty($_GET['report_type']) || empty($_GET['start_date']) || empty($_GET['end_date'])) {
-        die('Report type and date range are required to generate a PDF.');
-    }
-    $reportType = $_GET['report_type'];
-    $startDate = $_GET['start_date'];
-    $endDate = $_GET['end_date'];
-    $endDateWithTime = $endDate . ' 23:59:59';
-    $conn = getDbConnection();
 
+function generatePdfReport($conn, $reportType, $startDate, $endDate) {
+    $endDateWithTime = $endDate . ' 23:59:59';
+    
     // --- Data Fetching ---
     $table_sql = '';
     $table_headers = [];
@@ -1514,7 +1515,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pdf') {
     $medsync_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($medsync_logo_path));
     $hospital_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($hospital_logo_path));
 
-    // UPDATED: Report title now shows the date range
+   
     $html = '
     <!DOCTYPE html>
     <html lang="en">
@@ -1585,7 +1586,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pdf') {
     </body>
     </html>';
 
-    // (This part for Dompdf rendering remains the same)
     $options = new Options();
     $options->set('isHtml5ParserEnabled', true);
     $options->set('isRemoteEnabled', true);
@@ -1594,6 +1594,5 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pdf') {
     $dompdf->setPaper('A4', 'portrait');
     $dompdf->render();
     $dompdf->stream(strtolower(str_replace(' ', '_', $reportType)) . '_report.pdf', ["Attachment" => 1]);
-    exit();
 }
 ?>

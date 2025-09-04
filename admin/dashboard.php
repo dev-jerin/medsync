@@ -1,20 +1,41 @@
 <?php
 // --- CONFIG & SESSION START ---
-require_once '../config.php'; // Adjusted path
-require_once 'api.php'; // Include the new PHP logic file
+require_once '../config.php'; 
+require_once 'api.php'; 
 
 // --- SESSION SECURITY & ROLE CHECK ---
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     session_destroy();
-    header("Location: ../login/index.php?error=unauthorized"); // Adjusted path
+    header("Location: ../login/index.php?error=unauthorized"); 
     exit();
 }
+
+// --- BIND SESSION TO USER AGENT (PREVENTS SESSION HIJACKING) ---
+if (isset($_SESSION['user_agent']) && $_SESSION['user_agent'] !== $_SERVER['HTTP_USER_AGENT']) {
+    // If the user agent does not match, destroy the session.
+    session_destroy();
+    header("Location: ../login/index.php?error=hijacking_detected");
+    exit();
+}
+// Set the user agent if it's not already set
+if (!isset($_SESSION['user_agent'])) {
+    $_SESSION['user_agent'] = $_SERVER['HTTP_USER_AGENT'];
+}
+
+// --- PERIODICALLY REGENERATE SESSION ID (LIMITS SESSION LIFESPAN) ---
+if (!isset($_SESSION['last_regen'])) {
+    $_SESSION['last_regen'] = time();
+} else if (time() - $_SESSION['last_regen'] > 900) { // Regenerate every 15 minutes
+    session_regenerate_id(true);
+    $_SESSION['last_regen'] = time();
+}
+
 
 // --- SESSION TIMEOUT ---
 $session_timeout = 1800; // 30 minutes
 if (isset($_SESSION['loggedin_time']) && (time() - $_SESSION['loggedin_time'] > $session_timeout)) {
     session_destroy();
-    header("Location: ../login/index.php?session_expired=true"); // Adjusted path
+    header("Location: ../login/index.php?session_expired=true"); 
     exit();
 }
 $_SESSION['loggedin_time'] = time();
@@ -40,7 +61,6 @@ $stmt->close();
 $csrf_token = bin2hex(random_bytes(32));
 $_SESSION['csrf_token'] = $csrf_token;
 
-// Updated queries to reflect new schema
 $total_users_stmt = $conn->prepare("SELECT COUNT(*) as c FROM users");
 $total_users_stmt->execute();
 $total_users = $total_users_stmt->get_result()->fetch_assoc()['c'];
@@ -49,7 +69,7 @@ $active_doctors_stmt = $conn->prepare("SELECT COUNT(*) as c FROM users u JOIN ro
 $active_doctors_stmt->execute();
 $active_doctors = $active_doctors_stmt->get_result()->fetch_assoc()['c'];
 
-$pending_appointments = 0; // This will be loaded dynamically via JS
+$pending_appointments = 0; 
 $conn->close();
 
 ?>
@@ -438,6 +458,9 @@ $conn->close();
                     <div class="chat-area">
                         <div class="chat-window" id="chat-window" style="display: none;">
                             <div class="chat-header">
+                                <button class="btn-back-to-list" id="back-to-conversations-btn" aria-label="Back to conversations">
+                                    <i class="fas fa-arrow-left"></i>
+                                </button>
                                 <div class="user-info">
                                     <img src="../uploads/profile_pictures/default.png" alt="Avatar" class="chat-avatar"
                                         id="chat-header-avatar">
@@ -488,8 +511,9 @@ $conn->close();
 
                     <button id="generate-report-btn" class="btn btn-primary"><i class="fas fa-sync"></i> Generate Report</button>
 
-                    <form id="download-pdf-form" method="GET" action="api.php" target="_blank">
+                    <form id="download-pdf-form" method="POST" action="api.php" target="_blank">
                         <input type="hidden" name="action" value="download_pdf">
+                        <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                         <input type="hidden" id="pdf-report-type" name="report_type">
                         <input type="hidden" id="pdf-start-date" name="start_date">
                         <input type="hidden" id="pdf-end-date" name="end_date">
@@ -692,7 +716,7 @@ $conn->close();
                 <h3 id="modal-title">Add New User</h3>
                 <button class="modal-close-btn">&times;</button>
             </div>
-            <form id="user-form" enctype="multipart/form-data">
+            <form id="user-form" enctype="multipart/form-data" novalidate>
                 <input type="hidden" name="id" id="user-id">
                 <input type="hidden" name="action" id="form-action">
                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
@@ -700,6 +724,7 @@ $conn->close();
                 <div class="form-group">
                     <label for="name">Full Name</label>
                     <input type="text" id="name" name="name" required>
+                    <div class="error-message"></div>
                 </div>
                 <div class="form-group">
                     <label for="profile_picture">Profile Picture</label>
@@ -712,16 +737,19 @@ $conn->close();
                 </div>
                 <div class="form-group">
                     <label for="username">Username</label>
-                    <input type="text" id="username" name="username" required>
+                    <input type="text" id="username" name="username" required minlength="4">
+                    <div class="error-message"></div>
                 </div>
                 <div class="form-group">
                     <label for="email">Email</label>
                     <input type="email" id="email" name="email" required>
+                    <div class="error-message"></div>
                 </div>
                 <div class="form-group">
                     <label for="phone">Phone Number</label>
                     <input type="tel" id="phone" name="phone" pattern="\+[0-9]{10,15}"
                         title="Enter in format +CountryCodeNumber" required>
+                    <div class="error-message"></div>
                 </div>
                 <div class="form-group">
                     <label for="date_of_birth">Date of Birth</label>
@@ -738,9 +766,10 @@ $conn->close();
                 </div>
                 <div class="form-group" id="password-group">
                     <label for="password">Password</label>
-                    <input type="password" id="password" name="password">
+                    <input type="password" id="password" name="password" minlength="8">
+                    <div class="error-message"></div>
                     <small style="color: var(--text-muted); font-size: 0.8rem;">Leave blank to keep current password
-                        when editing.</small>
+                        when editing. Must be at least 8 characters.</small>
                 </div>
                 <div class="form-group">
                     <label for="role">Role</label>
