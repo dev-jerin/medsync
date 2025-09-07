@@ -919,7 +919,9 @@ body.dark-theme .timeline-content span {
     margin-bottom: 0.5rem;
     color: var(--text-dark);
 }
-.settings-form input {
+
+/* MODIFIED: Added .settings-form select to apply consistent styling */
+.settings-form input, .settings-form select {
     padding: 0.75rem;
     border-radius: 8px;
     border: 1px solid var(--border-color);
@@ -927,6 +929,9 @@ body.dark-theme .timeline-content span {
     font-size: 0.95rem;
     background-color: var(--background-input);
     color: var(--text-dark);
+    -webkit-appearance: none; /* Helps in standardizing appearance */
+    -moz-appearance: none;
+    appearance: none;
 }
 .settings-form input:read-only {
     background-color: var(--background-body);

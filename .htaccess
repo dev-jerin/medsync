@@ -1,12 +1,30 @@
 # ----------------------------------------------------------------------
-# MedSync Apache Configuration v2.1
+# MedSync Apache Configuration v2.2 - For Local Development
 # ----------------------------------------------------------------------
 
 # Turn on the rewrite engine
 RewriteEngine On
 
-# Set the base path for rewrite rules
+# Set the base path to match the one in your config.php
 RewriteBase /medsync/
+
+# ----------------------------------------------------------------------
+# Section 1: Canonical URLs
+# ----------------------------------------------------------------------
+
+# Remove trailing slash from non-directories
+# This rule is now more explicit to prevent incorrect redirects.
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)/$ /medsync/$1 [R=301,L]
+
+# Remove index.php from the URL
+RewriteCond %{THE_REQUEST} ^[A-Z]{3,}\s(.*)/index\.php [NC]
+RewriteRule ^ %1/ [R=301,L]
+
+# Add .php extension to files
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}\.php -f
+RewriteRule ^(.*)$ $1.php [L]
 
 # ----------------------------------------------------------------------
 # Section 2: Maintenance Mode (with correct 503 status)
@@ -15,17 +33,18 @@ RewriteBase /medsync/
 RewriteCond %{DOCUMENT_ROOT}/medsync/.maintenance -f
 
 # Allow access to the 503 page itself and its assets
-RewriteCond %{REQUEST_URI} !/error/503\.php$
-RewriteCond %{REQUEST_URI} !/error/styles\.css$
-RewriteCond %{REQUEST_URI} !/images/
+RewriteCond %{REQUEST_URI} !/medsync/error/503\.php$
+RewriteCond %{REQUEST_URI} !/medsync/error/styles\.css$
+RewriteCond %{REQUEST_URI} !/medsync/images/
 
 # Send a 503 Service Unavailable header, then show the 503 page.
 RewriteRule ^.*$ /medsync/error/503.php [R=503,L]
 
 # ----------------------------------------------------------------------
-# Section 3: PHP Error Logging & Security
+# Section 3: PHP Error Logging & Security for Development
 # ----------------------------------------------------------------------
-php_flag display_errors off
+# Display errors for easier debugging on local server
+php_flag display_errors on
 php_flag log_errors on
 php_value error_log log.txt
 
@@ -43,16 +62,7 @@ ErrorDocument 500 /medsync/error/500.php
 ErrorDocument 503 /medsync/error/503.php
 
 # ----------------------------------------------------------------------
-# Section 5: URL Rewriting (Clean URLs)
+# Section 5: Directory Listing
 # ----------------------------------------------------------------------
 # Prevent directory listing
-Options -Indexes 
-
-# Remove index.php from the URL
-RewriteCond %{THE_REQUEST} ^[A-Z]{3,}\s(.*)/index\.php [NC]
-RewriteRule ^ %1/ [R=301,L]
-
-# Remove .php extension from files
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteCond %{REQUEST_FILENAME}\.php -f
-RewriteRule ^(.*)$ $1.php [L]
+Options -Indexes

@@ -312,6 +312,7 @@ CREATE TABLE `lab_results` (
   `staff_id` int(11) NOT NULL COMMENT 'Staff member who entered the result',
   `test_name` varchar(255) NOT NULL,
   `test_date` date NOT NULL,
+  `status` ENUM('pending', 'processing', 'completed') NOT NULL DEFAULT 'pending',
   `result_details` text DEFAULT NULL,
   `cost` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
   `attachment_path` varchar(255) DEFAULT NULL COMMENT 'Path to an uploaded file (e.g., PDF)',

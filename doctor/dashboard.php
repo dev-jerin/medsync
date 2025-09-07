@@ -1,6 +1,8 @@
 <?php
 // Include the backend logic for session management and data retrieval.
+// This file now prepares $full_name, $username, $email, $phone, $gender, $date_of_birth, etc.
 require_once 'api.php';
+$profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -102,10 +104,10 @@ require_once 'api.php';
                         </div>
                     </div>
                     <div class="user-profile-widget" id="user-profile-widget">
-                        <img src="../images/doctor-avatar.jpg" alt="Doctor Avatar" class="profile-picture">
+                        <img src="<?php echo $profile_picture_path; ?>" alt="Doctor Avatar" class="profile-picture">
                         <div class="profile-info">
-                            <strong>Dr. <?php echo $username; ?></strong>
-                            <span>Cardiology</span>
+                            <strong>Dr. <?php echo $full_name; ?></strong>
+                            <span><?php echo $specialty ?: 'Specialty not set'; ?></span>
                         </div>
                     </div>
                 </div>
@@ -114,7 +116,7 @@ require_once 'api.php';
             <div id="dashboard-page" class="page active">
                 <div class="content-panel">
                     <div class="welcome-message">
-                        <h2>Welcome back, Dr. <?php echo $username; ?>!</h2>
+                        <h2>Welcome back, Dr. <?php echo $full_name; ?>!</h2>
                         <p>Here’s a summary of your activities and patient status for today. Stay organized and efficient.</p>
                     </div>
                     <div class="stat-cards-container">
@@ -431,30 +433,7 @@ require_once 'api.php';
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr class="lab-row" data-status="completed">
-                                    <td data-label="Report ID">LR7201</td>
-                                    <td data-label="Patient">Sarah Johnson</td>
-                                    <td data-label="Test Name">Complete Blood Count</td>
-                                    <td data-label="Date">2025-07-24</td>
-                                    <td data-label="Status"><span class="status completed">Completed</span></td>
-                                    <td data-label="Actions"><button class="action-btn view-lab-report"><i class="fas fa-file-alt"></i> View Report</button></td></tr>
-                                <tr class="lab-row" data-status="processing">
-                                    <td data-label="Report ID">LR7202</td>
-                                    <td data-label="Patient">Michael Brown</td>
-                                    <td data-label="Test Name">Lipid Profile</td>
-                                    <td data-label="Date">2025-07-25</td>
-                                    <td data-label="Status"><span class="status processing">Processing</span></td>
-                                    <td data-label="Actions"><button class="action-btn" disabled><i class="fas fa-spinner"></i> In Progress</button></td>
-                                </tr>
-                                <tr class="lab-row" data-status="pending">
-                                    <td data-label="Report ID">LR7203</td>
-                                    <td data-label="Patient">Chris Lee</td>
-                                    <td data-label="Test Name">Thyroid Function Test</td>
-                                    <td data-label="Date">2025-07-25</td>
-                                    <td data-label="Status"><span class="status pending">Pending</span></td>
-                                    <td data-label="Actions"><button class="action-btn add-result-entry"><i class="fas fa-plus-circle"></i> Add Result</button></td>
-                                </tr>
-                            </tbody>
+                                </tbody>
                         </table>
                     </div>
                 </div>
@@ -477,7 +456,7 @@ require_once 'api.php';
                         <form id="personal-info-form" class="settings-form">
                             <h4>Edit Your Personal Details</h4>
                             <div class="profile-picture-editor">
-                                 <img src="../images/doctor-avatar.jpg" alt="Doctor Avatar" class="editable-profile-picture">
+                                 <img src="<?php echo $profile_picture_path; ?>" alt="Doctor Avatar" class="editable-profile-picture">
                                  <label for="profile-picture-upload" class="edit-picture-btn">
                                      <i class="fas fa-camera"></i>
                                      <input type="file" id="profile-picture-upload" accept="image/*">
@@ -486,23 +465,39 @@ require_once 'api.php';
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label for="profile-name">Full Name</label>
-                                    <input type="text" id="profile-name" name="name" value="<?php echo $username; ?>">
+                                    <input type="text" id="profile-name" name="name" value="<?php echo $full_name; ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label for="profile-username">Username</label>
+                                    <input type="text" id="profile-username" name="username" value="<?php echo $username; ?>" readonly>
+                                </div>
+                                <div class="form-group">
+                                    <label for="profile-email">Email Address</label>
+                                    <input type="email" id="profile-email" name="email" value="<?php echo $email; ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label for="profile-phone">Phone Number</label>
+                                    <input type="tel" id="profile-phone" name="phone" value="<?php echo $phone; ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label for="profile-dob">Date of Birth</label>
+                                    <input type="date" id="profile-dob" name="date_of_birth" value="<?php echo $date_of_birth; ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label for="profile-gender">Gender</label>
+                                    <select id="profile-gender" name="gender">
+                                        <option value="Male" <?php if($gender == 'Male') echo 'selected'; ?>>Male</option>
+                                        <option value="Female" <?php if($gender == 'Female') echo 'selected'; ?>>Female</option>
+                                        <option value="Other" <?php if($gender == 'Other') echo 'selected'; ?>>Other</option>
+                                    </select>
+                                </div>
+                                 <div class="form-group">
+                                    <label for="profile-specialty">Specialty</label>
+                                    <input type="text" id="profile-specialty" name="specialty" value="<?php echo $specialty; ?>">
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-id">Doctor ID</label>
                                     <input type="text" id="profile-id" name="display_id" value="<?php echo $display_user_id; ?>" readonly>
-                                </div>
-                                <div class="form-group">
-                                    <label for="profile-email">Email Address</label>
-                                    <input type="email" id="profile-email" name="email" value="emily.carter@medsync.com">
-                                </div>
-                                <div class="form-group">
-                                    <label for="profile-phone">Phone Number</label>
-                                    <input type="tel" id="profile-phone" name="phone" value="+1-202-555-0186">
-                                </div>
-                                <div class="form-group full-width">
-                                    <label for="profile-specialty">Specialty</label>
-                                    <input type="text" id="profile-specialty" name="specialty" value="Cardiology">
                                 </div>
                             </div>
                             <div class="form-actions">
@@ -680,15 +675,33 @@ require_once 'api.php';
                 <div class="modal-body">
                     <form id="lab-result-form">
                         <div class="form-grid">
-                            <div class="form-group"><label for="lab-patient-select">Patient</label><select id="lab-patient-select" required><option value="P004">P004 - Chris Lee</option></select></div>
-                            <div class="form-group"><label for="lab-test-name">Test Name</label><input type="text" id="lab-test-name" value="Thyroid Function Test" required></div>
-                            <div class="form-group full-width"><label>Key Findings</label><div id="key-findings-container"></div><button type="button" class="action-btn" id="add-finding-btn" style="margin-top: 0.5rem;"><i class="fas fa-plus"></i> Add Finding</button></div>
-                            <div class="form-group full-width"><label for="lab-summary">Result Summary</label><textarea id="lab-summary" placeholder="Enter overall summary of the results..."></textarea></div>
-                            <div class="form-group full-width"><label for="lab-file-upload">Upload Full Report (PDF)</label><input type="file" id="lab-file-upload" accept=".pdf"></div>
+                            <div class="form-group">
+                                <label for="lab-patient-select">Patient</label>
+                                <select id="lab-patient-select" name="patient_id" required>
+                                    <option value="">-- Choose a patient --</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="lab-test-name">Test Name</label>
+                                <input type="text" id="lab-test-name" name="test_name" placeholder="e.g., Complete Blood Count" required>
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Key Findings</label>
+                                <div id="key-findings-container"></div>
+                                <button type="button" class="action-btn" id="add-finding-btn" style="margin-top: 0.5rem;"><i class="fas fa-plus"></i> Add Finding</button>
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="lab-summary">Result Summary</label>
+                                <textarea id="lab-summary" name="summary" placeholder="Enter overall summary of the results..."></textarea>
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="lab-file-upload">Upload Full Report (PDF)</label>
+                                <input type="file" id="lab-file-upload" name="report_file" accept=".pdf">
+                            </div>
                         </div>
                     </form>
                 </div>
-                <div class="modal-footer"><button class="btn btn-secondary" data-modal-id="lab-result-modal-overlay">Cancel</button><button class="btn btn-primary" id="modal-save-btn-lab">Save Result</button></div>
+                        <div class="modal-footer"><button class="btn btn-secondary" data-modal-id="lab-result-modal-overlay">Cancel</button><button type="submit" form="lab-result-form" class="btn btn-primary" id="modal-save-btn-lab">Save Result</button></div>
             </div>
         </div>
         
@@ -801,8 +814,8 @@ require_once 'api.php';
                             </div>
                         </div>
                         <div class="rx-doctor-details">
-                            <strong>Dr. <?php echo $username; ?></strong><br>
-                            Cardiology<br>
+                            <strong>Dr. <?php echo $full_name; ?></strong><br>
+                            <?php echo $specialty; ?><br>
                             Reg. No: MS-DOC-12345
                         </div>
                     </div>

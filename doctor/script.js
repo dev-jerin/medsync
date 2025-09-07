@@ -5,6 +5,65 @@ document.addEventListener("DOMContentLoaded", function() {
     const navLinks = document.querySelectorAll('.sidebar-nav .nav-link');
     const pages = document.querySelectorAll('.main-content .page');
     const mainHeaderTitle = document.getElementById('main-header-title');
+    
+    // --- Global cache for dropdowns to prevent repeated API calls ---
+    let patientListCache = null;
+
+    // ===================================================================
+    // --- MOVED FUNCTION DEFINITION HERE ---
+    // This function is now accessible to the entire script.
+    // ===================================================================
+    async function loadLabResults() {
+        const tableBody = document.querySelector('#lab-results-table tbody');
+        if (!tableBody) return;
+        tableBody.innerHTML = `<tr><td colspan="6" class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading lab results...</td></tr>`;
+
+        try {
+            const response = await fetch('api.php?action=get_lab_results');
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const result = await response.json();
+
+            tableBody.innerHTML = ''; // Clear loading state
+            if (result.success && result.data.length > 0) {
+                result.data.forEach(report => {
+                   const tr = document.createElement('tr');
+                   tr.className = `lab-row`;
+                   tr.dataset.status = report.status.toLowerCase();
+                   
+                   let actionButtonHtml = '';
+                   switch(report.status.toLowerCase()) {
+                       case 'completed':
+                           actionButtonHtml = `<button class="action-btn view-lab-report" data-id="${report.id}"><i class="fas fa-file-alt"></i> View Report</button>`;
+                           break;
+                       case 'processing':
+                           actionButtonHtml = `<button class="action-btn" disabled><i class="fas fa-spinner"></i> In Progress</button>`;
+                           break;
+                       case 'pending':
+                           actionButtonHtml = `<button class="action-btn add-result-entry" data-id="${report.id}"><i class="fas fa-plus-circle"></i> Add Result</button>`;
+                           break;
+                       default:
+                           actionButtonHtml = 'N/A';
+                   }
+
+                   tr.innerHTML = `
+                       <td data-label="Report ID">LR${report.id}</td>
+                       <td data-label="Patient">${report.patient_name}</td>
+                       <td data-label="Test Name">${report.test_name}</td>
+                       <td data-label="Date">${report.test_date}</td>
+                       <td data-label="Status"><span class="status ${report.status.toLowerCase()}">${report.status}</span></td>
+                       <td data-label="Actions">${actionButtonHtml}</td>
+                   `;
+                   tableBody.appendChild(tr);
+                });
+            } else {
+                tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem;">No lab results found.</td></tr>`;
+            }
+
+        } catch (error) {
+            console.error("Error loading lab results:", error);
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--danger-color);">Failed to load lab results.</td></tr>`;
+        }
+    }
 
     function toggleMenu() {
         sidebar.classList.toggle('active');
@@ -31,9 +90,21 @@ document.addEventListener("DOMContentLoaded", function() {
             navLinks.forEach(navLink => navLink.classList.remove('active'));
             link.classList.add('active');
             
+            // --- Page specific initializers ---
             if (pageId === 'bed-management') {
                 initializeOccupancyManagement();
             }
+            if (pageId === 'labs') {
+                loadLabResults();
+            }
+            if (pageId === 'profile') {
+                // Pre-load audit log if navigating to profile settings
+                const auditLogTab = document.querySelector('.profile-tab-link[data-tab="audit-log"]');
+                if(auditLogTab && auditLogTab.classList.contains('active')) {
+                   loadAuditLog();
+                }
+            }
+
 
             if (window.innerWidth <= 992) {
                 closeMenu();
@@ -91,12 +162,312 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // --- All Page Logic (Existing) ---
     // ... (appointments, patients, prescriptions, etc. logic remains here) ...
-    // Note: To keep this response focused, I'm omitting the older, unchanged page logic.
-    // The new logic is self-contained below.
+    
+    // ===================================================================
+    // --- NEW: Lab Results Page Logic ---
+    // ===================================================================
+    const labsPage = document.getElementById('labs-page');
+    if (labsPage) {
+        // --- Event Delegation for table actions ---
+        document.getElementById('lab-results-table').addEventListener('click', function(e) {
+            if (e.target.closest('.view-lab-report')) {
+                const button = e.target.closest('.view-lab-report');
+                const reportId = button.dataset.id;
+                openViewLabReportModal(reportId);
+            }
+             if (e.target.closest('.add-result-entry')) {
+                // Future enhancement: Open modal pre-filled for a pending test
+                alert('Functionality to update a pending test is in development.');
+            }
+        });
+
+        // --- Add New Lab Result Modal Logic ---
+        document.getElementById('add-lab-result-btn').addEventListener('click', openAddLabResultModal);
+
+        async function openAddLabResultModal() {
+            const form = document.getElementById('lab-result-form');
+            form.reset();
+            document.getElementById('key-findings-container').innerHTML = ''; // Clear findings
+
+            const patientSelect = document.getElementById('lab-patient-select');
+            patientSelect.innerHTML = '<option value="">Loading patients...</option>';
+            
+            try {
+                if (!patientListCache) {
+                    const response = await fetch('api.php?action=get_patients_for_dropdown');
+                    const result = await response.json();
+                    if (result.success) {
+                        patientListCache = result.data;
+                    } else {
+                        throw new Error(result.message);
+                    }
+                }
+                patientSelect.innerHTML = '<option value="">-- Choose a patient --</option>';
+                patientListCache.forEach(patient => {
+                    patientSelect.innerHTML += `<option value="${patient.id}">${patient.display_user_id} - ${patient.name}</option>`;
+                });
+            } catch (error) {
+                console.error('Failed to load patients:', error);
+                patientSelect.innerHTML = '<option value="">Could not load patients</option>';
+            }
+            openModalById('lab-result-modal-overlay');
+        }
+
+        async function openViewLabReportModal(reportId) {
+            try {
+                const response = await fetch(`api.php?action=get_lab_report_details&id=${reportId}`);
+                if (!response.ok) throw new Error('Network error');
+                const result = await response.json();
+
+                if (result.success) {
+                    const report = result.data;
+                    document.getElementById('report-patient-name').textContent = report.patient_name;
+                    document.querySelector('#lab-report-view-title').textContent = `Lab Report for ${report.patient_name}`;
+                    document.querySelector('.report-view-header div:nth-child(2)').innerHTML = `<strong>Test:</strong> ${report.test_name}`;
+                    document.querySelector('.report-view-header div:nth-child(3)').innerHTML = `<strong>Report ID:</strong> LR${report.id}`;
+                    document.querySelector('.report-view-header div:nth-child(4)').innerHTML = `<strong>Date:</strong> ${report.test_date}`;
+
+                    const findingsBody = document.querySelector('.findings-table tbody');
+                    findingsBody.innerHTML = '';
+                    if (report.result_details && Array.isArray(report.result_details.findings) && report.result_details.findings.length > 0) {
+                         report.result_details.findings.forEach(finding => {
+                            findingsBody.innerHTML += `<tr><td>${finding.parameter}</td><td>${finding.result}</td><td>${finding.range}</td></tr>`;
+                         });
+                    } else {
+                         findingsBody.innerHTML = `<tr><td colspan="3">No detailed findings were entered.</td></tr>`;
+                    }
+                    
+                    document.querySelector('.report-view-body p').textContent = report.result_details.summary || 'No summary provided.';
+                    
+                    openModalById('lab-report-view-modal-overlay');
+                } else {
+                    alert(`Error: ${result.message}`);
+                }
+            } catch (error) {
+                console.error('Error fetching report details:', error);
+                alert('Could not fetch report details.');
+            }
+        }
+        
+        // --- Manage "Key Findings" in the add/edit modal ---
+        const findingsContainer = document.getElementById('key-findings-container');
+        document.getElementById('add-finding-btn').addEventListener('click', () => {
+             const findingRow = document.createElement('div');
+             findingRow.className = 'finding-row';
+             findingRow.innerHTML = `
+                <input type="text" class="finding-parameter" placeholder="Parameter (e.g., Hemoglobin)">
+                <input type="text" class="finding-result" placeholder="Result (e.g., 14.5 g/dL)">
+                <input type="text" class="finding-range" placeholder="Reference Range">
+                <button type="button" class="btn-remove-finding">&times;</button>
+             `;
+             findingsContainer.appendChild(findingRow);
+        });
+
+        findingsContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('btn-remove-finding')) {
+                e.target.parentElement.remove();
+            }
+        });
+        
+        // --- Handle Lab Result Form Submission ---
+        document.getElementById('lab-result-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const saveButton = document.getElementById('modal-save-btn-lab');
+            const originalButtonText = saveButton.innerHTML;
+            saveButton.disabled = true;
+            saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
+
+            // Collect key findings into a structured object
+            const findings = [];
+            document.querySelectorAll('.finding-row').forEach(row => {
+                const parameter = row.querySelector('.finding-parameter').value.trim();
+                const result = row.querySelector('.finding-result').value.trim();
+                const range = row.querySelector('.finding-range').value.trim();
+                if (parameter && result) {
+                    findings.push({ parameter, result, range });
+                }
+            });
+            
+            const summary = document.getElementById('lab-summary').value;
+            const resultDetails = JSON.stringify({ findings, summary });
+
+            // The constructor now correctly gathers all fields because we added `name` attributes in the HTML.
+            const formData = new FormData(this); 
+            
+            // We still need to manually append the action and our custom JSON object.
+            formData.append('action', 'add_lab_result');
+            formData.append('result_details', resultDetails);
+            formData.append('test_date', new Date().toISOString().slice(0, 10)); 
+            
+            try {
+                const response = await fetch('api.php', { method: 'POST', body: formData });
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(result.message);
+                    document.getElementById('lab-result-modal-overlay').classList.remove('active');
+                    loadLabResults(); // Refresh the table
+                } else {
+                    alert(`Error: ${result.message || 'An unknown error occurred.'}`);
+                }
+
+            } catch (error) {
+                console.error('Error submitting lab result:', error);
+                alert('A network or server error occurred. Please try again.');
+            } finally {
+                 saveButton.disabled = false;
+                 saveButton.innerHTML = originalButtonText;
+            }
+        });
+    }
+
+    // ===================================================================
+    // --- UPDATED: Profile Settings Page Logic ---
+    // ===================================================================
+    const personalInfoForm = document.getElementById('personal-info-form');
+    if (personalInfoForm) {
+        personalInfoForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const saveButton = this.querySelector('button[type="submit"]');
+            const originalButtonText = saveButton.innerHTML;
+            saveButton.disabled = true;
+            saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
+
+            const formData = new FormData(this);
+            formData.append('action', 'update_personal_info');
+
+            try {
+                const response = await fetch('api.php', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('Profile updated successfully!');
+                    // Dynamically update the name in the header and welcome message
+                    const newName = formData.get('name');
+                    const newSpecialty = formData.get('specialty');
+
+                    const headerProfileName = document.querySelector('.user-profile-widget .profile-info strong');
+                    const headerProfileSpecialty = document.querySelector('.user-profile-widget .profile-info span');
+                    if (headerProfileName) {
+                        headerProfileName.textContent = `Dr. ${newName}`;
+                    }
+                    if (headerProfileSpecialty) {
+                        headerProfileSpecialty.textContent = newSpecialty;
+                    }
+                    
+                    const welcomeMessageName = document.querySelector('.welcome-message h2');
+                    if(welcomeMessageName){
+                        welcomeMessageName.textContent = `Welcome back, Dr. ${newName}!`;
+                    }
+
+                } else {
+                    alert(`Error: ${result.message || 'An unknown error occurred.'}`);
+                }
+
+            } catch (error) {
+                console.error('Error updating profile:', error);
+                alert('A network error occurred. Please try again.');
+            } finally {
+                saveButton.disabled = false;
+                saveButton.innerHTML = originalButtonText;
+            }
+        });
+    }
+
+    // --- Profile Tab Switching & Audit Log Loading ---
+    const profilePage = document.getElementById('profile-page');
+    if (profilePage) {
+        const profileTabs = profilePage.querySelectorAll('.profile-tab-link');
+        const profileTabContents = profilePage.querySelectorAll('.profile-tab-content');
+        
+        profileTabs.forEach(tab => {
+            tab.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetTab = this.dataset.tab;
+
+                profileTabs.forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+
+                profileTabContents.forEach(content => {
+                    content.classList.toggle('active', content.id === `${targetTab}-tab`);
+                });
+
+                if (targetTab === 'audit-log') {
+                    loadAuditLog();
+                }
+            });
+        });
+    }
+
+    async function loadAuditLog() {
+        const tableBody = document.querySelector('#audit-log-table tbody');
+        if (!tableBody || tableBody.dataset.loaded === 'true') {
+            return; // Already loaded, do nothing
+        }
+
+        tableBody.innerHTML = `<tr><td colspan="4" class="loading-placeholder" style="text-align:center; padding: 2rem;"><i class="fas fa-spinner fa-spin"></i> Loading activity log...</td></tr>`;
+
+        try {
+            const response = await fetch('api.php?action=get_audit_log');
+            if (!response.ok) throw new Error('Network response was not ok.');
+            
+            const result = await response.json();
+
+            if (result.success && result.data.length > 0) {
+                tableBody.innerHTML = ''; // Clear loading spinner
+                result.data.forEach(log => {
+                    const tr = document.createElement('tr');
+
+                    // 1. Format Date & Time
+                    const logDate = new Date(log.created_at).toLocaleString('en-US', {
+                        year: 'numeric', month: 'short', day: 'numeric', 
+                        hour: '2-digit', minute: '2-digit', hour12: true
+                    });
+
+                    // 2. Determine Action Class & Text
+                    let actionClass = '';
+                    const actionText = (log.action || '').toLowerCase();
+                    if (actionText.includes('create') || actionText.includes('issued') || actionText.includes('added')) {
+                        actionClass = 'log-action-create';
+                    } else if (actionText.includes('update') || actionText.includes('initiated')) {
+                        actionClass = 'log-action-update';
+                    } else if (actionText.includes('view')) {
+                        actionClass = 'log-action-view';
+                    } else if (actionText.includes('login')) {
+                        actionClass = 'log-action-auth';
+                    }
+                    
+                    // 3. Determine Target
+                    const targetText = log.target_user_name 
+                        ? `${log.target_user_name} (${log.target_display_id})` 
+                        : 'Self';
+
+                    tr.innerHTML = `
+                        <td data-label="Date & Time">${logDate}</td>
+                        <td data-label="Action"><span class="${actionClass}">${log.action}</span></td>
+                        <td data-label="Target">${targetText}</td>
+                        <td data-label="Details">${log.details || 'N/A'}</td>
+                    `;
+                    tableBody.appendChild(tr);
+                });
+                tableBody.dataset.loaded = 'true'; // Mark as loaded
+            } else {
+                tableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 2rem;">No recent account activity found.</td></tr>`;
+            }
+        } catch (error) {
+            console.error('Error fetching audit log:', error);
+            tableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--danger-color); padding: 2rem;">Failed to load activity log.</td></tr>`;
+        }
+    }
 
 
     // ===================================================================
-    // --- NEW & UPDATED: Bed Management Page Logic ---
+    // --- UPDATED: Bed Management Page Logic ---
     // ===================================================================
     const occupancyPage = document.getElementById('bed-management-page');
     let allOccupancyData = []; // Store all bed and room data
@@ -110,6 +481,7 @@ document.addEventListener("DOMContentLoaded", function() {
         gridContainer.innerHTML = '<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading occupancy data...</div>';
 
         try {
+            // NOTE: The actions 'get_locations' and 'get_occupancy_data' now point to the corrected logic in api.php
             const [locationsRes, occupancyRes] = await Promise.all([
                 fetch('api.php?action=get_locations'),
                 fetch('api.php?action=get_occupancy_data')
@@ -265,16 +637,10 @@ document.addEventListener("DOMContentLoaded", function() {
                 const result = await response.json();
 
                 if (result.success) {
-                    const dataIndex = allOccupancyData.findIndex(loc => loc.id == id && loc.type === type);
-                    if (dataIndex !== -1) {
-                        allOccupancyData[dataIndex].status = newStatus;
-                        // If patient was associated, clear it on the frontend too
-                        if (newStatus === 'available' || newStatus === 'cleaning') {
-                            allOccupancyData[dataIndex].patient_name = null;
-                            allOccupancyData[dataIndex].patient_display_id = null;
-                        }
-                    }
-                    filterAndRenderLocations();
+                    // Reset initialization flag to allow re-fetching fresh data
+                    isOccupancyManagerInitialized = false; 
+                    await initializeOccupancyManagement(); 
+                    filterAndRenderLocations(); // Re-apply filters after re-fetching
                     document.getElementById('edit-bed-modal-overlay').classList.remove('active');
                 } else {
                     alert(`Error: ${result.message || 'Could not update status.'}`);
