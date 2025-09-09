@@ -104,7 +104,7 @@ if (isset($_SESSION['user_id'])) {
                     </form>
 
                     <div class="extra-links">
-                        <p>Don't have an account? <a href="register">Register Now</a></p>
+                        <p>Don't have an account? <a href="../register">Register Now</a></p>
                     </div>
                 </div>
             </div>
