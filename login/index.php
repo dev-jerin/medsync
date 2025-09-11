@@ -72,7 +72,7 @@ if (isset($_SESSION['user_id'])) {
                     if (isset($_SESSION['login_message'])) {
                         $message = $_SESSION['login_message'];
                         $message_type = $message['type'] === 'success' ? 'success-message' : 'error-message';
-                        echo '<div class="message-box ' . $message_type . '">' . htmlspecialchars($message['text']) . '</div>';
+                        echo '<div class="message-box ' . $message_type . '">' . $message['text'] . '</div>';
                         unset($_SESSION['login_message']);
                     }
                     // Display login-specific errors

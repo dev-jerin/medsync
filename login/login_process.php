@@ -64,7 +64,7 @@ if ($result->num_rows === 1) {
         if ($user['is_active'] == 0) {
             $_SESSION['login_message'] = [
                 'type' => 'error',
-                'text' => 'Your account is currently inactive. Please contact support for assistance.'
+                'text' => 'Your account is currently inactive. Please <a href="../index.php#contact">contact support</a> for assistance.'
             ];
             header("Location: index.php");
             exit();

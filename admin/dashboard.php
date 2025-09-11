@@ -609,9 +609,12 @@ $conn->close();
 
                 <div id="doctor-availability-content" class="schedule-tab-content active">
                     <div class="schedule-controls">
-                        <div class="form-group" style="flex-grow: 1;">
-                            <label for="doctor-select">Select Doctor</label>
-                            <select id="doctor-select" name="doctor_select"></select>
+                        <div class="form-group" style="flex-grow: 1; position: relative;">
+                            <label for="doctor-search-input">Search for Doctor</label>
+                            <input type="text" id="doctor-search-input" class="form-control" autocomplete="off" placeholder="Search by name, username, or ID...">
+                            <input type="hidden" id="selected-doctor-id">
+                            <div id="doctor-search-results" style="position: absolute; top: 100%; left: 0; right: 0; background-color: var(--bg-light); border: 1px solid var(--border-light); border-radius: 8px; z-index: 100; display: none; max-height: 250px; overflow-y: auto;">
+                            </div>
                         </div>
                     </div>
                     <div id="doctor-schedule-editor" class="schedule-editor-container">
@@ -624,6 +627,12 @@ $conn->close();
                 </div>
 
                 <div id="staff-shifts-content" class="schedule-tab-content">
+                    <div class="schedule-controls">
+                        <div class="form-group" style="flex-grow: 1;">
+                            <label for="staff-search-input">Search Staff</label>
+                            <input type="text" id="staff-search-input" class="form-control" autocomplete="off" placeholder="Search by name, username, or ID...">
+                        </div>
+                    </div>
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
@@ -682,7 +691,7 @@ $conn->close();
                         <div class="form-group">
                             <label for="user-search">Search for User (Recipient)</label>
                             <input type="text" id="user-search" autocomplete="off"
-                                placeholder="Search by name, username, email, or ID..." class="form-control">
+                                placeholder="Search by name, username, or ID..." class="form-control">
                             <div id="user-search-results"
                                 style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-light); border-radius: 8px; margin-top: 5px; display: none;">
                             </div>

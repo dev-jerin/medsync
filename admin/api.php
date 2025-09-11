@@ -7,7 +7,6 @@ use Dompdf\Dompdf;
 use Dompdf\Options;
 
 
-
 /**
  * Logs a specific action to the activity_logs table.
  *
@@ -1208,8 +1207,32 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $response = ['success' => true, 'data' => $messages];
                     break;
 
-                case 'staff_for_shifting':
-                    $result = $conn->query("SELECT u.id, u.name, u.display_user_id, s.shift FROM users u JOIN staff s ON u.id = s.user_id JOIN roles r ON u.role_id = r.id WHERE u.is_active = 1 AND r.role_name = 'staff' ORDER BY u.name ASC");
+case 'staff_for_shifting':
+                    $search = $_GET['search'] ?? '';
+                    $sql = "SELECT u.id, u.name, u.display_user_id, s.shift 
+                            FROM users u 
+                            JOIN staff s ON u.id = s.user_id 
+                            JOIN roles r ON u.role_id = r.id 
+                            WHERE u.is_active = 1 AND r.role_name = 'staff'";
+                    
+                    $params = [];
+                    $types = "";
+
+                    if (!empty($search)) {
+                        $sql .= " AND (u.name LIKE ? OR u.username LIKE ? OR u.display_user_id LIKE ?)";
+                        $searchTerm = "%{$search}%";
+                        array_push($params, $searchTerm, $searchTerm, $searchTerm);
+                        $types .= "sss";
+                    }
+                    
+                    $sql .= " ORDER BY u.name ASC";
+
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                    $stmt->execute();
+                    $result = $stmt->get_result();
                     $data = $result->fetch_all(MYSQLI_ASSOC);
                     $response = ['success' => true, 'data' => $data];
                     break;
@@ -1398,16 +1421,36 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $response = ['success' => true, 'data' => $data];
                     break;
 
-                case 'search_users':
+                    case 'search_users':
                     $term = $_GET['term'] ?? '';
                     if (empty($term)) {
                         $response = ['success' => true, 'data' => []];
                         break;
                     }
                     $searchTerm = "%{$term}%";
-$sql = "SELECT u.id, u.name, u.profile_picture, u.display_user_id, r.role_name as role FROM users u JOIN roles r ON u.role_id = r.id WHERE u.name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR u.display_user_id LIKE ? LIMIT 10";
+                    $sql = "SELECT u.id, u.name, u.profile_picture, u.display_user_id, r.role_name as role FROM users u JOIN roles r ON u.role_id = r.id WHERE u.name LIKE ? OR u.username LIKE ? OR u.display_user_id LIKE ? LIMIT 10";
                     $stmt = $conn->prepare($sql);
-                    $stmt->bind_param("ssss", $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+                    $stmt->bind_param("sss", $searchTerm, $searchTerm, $searchTerm);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
+                case 'search_doctors':
+                    $term = $_GET['term'] ?? '';
+                    if (empty($term)) {
+                        $response = ['success' => true, 'data' => []];
+                        break;
+                    }
+                    $searchTerm = "%{$term}%";
+                    $sql = "SELECT u.id, u.name, u.display_user_id 
+                            FROM users u 
+                            JOIN roles r ON u.role_id = r.id 
+                            WHERE r.role_name = 'doctor' AND (u.name LIKE ? OR u.username LIKE ? OR u.display_user_id LIKE ?) 
+                            LIMIT 10";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("sss", $searchTerm, $searchTerm, $searchTerm);
                     $stmt->execute();
                     $result = $stmt->get_result();
                     $data = $result->fetch_all(MYSQLI_ASSOC);

@@ -665,6 +665,7 @@ input:checked+.slider:before { transform: translateX(24px); }
 #user-search-label { position: absolute; left: 3rem; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text-muted); transition: all 0.3s ease; font-size: 1rem; }
 #user-search-input:focus+#user-search-label, #user-search-input:not(:placeholder-shown)+#user-search-label { top: 0.5rem; transform: translateY(0); font-size: 0.75rem; color: var(--primary-color); }
 
+
 /* --- REPORTS PANEL --- */
 #reports-panel .report-controls { display: flex; gap: 1.5rem; align-items: flex-end; margin-bottom: 2.5rem; flex-wrap: wrap; padding: 1.5rem; background-color: var(--bg-grey); border-radius: var(--border-radius); }
 #reports-panel .report-controls .form-group { margin-bottom: 0; flex-grow: 1; min-width: 150px; }
@@ -1145,4 +1146,28 @@ body.dark-mode .send-btn:disabled {
     .btn-back-to-list {
         display: inline-flex; 
     }
+}
+
+/* --- Doctor Search Results in Schedules --- */
+#doctor-search-results {
+    box-shadow: var(--shadow-md);
+}
+
+.doctor-search-result-item {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.doctor-search-result-item:last-child {
+    border-bottom: none;
+}
+
+.doctor-search-result-item:hover {
+    background-color: var(--bg-grey);
+}
+
+.doctor-search-result-item.none {
+    cursor: default;
+    color: var(--text-muted);
 }

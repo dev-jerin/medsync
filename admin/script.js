@@ -263,7 +263,6 @@ document.addEventListener("DOMContentLoaded", function () {
             if (targetId === 'reports') generateReport();
             if (targetId === 'activity') fetchActivityLogs();
             if (targetId === 'feedback') fetchFeedback();
-            if (targetId === 'schedules' && document.getElementById('doctor-select').options.length <= 1) fetchDoctorsForScheduling();
         }
 
         document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
@@ -1289,21 +1288,72 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     // --- SCHEDULES & NOTIFICATIONS ---
-    const doctorSelect = document.getElementById('doctor-select');
     const scheduleEditorContainer = document.getElementById('doctor-schedule-editor');
     const saveScheduleBtn = document.getElementById('save-schedule-btn');
 
-    const fetchDoctorsForScheduling = async () => {
-        try {
-            const data = await fetchAndRender({endpoint: 'api.php?fetch=doctors_for_scheduling'});
-            if(data) {
-                doctorSelect.innerHTML = '<option value="">Select a Doctor...</option>';
-                data.forEach(d => doctorSelect.innerHTML += `<option value="${d.id}">${d.name} (${d.display_user_id})</option>`);
-            }
-        } catch(e) {
-             doctorSelect.innerHTML = '<option value="">Could not load doctors</option>';
+    // --- New Doctor Search Logic for Schedules ---
+    const doctorSearchInput = document.getElementById('doctor-search-input');
+    const doctorSearchResults = document.getElementById('doctor-search-results');
+    const selectedDoctorId = document.getElementById('selected-doctor-id');
+    let doctorSearchTimeout;
+
+    doctorSearchInput.addEventListener('keyup', () => {
+        clearTimeout(doctorSearchTimeout);
+        const searchTerm = doctorSearchInput.value.trim();
+
+        // Clear schedule if search is cleared
+        if (searchTerm.length === 0) {
+            selectedDoctorId.value = '';
+            scheduleEditorContainer.innerHTML = '<p class="placeholder-text">Please select a doctor to view or edit their schedule.</p>';
+            document.querySelector('.schedule-actions').style.display = 'none';
         }
-    };
+
+        if (searchTerm.length < 2) {
+            doctorSearchResults.style.display = 'none';
+            return;
+        }
+
+        doctorSearchTimeout = setTimeout(async () => {
+            try {
+                const response = await fetch(`api.php?fetch=search_doctors&term=${encodeURIComponent(searchTerm)}`);
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message);
+
+                if (result.data.length > 0) {
+                    doctorSearchResults.innerHTML = result.data.map(doctor => `
+                        <div class="doctor-search-result-item" data-id="${doctor.id}" data-name="${doctor.name} (${doctor.display_user_id})">
+                            <strong>${doctor.name}</strong> (${doctor.display_user_id})
+                        </div>`).join('');
+                } else {
+                    doctorSearchResults.innerHTML = '<div class="doctor-search-result-item none">No doctors found.</div>';
+                }
+                doctorSearchResults.style.display = 'block';
+            } catch (error) {
+                console.error("Doctor search failed:", error);
+                doctorSearchResults.innerHTML = '<div class="doctor-search-result-item none">Search error.</div>';
+                doctorSearchResults.style.display = 'block';
+            }
+        }, 300);
+    });
+
+    doctorSearchResults.addEventListener('click', (e) => {
+        const item = e.target.closest('.doctor-search-result-item');
+        if (item && item.dataset.id) {
+            selectedDoctorId.value = item.dataset.id;
+            doctorSearchInput.value = item.dataset.name;
+            doctorSearchResults.style.display = 'none';
+
+            // Trigger schedule fetch for the selected doctor
+            fetchDoctorSchedule(item.dataset.id);
+        }
+    });
+    
+    // Hide search results when clicking elsewhere
+    document.addEventListener('click', (e) => {
+        if (!doctorSearchInput.contains(e.target) && !doctorSearchResults.contains(e.target)) {
+            doctorSearchResults.style.display = 'none';
+        }
+    });
 
     const renderScheduleEditor = (slots) => {
         const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -1350,7 +1400,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const fetchDoctorSchedule = async (doctorId) => {
         if (!doctorId) {
-            scheduleEditorContainer.innerHTML = '<p class="placeholder-text">Please select a doctor to view or edit their schedule.</p>';
+            // This is now handled by the keyup event, but we keep it as a safeguard.
+            scheduleEditorContainer.innerHTML = '<p class="placeholder-text">Please search for and select a doctor to view their schedule.</p>';
             document.querySelector('.schedule-actions').style.display = 'none';
             return;
         }
@@ -1364,8 +1415,6 @@ document.addEventListener("DOMContentLoaded", function () {
             scheduleEditorContainer.innerHTML = `<p class="placeholder-text" style="color:var(--danger-color)">Failed to load schedule: ${error.message}</p>`;
         }
     };
-
-    doctorSelect.addEventListener('change', () => fetchDoctorSchedule(doctorSelect.value));
 
     scheduleEditorContainer.addEventListener('click', (e) => {
         if (e.target.closest('.add-slot-btn')) {
@@ -1401,7 +1450,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     saveScheduleBtn.addEventListener('click', async () => {
-        const doctorId = doctorSelect.value;
+        const doctorId = selectedDoctorId.value;
         if (!doctorId) return showNotification('Please select a doctor first.', 'error');
         
         const scheduleData = {};
@@ -1453,13 +1502,22 @@ document.addEventListener("DOMContentLoaded", function () {
             </td>
         </tr>`;
 
-    const fetchStaffShifts = () => fetchAndRender({
-        endpoint: 'api.php?fetch=staff_for_shifting',
-        target: document.getElementById('staff-shifts-table-body'),
-        renderRow: renderStaffShiftRow,
-        columns: 4,
-        emptyMessage: 'No active staff found.'
-    });
+const fetchStaffShifts = (searchTerm = '') => fetchAndRender({
+    endpoint: `api.php?fetch=staff_for_shifting&search=${encodeURIComponent(searchTerm)}`,
+    target: document.getElementById('staff-shifts-table-body'),
+    renderRow: renderStaffShiftRow,
+    columns: 4,
+    emptyMessage: 'No active staff found.'
+});
+
+const staffSearchInput = document.getElementById('staff-search-input');
+let staffSearchDebounce;
+staffSearchInput.addEventListener('keyup', () => {
+    clearTimeout(staffSearchDebounce);
+    staffSearchDebounce = setTimeout(() => {
+        fetchStaffShifts(staffSearchInput.value.trim());
+    }, 300);
+});
 
     document.getElementById('staff-shifts-table-body').addEventListener('change', async (e) => {
         if (e.target.classList.contains('shift-select')) {
@@ -1488,7 +1546,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 panel.querySelectorAll('.schedule-tab-button, .schedule-tab-content').forEach(el => el.classList.remove('active'));
                 this.classList.add('active');
                 document.getElementById(`${tabId}-content`).classList.add('active');
-                if (tabId === 'doctor-availability' && doctorSelect.options.length <= 1) fetchDoctorsForScheduling();
                 if (tabId === 'staff-shifts') fetchStaffShifts();
             });
         });
