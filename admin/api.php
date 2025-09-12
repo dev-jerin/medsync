@@ -961,6 +961,56 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
             
                     generatePdfReport($conn, $_POST['report_type'], $_POST['start_date'], $_POST['end_date']);
                     exit(); // Stop script execution after sending the PDF
+
+                case 'blockIp':
+    if (empty($_POST['ip_address'])) {
+        throw new Exception('IP address is required.');
+    }
+    $ip_address = trim($_POST['ip_address']);
+    $reason = !empty($_POST['reason']) ? trim($_POST['reason']) : null;
+
+    $stmt = $conn->prepare("INSERT INTO ip_blocks (ip_address, reason) VALUES (?, ?)");
+    $stmt->bind_param("ss", $ip_address, $reason);
+    if ($stmt->execute()) {
+        log_activity($conn, $admin_user_id_for_log, 'block_ip', null, "Blocked IP: {$ip_address}");
+        $response = ['success' => true, 'message' => 'IP address blocked successfully.'];
+    } else {
+        throw new Exception('Failed to block IP address. It might already be blocked.');
+    }
+    break;
+
+case 'unblockIp':
+    if (empty($_POST['ip_address'])) {
+        throw new Exception('IP address is required.');
+    }
+    $ip_address = trim($_POST['ip_address']);
+
+    $stmt = $conn->prepare("DELETE FROM ip_blocks WHERE ip_address = ?");
+    $stmt->bind_param("s", $ip_address);
+    if ($stmt->execute()) {
+        log_activity($conn, $admin_user_id_for_log, 'unblock_ip', null, "Unblocked IP: {$ip_address}");
+        $response = ['success' => true, 'message' => 'IP address unblocked successfully.'];
+    } else {
+        throw new Exception('Failed to unblock IP address.');
+    }
+    break;
+
+case 'updateIpName':
+    if (empty($_POST['ip_address']) || !isset($_POST['name'])) {
+        throw new Exception('IP address and name are required.');
+    }
+    $ip_address = trim($_POST['ip_address']);
+    $name = trim($_POST['name']);
+
+    $stmt = $conn->prepare("UPDATE ip_tracking SET name = ? WHERE ip_address = ?");
+    $stmt->bind_param("ss", $name, $ip_address);
+    if ($stmt->execute()) {
+        log_activity($conn, $admin_user_id_for_log, 'update_ip_name', null, "Updated name for IP {$ip_address} to '{$name}'.");
+        $response = ['success' => true, 'message' => 'IP address name updated successfully.'];
+    } else {
+        throw new Exception('Failed to update IP address name.');
+    }
+    break;
                     
             }
         } elseif (isset($_GET['fetch'])) {
@@ -1499,6 +1549,23 @@ case 'staff_for_shifting':
                     $data = $result->fetch_all(MYSQLI_ASSOC);
                     $response = ['success' => true, 'data' => $data];
                     break;
+
+                case 'getTrackedIps':
+                $sql = "SELECT 
+                            it.ip_address, 
+                            MAX(it.name) as name, 
+                            GROUP_CONCAT(DISTINCT u.username SEPARATOR ', ') as usernames, 
+                            MAX(it.login_time) as last_login, 
+                            EXISTS(SELECT 1 FROM ip_blocks ib WHERE ib.ip_address = it.ip_address) as is_blocked
+                        FROM ip_tracking it
+                        JOIN users u ON it.user_id = u.id
+                        GROUP BY it.ip_address
+                        ORDER BY last_login DESC";
+                $result = $conn->query($sql);
+                $data = $result->fetch_all(MYSQLI_ASSOC);
+                $response = ['success' => true, 'data' => $data];
+                break;
+
             }
         }
 

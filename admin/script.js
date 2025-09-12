@@ -1927,6 +1927,94 @@ staffSearchInput.addEventListener('keyup', () => {
         }
     }
 
+    // --- IP MANAGEMENT ---
+const ipManagementPanel = document.getElementById('ip-management-panel');
+
+const fetchAndRenderTrackedIps = () => {
+    fetchAndRender({
+        endpoint: 'api.php?fetch=getTrackedIps',
+        target: document.getElementById('ip-tracking-table-body'),
+        renderRow: (ip) => `
+            <tr>
+                <td data-label="IP Address">${ip.ip_address}</td>
+                <td data-label="Name/Label">${ip.name || 'N/A'}</td>
+                <td data-label="Associated Users">${ip.usernames}</td>
+                <td data-label="Last Login">${new Date(ip.last_login).toLocaleString()}</td>
+                <td data-label="Status"><span class="status-badge ${ip.is_blocked == 1 ? 'inactive' : 'active'}">${ip.is_blocked == 1 ? 'Blocked' : 'Active'}</span></td>
+                <td data-label="Actions" class="action-buttons">
+                    <button class="btn-edit-ip-name btn-edit" data-ip="${ip.ip_address}" data-name="${ip.name || ''}" title="Edit Name"><i class="fas fa-tag"></i></button>
+                    ${ip.is_blocked == 1
+                        ? `<button class="btn-unblock-ip btn-delete" data-ip="${ip.ip_address}" title="Unblock"><i class="fas fa-check-circle"></i></button>`
+                        : `<button class="btn-block-ip btn-delete" data-ip="${ip.ip_address}" title="Block"><i class="fas fa-ban"></i></button>`
+                    }
+                </td>
+            </tr>
+        `,
+        columns: 6,
+        emptyMessage: 'No IP addresses have been tracked yet.'
+    });
+};
+
+document.querySelector('.nav-link[data-target="ip-management"]').addEventListener('click', fetchAndRenderTrackedIps);
+
+document.getElementById('ip-tracking-table-body').addEventListener('click', async (e) => {
+    const button = e.target.closest('button');
+    if (!button || !button.dataset.ip) return;
+
+    const ipAddress = button.dataset.ip;
+
+    if (button.classList.contains('btn-block-ip')) {
+        const reason = prompt(`Enter a reason for blocking ${ipAddress} (optional):`);
+        if (reason !== null) { // Proceed even if reason is empty, but not if canceled
+            const formData = new FormData();
+            formData.append('action', 'blockIp');
+            formData.append('ip_address', ipAddress);
+            formData.append('reason', reason);
+            formData.append('csrf_token', csrfToken);
+            await handleFormSubmit(formData);
+            fetchAndRenderTrackedIps();
+        }
+    } else if (button.classList.contains('btn-unblock-ip')) {
+        const confirmed = await showConfirmation('Unblock IP', `Are you sure you want to unblock ${ipAddress}?`);
+        if (confirmed) {
+            const formData = new FormData();
+            formData.append('action', 'unblockIp');
+            formData.append('ip_address', ipAddress);
+            formData.append('csrf_token', csrfToken);
+            await handleFormSubmit(formData);
+            fetchAndRenderTrackedIps();
+        }
+    } else if (button.classList.contains('btn-edit-ip-name')) {
+        const currentName = button.dataset.name;
+        const newName = prompt(`Enter a new name/label for ${ipAddress}:`, currentName);
+        if (newName !== null) {
+            const formData = new FormData();
+            formData.append('action', 'updateIpName');
+            formData.append('ip_address', ipAddress);
+            formData.append('name', newName);
+            formData.append('csrf_token', csrfToken);
+            await handleFormSubmit(formData);
+            fetchAndRenderTrackedIps();
+        }
+    }
+});
+
+document.getElementById('add-ip-block-btn').addEventListener('click', async () => {
+    const ipAddress = prompt('Enter the IP address to block:');
+    if (ipAddress) {
+        const reason = prompt(`Enter a reason for blocking ${ipAddress} (optional):`);
+        if (reason !== null) {
+            const formData = new FormData();
+            formData.append('action', 'blockIp');
+            formData.append('ip_address', ipAddress);
+            formData.append('reason', reason);
+            formData.append('csrf_token', csrfToken);
+            await handleFormSubmit(formData);
+            fetchAndRenderTrackedIps();
+        }
+    }
+});
+
 
     // --- INITIAL LOAD ---
     updateDashboardStats();

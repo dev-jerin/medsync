@@ -1,7 +1,7 @@
 <?php
 /**
  * Processes the login form submission.
- * Handles user authentication, session creation, and redirection.
+ * Handles user authentication, session creation, IP tracking, and redirection.
  * This file is intended to be in a 'login' subfolder.
  */
 
@@ -36,7 +36,6 @@ if (empty($login_identifier) || empty($password)) {
 $conn = getDbConnection();
 
 // Prepare a statement to fetch user data by joining the users and roles tables.
-// This query is updated for the new schema.
 $sql = "SELECT 
             u.id, 
             u.username, 
@@ -80,6 +79,17 @@ if ($result->num_rows === 1) {
         $_SESSION['display_user_id'] = $user['display_user_id'];
         $_SESSION['loggedin_time'] = time();
 
+        // --- NEW: IP Tracking ---
+        $ip_address = $_SERVER['REMOTE_ADDR'];
+        $user_id = $user['id'];
+        $stmt_ip = $conn->prepare("INSERT INTO ip_tracking (user_id, ip_address) VALUES (?, ?)");
+        if($stmt_ip) {
+            $stmt_ip->bind_param("is", $user_id, $ip_address);
+            $stmt_ip->execute();
+            $stmt_ip->close();
+        }
+        // --- End IP Tracking ---
+
         // Redirect to the appropriate dashboard in the parent directory
         switch ($user['role']) {
             case 'admin':
@@ -112,3 +122,5 @@ if ($result->num_rows === 1) {
     header("Location: index.php");
     exit();
 }
+
+?>

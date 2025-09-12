@@ -158,6 +158,7 @@ $conn->close();
                     <li><a href="#" class="nav-link" data-target="feedback"><i class="fas fa-comment-medical"></i> Patient Feedback</a></li>
                     <li><a href="#" class="nav-link" data-target="activity"><i class="fas fa-history"></i> Activity
                             Logs</a></li>
+                    <li><a href="#" class="nav-link" data-target="ip-management"><i class="fas fa-network-wired"></i> IP Management</a></li>
                     <li><a href="#" class="nav-link" data-target="settings"><i class="fas fa-user-edit"></i> My
                             Account</a></li>
                     <li><a href="#" class="nav-link" data-target="system-settings"><i class="fas fa-cog"></i> System
@@ -713,6 +714,29 @@ $conn->close();
                 <div id="feedback-container">
                     </div>
             </div>
+
+            <div id="ip-management-panel" class="content-panel">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+        <h2>IP Address Management</h2>
+        <button id="add-ip-block-btn" class="btn btn-danger"><i class="fas fa-ban"></i> Block New IP</button>
+    </div>
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>IP Address</th>
+                    <th>Name/Label</th>
+                    <th>Associated Users</th>
+                    <th>Last Login</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="ip-tracking-table-body">
+                </tbody>
+        </table>
+    </div>
+</div>
             
         </main>
     </div>

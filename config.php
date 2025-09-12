@@ -4,6 +4,9 @@
  * Contains database connection settings and initializes the session.
  */
 
+
+
+
 // --- Database Configuration ---
 $dbhost = 'localhost'; // Your database host (e.g., 'localhost' or an IP address)
 $dbuser = 'root';      // Your database username
@@ -21,6 +24,29 @@ if ($conn->connect_error) {
 
 // Set the character set to utf8mb4 to support a wide range of characters.
 $conn->set_charset("utf8mb4");
+
+// --- IP Block Check ---
+// Placed at the very top to block malicious IPs before any other script execution.
+$user_ip = $_SERVER['REMOTE_ADDR'];
+// Database credentials are hardcoded here for this specific check to avoid a dependency loop.
+$conn_check = new mysqli($dbhost, $dbuser, $dbpass, $db); 
+if (!$conn_check->connect_error) {
+    $stmt_block = $conn_check->prepare("SELECT id FROM ip_blocks WHERE ip_address = ?");
+    if ($stmt_block) {
+        $stmt_block->bind_param("s", $user_ip);
+        $stmt_block->execute();
+        $stmt_block->store_result();
+        if ($stmt_block->num_rows > 0) {
+            http_response_code(403); // Forbidden
+            // Redirect to a user-friendly error page.
+            header("Location: /error/403.php");
+            exit("Access Denied.");
+        }
+        $stmt_block->close();
+    }
+    $conn_check->close();
+}
+// --- End IP Block Check ---
 
 /**
  * A global function to get the database connection object.
