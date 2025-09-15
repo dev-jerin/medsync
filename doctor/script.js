@@ -10,8 +10,7 @@ document.addEventListener("DOMContentLoaded", function() {
     let patientListCache = null;
 
     // ===================================================================
-    // --- MOVED FUNCTION DEFINITION HERE ---
-    // This function is now accessible to the entire script.
+    // --- Lab Results Page Logic ---
     // ===================================================================
     async function loadLabResults() {
         const tableBody = document.querySelector('#lab-results-table tbody');
@@ -97,14 +96,15 @@ document.addEventListener("DOMContentLoaded", function() {
             if (pageId === 'labs') {
                 loadLabResults();
             }
+            if (pageId === 'messenger') {
+                initializeMessenger();
+            }
             if (pageId === 'profile') {
-                // Pre-load audit log if navigating to profile settings
                 const auditLogTab = document.querySelector('.profile-tab-link[data-tab="audit-log"]');
                 if(auditLogTab && auditLogTab.classList.contains('active')) {
                    loadAuditLog();
                 }
             }
-
 
             if (window.innerWidth <= 992) {
                 closeMenu();
@@ -160,15 +160,11 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     });
 
-    // --- All Page Logic (Existing) ---
-    // ... (appointments, patients, prescriptions, etc. logic remains here) ...
-    
     // ===================================================================
-    // --- NEW: Lab Results Page Logic ---
+    // --- Lab Results Page Logic (Existing) ---
     // ===================================================================
     const labsPage = document.getElementById('labs-page');
     if (labsPage) {
-        // --- Event Delegation for table actions ---
         document.getElementById('lab-results-table').addEventListener('click', function(e) {
             if (e.target.closest('.view-lab-report')) {
                 const button = e.target.closest('.view-lab-report');
@@ -176,18 +172,16 @@ document.addEventListener("DOMContentLoaded", function() {
                 openViewLabReportModal(reportId);
             }
              if (e.target.closest('.add-result-entry')) {
-                // Future enhancement: Open modal pre-filled for a pending test
                 alert('Functionality to update a pending test is in development.');
             }
         });
 
-        // --- Add New Lab Result Modal Logic ---
         document.getElementById('add-lab-result-btn').addEventListener('click', openAddLabResultModal);
 
         async function openAddLabResultModal() {
             const form = document.getElementById('lab-result-form');
             form.reset();
-            document.getElementById('key-findings-container').innerHTML = ''; // Clear findings
+            document.getElementById('key-findings-container').innerHTML = '';
 
             const patientSelect = document.getElementById('lab-patient-select');
             patientSelect.innerHTML = '<option value="">Loading patients...</option>';
@@ -249,7 +243,6 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
         
-        // --- Manage "Key Findings" in the add/edit modal ---
         const findingsContainer = document.getElementById('key-findings-container');
         document.getElementById('add-finding-btn').addEventListener('click', () => {
              const findingRow = document.createElement('div');
@@ -269,7 +262,6 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
         
-        // --- Handle Lab Result Form Submission ---
         document.getElementById('lab-result-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const saveButton = document.getElementById('modal-save-btn-lab');
@@ -277,7 +269,6 @@ document.addEventListener("DOMContentLoaded", function() {
             saveButton.disabled = true;
             saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
 
-            // Collect key findings into a structured object
             const findings = [];
             document.querySelectorAll('.finding-row').forEach(row => {
                 const parameter = row.querySelector('.finding-parameter').value.trim();
@@ -291,10 +282,7 @@ document.addEventListener("DOMContentLoaded", function() {
             const summary = document.getElementById('lab-summary').value;
             const resultDetails = JSON.stringify({ findings, summary });
 
-            // The constructor now correctly gathers all fields because we added `name` attributes in the HTML.
             const formData = new FormData(this); 
-            
-            // We still need to manually append the action and our custom JSON object.
             formData.append('action', 'add_lab_result');
             formData.append('result_details', resultDetails);
             formData.append('test_date', new Date().toISOString().slice(0, 10)); 
@@ -306,7 +294,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (result.success) {
                     alert(result.message);
                     document.getElementById('lab-result-modal-overlay').classList.remove('active');
-                    loadLabResults(); // Refresh the table
+                    loadLabResults();
                 } else {
                     alert(`Error: ${result.message || 'An unknown error occurred.'}`);
                 }
@@ -322,7 +310,249 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     // ===================================================================
-    // --- UPDATED: Profile Settings Page Logic ---
+    // --- Messenger Page Logic (Existing) ---
+    // ===================================================================
+    const messengerPage = document.getElementById('messenger-page');
+    let messengerInitialized = false;
+    let activeConversation = { conversationId: null, otherUserId: null, otherUserName: null };
+
+    function initializeMessenger() {
+        if (messengerInitialized || !messengerPage) return;
+        
+        const conversationListEl = messengerPage.querySelector('.conversation-list');
+        const messageForm = document.getElementById('message-form');
+        const messageInput = document.getElementById('message-input');
+        const chatHeader = document.getElementById('chat-with-user');
+        const messagesContainer = document.getElementById('chat-messages-container');
+
+        loadConversations();
+
+        messageForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const messageText = messageInput.value.trim();
+            if (!messageText || !activeConversation.otherUserId) return;
+
+            const originalButton = messageForm.querySelector('.send-btn');
+            originalButton.disabled = true;
+            originalButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+            
+            const formData = new FormData();
+            formData.append('action', 'send_message');
+            formData.append('receiver_id', activeConversation.otherUserId);
+            formData.append('message_text', messageText);
+
+            try {
+                const response = await fetch('api.php', { method: 'POST', body: formData });
+                const result = await response.json();
+
+                if (result.success) {
+                    messageInput.value = '';
+                    renderMessage(result.data, true);
+                    scrollToBottom(messagesContainer);
+                    if (!activeConversation.conversationId) {
+                         await loadConversations(result.data.conversation_id);
+                    }
+                } else {
+                    alert('Error: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Send message error:', error);
+                alert('Failed to send message.');
+            } finally {
+                 originalButton.disabled = false;
+                 originalButton.innerHTML = `<i class="fas fa-paper-plane"></i>`;
+                 messageInput.focus();
+            }
+        });
+        
+        conversationListEl.addEventListener('click', (e) => {
+            const conversationItem = e.target.closest('.conversation-item');
+            if (!conversationItem) return;
+
+            document.querySelectorAll('.conversation-item.active').forEach(item => item.classList.remove('active'));
+            conversationItem.classList.add('active');
+
+            const { conversationId, otherUserId, otherUserName } = conversationItem.dataset;
+            
+            activeConversation = {
+                conversationId: conversationId || null,
+                otherUserId: parseInt(otherUserId),
+                otherUserName: otherUserName
+            };
+            
+            chatHeader.textContent = otherUserName;
+            
+            if (conversationId) {
+                loadMessages(conversationId);
+                const unreadIndicator = conversationItem.querySelector('.unread-indicator');
+                if (unreadIndicator) unreadIndicator.style.display = 'none';
+            } else {
+                messagesContainer.innerHTML = `<div class="message-placeholder">Start the conversation with ${otherUserName}.</div>`;
+            }
+            messageInput.focus();
+        });
+
+        let searchTimeout;
+        conversationListEl.addEventListener('input', (e) => {
+            if (e.target.matches('.conversation-search input')) {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    const term = e.target.value.trim();
+                    if (term.length > 1) {
+                        searchUsers(term);
+                    } else if (term.length === 0) {
+                        loadConversations();
+                    }
+                }, 300);
+            }
+        });
+
+        messengerInitialized = true;
+    }
+
+    async function loadConversations(selectConversationId = null) {
+        const listContainer = messengerPage.querySelector('.conversation-list');
+        listContainer.innerHTML = `<div class="conversation-search"><input type="text" placeholder="Search users..."></div><div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading...</div>`;
+
+        try {
+            const response = await fetch('api.php?action=get_conversations');
+            const result = await response.json();
+            
+            const placeholder = listContainer.querySelector('.loading-placeholder');
+            if (placeholder) placeholder.remove();
+
+            if (result.success && result.data.length > 0) {
+                result.data.forEach(convo => renderConversation(convo));
+                
+                if (selectConversationId) {
+                    const newConvoEl = listContainer.querySelector(`.conversation-item[data-conversation-id='${selectConversationId}']`);
+                    if (newConvoEl) newConvoEl.click();
+                }
+
+            } else {
+                listContainer.insertAdjacentHTML('beforeend', '<p style="padding: 1rem; text-align: center;">No conversations yet.</p>');
+            }
+        } catch (error) {
+            console.error('Error loading conversations:', error);
+            listContainer.insertAdjacentHTML('beforeend', '<p style="padding: 1rem; text-align: center; color: var(--danger-color);">Could not load conversations.</p>');
+        }
+    }
+
+    function renderConversation(convo) {
+        const listContainer = messengerPage.querySelector('.conversation-list');
+        const lastMessageTime = convo.last_message_time ? new Date(convo.last_message_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        
+        const conversationHtml = `
+            <div class="conversation-item" 
+                 data-conversation-id="${convo.conversation_id}" 
+                 data-other-user-id="${convo.other_user_id}"
+                 data-other-user-name="${convo.other_user_name}">
+                <i class="fas ${getIconForRole(convo.other_user_role)} user-avatar"></i>
+                <div class="user-details">
+                    <div class="user-name">${convo.other_user_name}</div>
+                    <div class="last-message">${convo.last_message || 'No messages yet.'}</div>
+                </div>
+                <div class="message-meta">
+                    <div class="message-time">${lastMessageTime}</div>
+                    ${convo.unread_count > 0 ? '<span class="unread-indicator"></span>' : ''}
+                </div>
+            </div>
+        `;
+        listContainer.insertAdjacentHTML('beforeend', conversationHtml);
+    }
+    
+    async function loadMessages(conversationId) {
+        const messagesContainer = document.getElementById('chat-messages-container');
+        messagesContainer.innerHTML = `<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading messages...</div>`;
+
+        try {
+            const response = await fetch(`api.php?action=get_messages&conversation_id=${conversationId}`);
+            const result = await response.json();
+            messagesContainer.innerHTML = '';
+
+            if (result.success && result.data.length > 0) {
+                result.data.forEach(msg => renderMessage(msg));
+                scrollToBottom(messagesContainer);
+            } else {
+                messagesContainer.innerHTML = '<div class="message-placeholder">No messages in this conversation yet.</div>';
+            }
+        } catch (error) {
+            console.error('Error loading messages:', error);
+            messagesContainer.innerHTML = '<div class="message-placeholder" style="color: var(--danger-color);">Failed to load messages.</div>';
+        }
+    }
+
+    function renderMessage(msg, isNew = false) {
+        const messagesContainer = document.getElementById('chat-messages-container');
+        const messageType = msg.sender_id == currentUserId ? 'sent' : 'received';
+        const timestamp = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        const sanitizedText = document.createElement('p');
+        sanitizedText.textContent = msg.message_text;
+
+        const messageHtml = `
+            <div class="message ${messageType}">
+                <div class="message-content">
+                    ${sanitizedText.outerHTML}
+                    <span class="message-timestamp">${timestamp}</span>
+                </div>
+            </div>
+        `;
+        messagesContainer.insertAdjacentHTML('beforeend', messageHtml);
+        if(isNew) scrollToBottom(messagesContainer);
+    }
+    
+    async function searchUsers(term) {
+        const listContainer = messengerPage.querySelector('.conversation-list');
+        const searchBarHtml = listContainer.querySelector('.conversation-search').outerHTML;
+        listContainer.innerHTML = searchBarHtml + `<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Searching...</div>`;
+
+        try {
+            const response = await fetch(`api.php?action=searchUsers&term=${encodeURIComponent(term)}`);
+            const result = await response.json();
+            
+            const placeholder = listContainer.querySelector('.loading-placeholder');
+            if (placeholder) placeholder.remove();
+
+            if (result.success && result.data.length > 0) {
+                result.data.forEach(user => {
+                    const searchResultHtml = `
+                        <div class="conversation-item" 
+                             data-other-user-id="${user.id}"
+                             data-other-user-name="${user.name}">
+                            <i class="fas ${getIconForRole(user.role)} user-avatar"></i>
+                            <div class="user-details">
+                                <div class="user-name">${user.name} <small>(${user.role})</small></div>
+                                <div class="last-message">Click to start a new conversation.</div>
+                            </div>
+                        </div>
+                    `;
+                    listContainer.insertAdjacentHTML('beforeend', searchResultHtml);
+                });
+            } else {
+                listContainer.insertAdjacentHTML('beforeend', '<p style="padding: 1rem; text-align: center;">No users found.</p>');
+            }
+        } catch (error) {
+            console.error('Error searching users:', error);
+            listContainer.insertAdjacentHTML('beforeend', '<p style="padding: 1rem; text-align: center; color: var(--danger-color);">Search failed.</p>');
+        }
+    }
+
+    function scrollToBottom(element) {
+        if(element) element.scrollTop = element.scrollHeight;
+    }
+
+    function getIconForRole(role) {
+        switch(role) {
+            case 'admin': return 'fa-user-shield';
+            case 'doctor': return 'fa-user-doctor';
+            case 'staff': return 'fa-user-nurse';
+            default: return 'fa-user';
+        }
+    }
+
+    // ===================================================================
+    // --- Profile Settings Page Logic (Existing) ---
     // ===================================================================
     const personalInfoForm = document.getElementById('personal-info-form');
     if (personalInfoForm) {
@@ -342,33 +572,18 @@ document.addEventListener("DOMContentLoaded", function() {
                     method: 'POST',
                     body: formData
                 });
-
                 const result = await response.json();
 
                 if (result.success) {
                     alert('Profile updated successfully!');
-                    // Dynamically update the name in the header and welcome message
                     const newName = formData.get('name');
                     const newSpecialty = formData.get('specialty');
-
-                    const headerProfileName = document.querySelector('.user-profile-widget .profile-info strong');
-                    const headerProfileSpecialty = document.querySelector('.user-profile-widget .profile-info span');
-                    if (headerProfileName) {
-                        headerProfileName.textContent = `Dr. ${newName}`;
-                    }
-                    if (headerProfileSpecialty) {
-                        headerProfileSpecialty.textContent = newSpecialty;
-                    }
-                    
-                    const welcomeMessageName = document.querySelector('.welcome-message h2');
-                    if(welcomeMessageName){
-                        welcomeMessageName.textContent = `Welcome back, Dr. ${newName}!`;
-                    }
-
+                    document.querySelector('.user-profile-widget .profile-info strong').textContent = `Dr. ${newName}`;
+                    document.querySelector('.user-profile-widget .profile-info span').textContent = newSpecialty;
+                    document.querySelector('.welcome-message h2').textContent = `Welcome back, Dr. ${newName}!`;
                 } else {
                     alert(`Error: ${result.message || 'An unknown error occurred.'}`);
                 }
-
             } catch (error) {
                 console.error('Error updating profile:', error);
                 alert('A network error occurred. Please try again.');
@@ -379,7 +594,6 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    // --- Profile Tab Switching & Audit Log Loading ---
     const profilePage = document.getElementById('profile-page');
     if (profilePage) {
         const profileTabs = profilePage.querySelectorAll('.profile-tab-link');
@@ -407,7 +621,7 @@ document.addEventListener("DOMContentLoaded", function() {
     async function loadAuditLog() {
         const tableBody = document.querySelector('#audit-log-table tbody');
         if (!tableBody || tableBody.dataset.loaded === 'true') {
-            return; // Already loaded, do nothing
+            return;
         }
 
         tableBody.innerHTML = `<tr><td colspan="4" class="loading-placeholder" style="text-align:center; padding: 2rem;"><i class="fas fa-spinner fa-spin"></i> Loading activity log...</td></tr>`;
@@ -419,17 +633,14 @@ document.addEventListener("DOMContentLoaded", function() {
             const result = await response.json();
 
             if (result.success && result.data.length > 0) {
-                tableBody.innerHTML = ''; // Clear loading spinner
+                tableBody.innerHTML = '';
                 result.data.forEach(log => {
                     const tr = document.createElement('tr');
-
-                    // 1. Format Date & Time
                     const logDate = new Date(log.created_at).toLocaleString('en-US', {
                         year: 'numeric', month: 'short', day: 'numeric', 
                         hour: '2-digit', minute: '2-digit', hour12: true
                     });
 
-                    // 2. Determine Action Class & Text
                     let actionClass = '';
                     const actionText = (log.action || '').toLowerCase();
                     if (actionText.includes('create') || actionText.includes('issued') || actionText.includes('added')) {
@@ -442,7 +653,6 @@ document.addEventListener("DOMContentLoaded", function() {
                         actionClass = 'log-action-auth';
                     }
                     
-                    // 3. Determine Target
                     const targetText = log.target_user_name 
                         ? `${log.target_user_name} (${log.target_display_id})` 
                         : 'Self';
@@ -455,7 +665,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     `;
                     tableBody.appendChild(tr);
                 });
-                tableBody.dataset.loaded = 'true'; // Mark as loaded
+                tableBody.dataset.loaded = 'true';
             } else {
                 tableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 2rem;">No recent account activity found.</td></tr>`;
             }
@@ -465,9 +675,8 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-
     // ===================================================================
-    // --- UPDATED: Bed Management Page Logic ---
+    // --- NEW / UPDATED: Bed Management Page Logic ---
     // ===================================================================
     const occupancyPage = document.getElementById('bed-management-page');
     let allOccupancyData = []; // Store all bed and room data
@@ -481,7 +690,6 @@ document.addEventListener("DOMContentLoaded", function() {
         gridContainer.innerHTML = '<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading occupancy data...</div>';
 
         try {
-            // NOTE: The actions 'get_locations' and 'get_occupancy_data' now point to the corrected logic in api.php
             const [locationsRes, occupancyRes] = await Promise.all([
                 fetch('api.php?action=get_locations'),
                 fetch('api.php?action=get_occupancy_data')
@@ -492,7 +700,9 @@ document.addEventListener("DOMContentLoaded", function() {
             const locationsData = await locationsRes.json();
             const occupancyData = await occupancyRes.json();
             
-            if (locationsData.success) populateLocationFilter(locationsData.data);
+            if (locationsData.success) {
+                populateLocationFilter(locationsData.data);
+            }
             if (occupancyData.success) {
                 allOccupancyData = occupancyData.data;
                 renderLocations(allOccupancyData);
@@ -501,7 +711,7 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         } catch (error) {
             console.error('Error initializing occupancy management:', error);
-            gridContainer.innerHTML = `<div class="loading-placeholder">Error: ${error.message}</div>`;
+            gridContainer.innerHTML = `<div class="loading-placeholder" style="color:var(--danger-color);">Error: Could not load data.</div>`;
         }
     }
 
@@ -527,7 +737,7 @@ document.addEventListener("DOMContentLoaded", function() {
             locations.rooms.forEach(room => {
                 const option = document.createElement('option');
                 option.value = `room-${room.id}`;
-                option.textContent = room.name; // 'name' is the alias for room_number
+                option.textContent = room.name;
                 roomGroup.appendChild(option);
             });
             filter.appendChild(roomGroup);
@@ -539,7 +749,7 @@ document.addEventListener("DOMContentLoaded", function() {
         gridContainer.innerHTML = '';
 
         if (locationsToRender.length === 0) {
-            gridContainer.innerHTML = '<p>No locations match the current filters.</p>';
+            gridContainer.innerHTML = '<p style="text-align:center; padding: 2rem;">No locations match the current filters.</p>';
             return;
         }
 
@@ -582,10 +792,8 @@ document.addEventListener("DOMContentLoaded", function() {
             if (locationFilter !== 'all') {
                 const [type, id] = locationFilter.split('-');
                 if (type === 'ward') {
-                    // Show beds from the selected ward
                     locationMatch = (loc.type === 'bed') && (loc.location_parent_id == id);
                 } else if (type === 'room') {
-                    // Show the specific selected room
                     locationMatch = (loc.type === 'room') && (loc.id == id);
                 }
             }
@@ -622,6 +830,11 @@ document.addEventListener("DOMContentLoaded", function() {
         });
 
         document.getElementById('save-location-changes-btn').addEventListener('click', async () => {
+            const saveButton = document.getElementById('save-location-changes-btn');
+            const originalButtonText = saveButton.textContent;
+            saveButton.disabled = true;
+            saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
+
             const id = document.getElementById('edit-location-id').value;
             const type = document.getElementById('edit-location-type').value;
             const newStatus = document.getElementById('edit-location-status-select').value;
@@ -637,10 +850,9 @@ document.addEventListener("DOMContentLoaded", function() {
                 const result = await response.json();
 
                 if (result.success) {
-                    // Reset initialization flag to allow re-fetching fresh data
                     isOccupancyManagerInitialized = false; 
                     await initializeOccupancyManagement(); 
-                    filterAndRenderLocations(); // Re-apply filters after re-fetching
+                    filterAndRenderLocations();
                     document.getElementById('edit-bed-modal-overlay').classList.remove('active');
                 } else {
                     alert(`Error: ${result.message || 'Could not update status.'}`);
@@ -648,6 +860,9 @@ document.addEventListener("DOMContentLoaded", function() {
             } catch (error) {
                 console.error('Failed to update location status:', error);
                 alert('A network error occurred. Please try again.');
+            } finally {
+                saveButton.disabled = false;
+                saveButton.textContent = originalButtonText;
             }
         });
     }

@@ -6,7 +6,7 @@
  * - It enforces session security.
  * - It fetches doctor profile data for the frontend.
  * - It includes AJAX handlers for updating personal info, managing bed occupancy, and fetching audit logs.
- * - NEW: Includes handlers for managing Lab Results.
+ * - NEW: Includes handlers for managing Lab Results and Messenger.
  */
 require_once '../config.php'; // Contains the database connection ($conn)
 
@@ -103,6 +103,10 @@ if (isset($_REQUEST['action'])) {
     header('Content-Type: application/json');
     $current_user_id = $_SESSION['user_id'];
 
+    // ==========================================================
+    // --- START: BED MANAGEMENT ACTIONS ---
+    // ==========================================================
+
     // Action: Fetch Wards and Rooms for the Bed Management filter
     if ($_REQUEST['action'] == 'get_locations') {
         $locations = ['wards' => [], 'rooms' => []];
@@ -162,6 +166,7 @@ if (isset($_REQUEST['action'])) {
             $stmt->bind_param("si", $new_status, $id);
 
             if ($stmt->execute()) {
+                log_activity($conn, $current_user_id, 'Accommodation Status Update', null, "Set accommodation ID {$id} to {$new_status}");
                 echo json_encode(['success' => true, 'message' => ucfirst($type) . ' status updated successfully.']);
             } else {
                 echo json_encode(['success' => false, 'message' => 'Database error: Failed to update status.']);
@@ -172,6 +177,10 @@ if (isset($_REQUEST['action'])) {
         }
         exit();
     }
+
+    // ==========================================================
+    // --- END: BED MANAGEMENT ACTIONS ---
+    // ==========================================================
 
     // Action: Update doctor's personal information
     if ($_REQUEST['action'] == 'update_personal_info' && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -250,11 +259,122 @@ if (isset($_REQUEST['action'])) {
         echo json_encode(['success' => true, 'data' => $audit_logs]);
         exit();
     }
+
+    // Action: Search for users to message
+    if ($_REQUEST['action'] == 'searchUsers') {
+        if (!isset($_GET['term'])) {
+            echo json_encode(['success' => false, 'message' => 'Search term is required.']);
+            exit();
+        }
+        $term = '%' . trim($_GET['term']) . '%';
+        // Doctors can message other doctors, staff, and admins
+        $sql = "SELECT u.id, u.display_user_id, u.name, r.role_name as role, u.profile_picture 
+                FROM users u 
+                JOIN roles r ON u.role_id = r.id 
+                WHERE (u.name LIKE ? OR u.display_user_id LIKE ?) 
+                AND r.role_name IN ('doctor', 'staff', 'admin') 
+                AND u.id != ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("ssi", $term, $term, $current_user_id);
+        $stmt->execute();
+        $users = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        echo json_encode(['success' => true, 'data' => $users]);
+        exit();
+    }
+
+    // Action: Fetch conversations
+    if ($_REQUEST['action'] == 'get_conversations') {
+        $stmt = $conn->prepare("
+            SELECT
+                c.id AS conversation_id,
+                u.id AS other_user_id,
+                u.name AS other_user_name,
+                u.profile_picture AS other_user_profile_picture,
+                r.role_name AS other_user_role,
+                (SELECT message_text FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message,
+                (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message_time,
+                (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id AND receiver_id = ? AND is_read = 0) AS unread_count
+            FROM conversations c
+            JOIN users u ON u.id = IF(c.user_one_id = ?, c.user_two_id, c.user_one_id)
+            JOIN roles r ON u.role_id = r.id
+            WHERE c.user_one_id = ? OR c.user_two_id = ?
+            ORDER BY last_message_time DESC
+        ");
+        $stmt->bind_param("iiii", $current_user_id, $current_user_id, $current_user_id, $current_user_id);
+        $stmt->execute();
+        $conversations = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        echo json_encode(['success' => true, 'data' => $conversations]);
+        exit();
+    }
+
+    // Action: Fetch messages for a conversation
+    if ($_REQUEST['action'] == 'get_messages' && isset($_GET['conversation_id'])) {
+        $conversation_id = (int)$_GET['conversation_id'];
+        // Mark messages as read
+        $update_stmt = $conn->prepare("UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND receiver_id = ?");
+        $update_stmt->bind_param("ii", $conversation_id, $current_user_id);
+        $update_stmt->execute();
+
+        // Fetch messages
+        $msg_stmt = $conn->prepare("SELECT id, sender_id, message_text, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC");
+        $msg_stmt->bind_param("i", $conversation_id);
+        $msg_stmt->execute();
+        $messages = $msg_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        echo json_encode(['success' => true, 'data' => $messages]);
+        exit();
+    }
+
+    // Action: Send a new message
+    if ($_REQUEST['action'] == 'send_message' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $receiver_id = (int)$_POST['receiver_id'];
+        $message_text = trim($_POST['message_text']);
+
+        if (empty($receiver_id) || empty($message_text)) {
+            echo json_encode(['success' => false, 'message' => 'Receiver and message are required.']);
+            exit();
+        }
+
+        $conn->begin_transaction();
+        try {
+            $user_one_id = min($current_user_id, $receiver_id);
+            $user_two_id = max($current_user_id, $receiver_id);
+
+            $stmt_conv = $conn->prepare("SELECT id FROM conversations WHERE user_one_id = ? AND user_two_id = ?");
+            $stmt_conv->bind_param("ii", $user_one_id, $user_two_id);
+            $stmt_conv->execute();
+            $conv_result = $stmt_conv->get_result();
+
+            if ($conv_result->num_rows > 0) {
+                $conversation_id = $conv_result->fetch_assoc()['id'];
+            } else {
+                $stmt_insert_conv = $conn->prepare("INSERT INTO conversations (user_one_id, user_two_id) VALUES (?, ?)");
+                $stmt_insert_conv->bind_param("ii", $user_one_id, $user_two_id);
+                $stmt_insert_conv->execute();
+                $conversation_id = $conn->insert_id;
+            }
+
+            $stmt_msg = $conn->prepare("INSERT INTO messages (conversation_id, sender_id, receiver_id, message_text) VALUES (?, ?, ?, ?)");
+            $stmt_msg->bind_param("iiis", $conversation_id, $current_user_id, $receiver_id, $message_text);
+            $stmt_msg->execute();
+            $new_message_id = $conn->insert_id;
+            
+            $conn->commit();
+            
+            $stmt_get_msg = $conn->prepare("SELECT * FROM messages WHERE id = ?");
+            $stmt_get_msg->bind_param("i", $new_message_id);
+            $stmt_get_msg->execute();
+            $sent_message = $stmt_get_msg->get_result()->fetch_assoc();
+
+            echo json_encode(['success' => true, 'message' => 'Message sent.', 'data' => $sent_message]);
+        } catch (Exception $e) {
+            $conn->rollback();
+            echo json_encode(['success' => false, 'message' => 'Failed to send message.']);
+        }
+        exit();
+    }
     
     // ==========================================================
     // --- START: LAB RESULTS ACTIONS ---
-    // NOTE: This assumes an ENUM 'status' column ('pending', 'processing', 'completed')
-    // has been added to the `lab_results` table for full functionality.
     // ==========================================================
 
     // Action: Get all lab results for display in the table

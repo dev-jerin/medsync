@@ -69,35 +69,14 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     <div class="notification-widget">
                         <button class="notification-bell" id="notification-bell" aria-label="Notifications">
                             <i class="fas fa-bell"></i>
-                            <span class="notification-badge" id="notification-badge">3</span>
+                            <span class="notification-badge hidden" id="notification-badge">0</span>
                         </button>
                         <div class="notification-dropdown" id="notification-panel">
                             <div class="dropdown-header">
                                 <h4>Recent Notifications</h4>
                             </div>
                             <div class="dropdown-body">
-                                <a href="#" class="notification-item">
-                                    <i class="fas fa-vial item-icon vial"></i>
-                                    <div>
-                                        <p>New lab result for <strong>Sarah Johnson</strong> is available.</p>
-                                        <small>5 minutes ago</small>
-                                    </div>
-                                </a>
-                                <a href="#" class="notification-item">
-                                    <i class="fas fa-bullhorn item-icon announcement"></i>
-                                    <div>
-                                        <p><strong>Admin:</strong> System maintenance scheduled for 10 PM tonight.</p>
-                                        <small>1 hour ago</small>
-                                    </div>
-                                </a>
-                                <a href="#" class="notification-item">
-                                    <i class="fas fa-sign-out-alt item-icon discharge"></i>
-                                    <div>
-                                        <p>Discharge for <strong>David Wilson</strong> is now ready.</p>
-                                        <small>3 hours ago</small>
-                                    </div>
-                                </a>
-                            </div>
+                                </div>
                             <div class="dropdown-footer">
                                 <a href="#" id="view-all-notifications-link">View All Notifications</a>
                             </div>
@@ -130,11 +109,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                             <table class="data-table">
                                 <thead><tr><th>Token</th><th>Patient Name</th><th>Time</th><th>Status</th><th>Action</th></tr></thead>
                                 <tbody>
-                                    <tr><td data-label="Token"><strong>#05</strong></td><td data-label="Patient">John Doe</td><td data-label="Time">10:30 AM</td><td data-label="Status"><span class="status in-consultation">In Consultation</span></td><td data-label="Action"><button class="action-btn"><i class="fas fa-eye"></i> View</button></td></tr>
-                                    <tr><td data-label="Token"><strong>#06</strong></td><td data-label="Patient">Jane Smith</td><td data-label="Time">10:45 AM</td><td data-label="Status"><span class="status waiting">Waiting</span></td><td data-label="Action"><button class="action-btn"><i class="fas fa-eye"></i> View</button></td></tr>
-                                    <tr><td data-label="Token"><strong>#07</strong></td><td data-label="Patient">Peter Jones</td><td data-label="Time">11:00 AM</td><td data-label="Status"><span class="status waiting">Waiting</span></td><td data-label="Action"><button class="action-btn"><i class="fas fa-eye"></i> View</button></td></tr>
-                                    <tr><td data-label="Token"><strong>#04</strong></td><td data-label="Patient">Mary Williams</td><td data-label="Time">10:15 AM</td><td data-label="Status"><span class="status completed">Completed</span></td><td data-label="Action"><button class="action-btn" disabled><i class="fas fa-check"></i> Done</button></td></tr>
-                                </tbody>
+                                    </tbody>
                             </table>
                         </div>
                         <div class="grid-card">
@@ -151,10 +126,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                             <table class="data-table">
                                 <thead><tr><th>Patient Name</th><th>Room/Bed</th><th>Action</th></tr></thead>
                                 <tbody>
-                                    <tr><td data-label="Patient Name">Michael Brown</td><td data-label="Patient ID" style="display:none;">P001</td><td data-label="Room/Bed">Room 201-A</td><td data-label="Action"><button class="action-btn view-records-btn"><i class="fas fa-folder-open"></i> Records</button></td></tr>
-                                    <tr><td data-label="Patient Name">Emily Davis</td><td data-label="Patient ID" style="display:none;">P003</td><td data-label="Room/Bed">Ward B-05</td><td data-label="Action"><button class="action-btn view-records-btn"><i class="fas fa-folder-open"></i> Records</button></td></tr>
-                                    <tr><td data-label="Patient Name">David Wilson</td><td data-label="Patient ID" style="display:none;">P005</td><td data-label="Room/Bed">Room 305-B</td><td data-label="Action"><button class="action-btn view-records-btn"><i class="fas fa-folder-open"></i> Records</button></td></tr>
-                                </tbody>
+                                    </tbody>
                             </table>
                         </div>
                     </div>
@@ -166,8 +138,12 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     <div class="page-header"><h3><i class="fas fa-calendar-check"></i> Manage Appointments</h3></div>
                     <div class="tabs"><button class="tab-link active" data-tab="today">Today's</button><button class="tab-link" data-tab="upcoming">Upcoming</button><button class="tab-link" data-tab="past">Past</button></div>
                     <div class="filters"><input type="text" class="search-bar" placeholder="Search by patient name..."><select class="status-filter"><option value="all">All Statuses</option><option value="confirmed">Confirmed</option><option value="completed">Completed</option><option value="canceled">Canceled</option></select></div>
-                    <div id="today-tab" class="appointment-tab active"><div class="appointment-list"><div class="appointment-item"><div class="patient-info"><div class="patient-name">Robert Brown</div><div class="appointment-details">11:30 AM - Regular Checkup</div></div><div class="status confirmed">Confirmed</div><div class="appointment-actions"><button class="action-btn"><i class="fas fa-eye"></i> View Details</button><button class="action-btn danger"><i class="fas fa-times"></i> Cancel</button></div></div></div></div>
-                    <div id="upcoming-tab" class="appointment-tab" style="display: none;"></div><div id="past-tab" class="appointment-tab" style="display: none;"></div>
+                    <div id="today-tab" class="appointment-tab active">
+                        <div class="appointment-list">
+                            </div>
+                    </div>
+                    <div id="upcoming-tab" class="appointment-tab" style="display: none;"></div>
+                    <div id="past-tab" class="appointment-tab" style="display: none;"></div>
                 </div>
             </div>
 
@@ -179,12 +155,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         <table class="data-table" id="patients-table">
                             <thead><tr><th>Patient ID</th><th>Name</th><th>Status</th><th>Room/Bed</th><th>Actions</th></tr></thead>
                             <tbody>
-                                <tr class="patient-row" data-status="in-patient"><td data-label="Patient ID">P001</td><td data-label="Name">Michael Brown</td><td data-label="Status"><span class="status in-patient">In-Patient</span></td><td data-label="Room/Bed">Room 201-A</td><td data-label="Actions"><button class="action-btn view-records-btn"><i class="fas fa-folder-open"></i> View Records</button></td></tr>
-                                <tr class="patient-row" data-status="out-patient"><td data-label="Patient ID">P002</td><td data-label="Name">Sarah Johnson</td><td data-label="Status"><span class="status out-patient">Out-Patient</span></td><td data-label="Room/Bed">N/A</td><td data-label="Actions"><button class="action-btn view-records-btn"><i class="fas fa-folder-open"></i> View Records</button></td></tr>
-                                <tr class="patient-row" data-status="in-patient"><td data-label="Patient ID">P003</td><td data-label="Name">Emily Davis</td><td data-label="Status"><span class="status in-patient">In-Patient</span></td><td data-label="Room/Bed">Ward B-05</td><td data-label="Actions"><button class="action-btn view-records-btn"><i class="fas fa-folder-open"></i> View Records</button></td></tr>
-                                <tr class="patient-row" data-status="out-patient"><td data-label="Patient ID">P004</td><td data-label="Name">Chris Lee</td><td data-label="Status"><span class="status out-patient">Out-Patient</span></td><td data-label="Room/Bed">N/A</td><td data-label="Actions"><button class="action-btn view-records-btn"><i class="fas fa-folder-open"></i> View Records</button></td></tr>
-                                <tr class="patient-row" data-status="in-patient"><td data-label="Patient ID">P005</td><td data-label="Name">David Wilson</td><td data-label="Status"><span class="status in-patient">In-Patient</span></td><td data-label="Room/Bed">Room 305-B</td><td data-label="Actions"><button class="action-btn view-records-btn"><i class="fas fa-folder-open"></i> View Records</button></td></tr>
-                            </tbody>
+                                </tbody>
                         </table>
                     </div>
                 </div>
@@ -198,10 +169,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         <table class="data-table" id="prescriptions-table">
                             <thead><tr><th>Rx ID</th><th>Patient</th><th>Date Issued</th><th>Status</th><th>Actions</th></tr></thead>
                             <tbody>
-                                <tr class="prescription-row"><td data-label="Rx ID">RX78901</td><td data-label="Patient">Michael Brown</td><td data-label="Date Issued">2025-07-25</td><td data-label="Status"><span class="status filled">Filled</span></td><td data-label="Actions"><button class="action-btn view-prescription-btn"><i class="fas fa-eye"></i> View</button></td></tr>
-                                <tr class="prescription-row"><td data-label="Rx ID">RX78902</td><td data-label="Patient">Sarah Johnson</td><td data-label="Date Issued">2025-07-24</td><td data-label="Status"><span class="status pending">Pending</span></td><td data-label="Actions"><button class="action-btn view-prescription-btn"><i class="fas fa-eye"></i> View</button></td></tr>
-                                <tr class="prescription-row"><td data-label="Rx ID">RX78903</td><td data-label="Patient">Chris Lee</td><td data-label="Date Issued">2025-07-22</td><td data-label="Status"><span class="status filled">Filled</span></td><td data-label="Actions"><button class="action-btn view-prescription-btn"><i class="fas fa-eye"></i> View</button></td></tr>
-                            </tbody>
+                                </tbody>
                         </table>
                     </div>
                 </div>
@@ -215,10 +183,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         <table class="data-table" id="admissions-table">
                             <thead><tr><th>Adm. ID</th><th>Patient Name</th><th>Room/Bed</th><th>Adm. Date</th><th>Status</th><th>Actions</th></tr></thead>
                             <tbody>
-                                <tr class="admission-row"><td data-label="Adm. ID">ADM001</td><td data-label="Patient Name">Michael Brown</td><td data-label="Room/Bed">Room 201-A</td><td data-label="Adm. Date">2025-07-24</td><td data-label="Status"><span class="status admitted">Admitted</span></td><td data-label="Actions"><button class="action-btn"><i class="fas fa-eye"></i> View</button><button class="action-btn danger initiate-discharge-btn"><i class="fas fa-sign-out-alt"></i> Initiate Discharge</button></td></tr>
-                                <tr class="admission-row"><td data-label="Adm. ID">ADM002</td><td data-label="Patient Name">Emily Davis</td><td data-label="Room/Bed">Ward B-05</td><td data-label="Adm. Date">2025-07-23</td><td data-label="Status"><span class="status admitted">Admitted</span></td><td data-label="Actions"><button class="action-btn"><i class="fas fa-eye"></i> View</button><button class="action-btn danger initiate-discharge-btn"><i class="fas fa-sign-out-alt"></i> Initiate Discharge</button></td></tr>
-                                <tr class="admission-row"><td data-label="Adm. ID">ADM003</td><td data-label="Patient Name">David Wilson</td><td data-label="Room/Bed">Room 305-B</td><td data-label="Adm. Date">2025-07-22</td><td data-label="Status"><span class="status admitted">Admitted</span></td><td data-label="Actions"><button class="action-btn"><i class="fas fa-eye"></i> View</button><button class="action-btn danger initiate-discharge-btn"><i class="fas fa-sign-out-alt"></i> Initiate Discharge</button></td></tr>
-                            </tbody>
+                                </tbody>
                         </table>
                     </div>
                 </div>
@@ -261,68 +226,19 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                 <div class="messenger-layout">
                     <div class="conversation-list">
                         <div class="conversation-search">
-                            <input type="text" placeholder="Search users...">
+                            <input type="text" placeholder="Search by name or ID...">
                         </div>
-                        <div class="conversation-item active" data-user-id="user1" data-user-name="Dr. James Smith">
-                            <i class="fas fa-user-doctor user-avatar"></i>
-                            <div class="user-details">
-                                <div class="user-name">Dr. James Smith</div>
-                                <div class="last-message">Yes, I'll review the new lab results.</div>
-                            </div>
-                            <div class="message-meta">
-                                <div class="message-time">8:10 PM</div>
-                                <span class="unread-indicator"></span>
-                            </div>
-                        </div>
-                        <div class="conversation-item" data-user-id="user2" data-user-name="Alice (Admin)">
-                            <i class="fas fa-user-shield user-avatar"></i>
-                            <div class="user-details">
-                                <div class="user-name">Alice (Admin)</div>
-                                <div class="last-message">The staff meeting is scheduled for...</div>
-                            </div>
-                            <div class="message-meta">
-                                <div class="message-time">7:45 PM</div>
-                            </div>
-                        </div>
-                        <div class="conversation-item" data-user-id="user3" data-user-name="Nurse John (Staff)">
-                            <i class="fas fa-user-nurse user-avatar"></i>
-                            <div class="user-details">
-                                <div class="user-name">Nurse John (Staff)</div>
-                                <div class="last-message">Patient in Room 201-A is stable.</div>
-                            </div>
-                             <div class="message-meta">
-                                <div class="message-time">Yesterday</div>
-                            </div>
+                        <div class="loading-placeholder" style="padding: 2rem; text-align: center;">
+                            <i class="fas fa-spinner fa-spin"></i> Loading conversations...
                         </div>
                     </div>
                     <div class="chat-window">
                         <div class="chat-header">
-                            <span id="chat-with-user">Dr. James Smith</span>
+                            <span id="chat-with-user">Select a Conversation</span>
                         </div>
                         <div class="chat-messages" id="chat-messages-container">
-                            <div class="message received">
-                                <div class="message-content">
-                                    <p>Hi Dr. Carter, can you please check on Michael Brown's latest ECG report?</p>
-                                    <span class="message-timestamp">8:08 PM</span>
-                                </div>
-                            </div>
-                            <div class="message sent">
-                                <div class="message-content">
-                                    <p>Of course, Dr. Smith. I'm looking at it now. The results seem normal.</p>
-                                    <span class="message-timestamp">8:09 PM</span>
-                                </div>
-                            </div>
-                             <div class="message received">
-                                <div class="message-content">
-                                    <p>Great, thank you. Also, please review the new lab results when you have a moment.</p>
-                                    <span class="message-timestamp">8:09 PM</span>
-                                </div>
-                            </div>
-                            <div class="message sent">
-                                <div class="message-content">
-                                    <p>Yes, I'll review the new lab results.</p>
-                                    <span class="message-timestamp">8:10 PM</span>
-                                </div>
+                             <div class="message-placeholder" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                                Please select a conversation from the left to view messages.
                             </div>
                         </div>
                         <form class="chat-input" id="message-form">
@@ -348,42 +264,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         </select>
                     </div>
                     <div class="notification-list-container">
-                        <div class="notification-list-item unread" data-type="lab">
-                            <div class="item-icon-wrapper"><i class="fas fa-vial item-icon vial"></i></div>
-                            <div class="item-content">
-                                <p>New lab result for <strong>Sarah Johnson</strong> is available for viewing.</p>
-                                <small>5 minutes ago</small>
-                            </div>
                         </div>
-                        <div class="notification-list-item unread" data-type="announcement">
-                            <div class="item-icon-wrapper"><i class="fas fa-bullhorn item-icon announcement"></i></div>
-                            <div class="item-content">
-                                <p><strong>Admin Announcement:</strong> System maintenance is scheduled for 10 PM tonight. Brief downtime expected.</p>
-                                <small>1 hour ago</small>
-                            </div>
-                        </div>
-                        <div class="notification-list-item unread" data-type="discharge">
-                            <div class="item-icon-wrapper"><i class="fas fa-sign-out-alt item-icon discharge"></i></div>
-                            <div class="item-content">
-                                <p>Discharge process for <strong>David Wilson</strong> has been completed by billing. Patient is ready for physical discharge.</p>
-                                <small>3 hours ago</small>
-                            </div>
-                        </div>
-                        <div class="notification-list-item read" data-type="lab">
-                            <div class="item-icon-wrapper"><i class="fas fa-vial item-icon vial"></i></div>
-                            <div class="item-content">
-                                <p>New lab result for <strong>Michael Brown</strong> is available for viewing.</p>
-                                <small>Yesterday</small>
-                            </div>
-                        </div>
-                        <div class="notification-list-item read" data-type="discharge">
-                            <div class="item-icon-wrapper"><i class="fas fa-sign-out-alt item-icon discharge"></i></div>
-                            <div class="item-content">
-                                <p>Discharge process for <strong>Laura White</strong> has moved to the next stage: Pending Billing.</p>
-                                <small>2 days ago</small>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -395,11 +276,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         <table class="data-table" id="discharge-requests-table">
                             <thead><tr><th>Req. ID</th><th>Patient</th><th>Room/Bed</th><th>Initiated</th><th>Status</th><th>Actions</th></tr></thead>
                             <tbody>
-                                <tr class="discharge-row" data-status="pending"><td data-label="Req. ID">D4501</td><td data-label="Patient">Michael Brown</td><td data-label="Room/Bed">Room 201-A</td><td data-label="Initiated">2025-07-25</td><td data-label="Status"><span class="status pending-clearance">Pending Nursing</span></td><td data-label="Actions"><button class="action-btn view-discharge-status"><i class="fas fa-tasks"></i> View Status</button></td></tr>
-                                <tr class="discharge-row" data-status="pending"><td data-label="Req. ID">D4502</td><td data-label="Patient">Emily Davis</td><td data-label="Room/Bed">Ward B-05</td><td data-label="Initiated">2025-07-25</td><td data-label="Status"><span class="status pending-billing">Pending Billing</span></td><td data-label="Actions"><button class="action-btn view-discharge-status"><i class="fas fa-tasks"></i> View Status</button></td></tr>
-                                <tr class="discharge-row" data-status="ready"><td data-label="Req. ID">D4503</td><td data-label="Patient">David Wilson</td><td data-label="Room/Bed">Room 305-B</td><td data-label="Initiated">2025-07-24</td><td data-label="Status"><span class="status ready-discharge">Ready for Discharge</span></td><td data-label="Actions"><button class="action-btn view-discharge-status"><i class="fas fa-tasks"></i> View Status</button></td></tr>
-                                <tr class="discharge-row" data-status="completed"><td data-label="Req. ID">D4498</td><td data-label="Patient">Laura White</td><td data-label="Room/Bed">Room 102-A</td><td data-label="Initiated">2025-07-23</td><td data-label="Status"><span class="status completed">Discharged</span></td><td data-label="Actions"><button class="action-btn"><i class="fas fa-file-pdf"></i> View Summary</button></td></tr>
-                            </tbody>
+                                </tbody>
                         </table>
                     </div>
                 </div>
@@ -465,23 +342,23 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label for="profile-name">Full Name</label>
-                                    <input type="text" id="profile-name" name="name" value="<?php echo $full_name; ?>">
+                                    <input type="text" id="profile-name" name="name" value="<?php echo htmlspecialchars($full_name, ENT_QUOTES, 'UTF-8'); ?>">
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-username">Username</label>
-                                    <input type="text" id="profile-username" name="username" value="<?php echo $username; ?>" readonly>
+                                    <input type="text" id="profile-username" name="username" value="<?php echo htmlspecialchars($username, ENT_QUOTES, 'UTF-8'); ?>" readonly>
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-email">Email Address</label>
-                                    <input type="email" id="profile-email" name="email" value="<?php echo $email; ?>">
+                                    <input type="email" id="profile-email" name="email" value="<?php echo htmlspecialchars($email, ENT_QUOTES, 'UTF-8'); ?>">
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-phone">Phone Number</label>
-                                    <input type="tel" id="profile-phone" name="phone" value="<?php echo $phone; ?>">
+                                    <input type="tel" id="profile-phone" name="phone" value="<?php echo htmlspecialchars($phone, ENT_QUOTES, 'UTF-8'); ?>">
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-dob">Date of Birth</label>
-                                    <input type="date" id="profile-dob" name="date_of_birth" value="<?php echo $date_of_birth; ?>">
+                                    <input type="date" id="profile-dob" name="date_of_birth" value="<?php echo htmlspecialchars($date_of_birth, ENT_QUOTES, 'UTF-8'); ?>">
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-gender">Gender</label>
@@ -493,11 +370,11 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                                 </div>
                                  <div class="form-group">
                                     <label for="profile-specialty">Specialty</label>
-                                    <input type="text" id="profile-specialty" name="specialty" value="<?php echo $specialty; ?>">
+                                    <input type="text" id="profile-specialty" name="specialty" value="<?php echo htmlspecialchars($specialty, ENT_QUOTES, 'UTF-8'); ?>">
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-id">Doctor ID</label>
-                                    <input type="text" id="profile-id" name="display_id" value="<?php echo $display_user_id; ?>" readonly>
+                                    <input type="text" id="profile-id" name="display_id" value="<?php echo htmlspecialchars($display_user_id, ENT_QUOTES, 'UTF-8'); ?>" readonly>
                                 </div>
                             </div>
                             <div class="form-actions">
@@ -605,37 +482,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr>
-                                            <td data-label="Date & Time">2025-07-25 08:05 PM</td>
-                                            <td data-label="Action"><span class="log-action-create">Prescription Issued</span></td>
-                                            <td data-label="Target">Michael Brown (P001)</td>
-                                            <td data-label="Details">Rx ID: RX78901</td>
-                                        </tr>
-                                        <tr>
-                                            <td data-label="Date & Time">2025-07-25 07:30 PM</td>
-                                            <td data-label="Action"><span class="log-action-update">Discharge Initiated</span></td>
-                                            <td data-label="Target">Emily Davis (P003)</td>
-                                            <td data-label="Details">Request ID: D4502</td>
-                                        </tr>
-                                         <tr>
-                                            <td data-label="Date & Time">2025-07-25 06:15 PM</td>
-                                            <td data-label="Action"><span class="log-action-create">Lab Result Added</span></td>
-                                            <td data-label="Target">Chris Lee (P004)</td>
-                                            <td data-label="Details">Report ID: LR7203</td>
-                                        </tr>
-                                        <tr>
-                                            <td data-label="Date & Time">2025-07-25 04:50 PM</td>
-                                            <td data-label="Action"><span class="log-action-view">Viewed Patient Record</span></td>
-                                            <td data-label="Target">Sarah Johnson (P002)</td>
-                                            <td data-label="Details">Accessed via "My Patients"</td>
-                                        </tr>
-                                        <tr>
-                                            <td data-label="Date & Time">2025-07-25 09:00 AM</td>
-                                            <td data-label="Action"><span class="log-action-auth">Logged In</span></td>
-                                            <td data-label="Target">Self</td>
-                                            <td data-label="Details">IP: 192.168.1.10</td>
-                                        </tr>
-                                    </tbody>
+                                        </tbody>
                                 </table>
                             </div>
                         </div>
@@ -648,7 +495,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
         <div class="modal-overlay" id="prescription-modal-overlay">
             <div class="modal-container">
                 <div class="modal-header"><h4>Create New Prescription</h4><button class="modal-close-btn" data-modal-id="prescription-modal-overlay">&times;</button></div>
-                <div class="modal-body"><form id="prescription-form"><div class="form-grid"><div class="form-group full-width"><label for="patient-select-presc">Select Patient</label><select id="patient-select-presc" name="patient_id" required><option value="">-- Choose a patient --</option><option value="P001" data-name="Michael Brown">P001 - Michael Brown</option><option value="P002" data-name="Sarah Johnson">P002 - Sarah Johnson</option></select></div><div class="form-group full-width"><label for="medication">Medication Name</label><input type="text" id="medication" name="medication" placeholder="e.g., Amoxicillin" required></div><div class="form-group"><label for="dosage">Dosage</label><input type="text" id="dosage" name="dosage" placeholder="e.g., 500mg" required></div><div class="form-group"><label for="frequency">Frequency</label><input type="text" id="frequency" name="frequency" placeholder="e.g., Twice a day" required></div><div class="form-group full-width"><label for="notes-presc">Notes / Instructions</label><textarea id="notes-presc" name="notes" placeholder="e.g., Take with food."></textarea></div></div></form></div>
+                <div class="modal-body"><form id="prescription-form"><div class="form-grid"><div class="form-group full-width"><label for="patient-select-presc">Select Patient</label><select id="patient-select-presc" name="patient_id" required><option value="">-- Choose a patient --</option></select></div><div class="form-group full-width"><label for="medication">Medication Name</label><input type="text" id="medication" name="medication" placeholder="e.g., Amoxicillin" required></div><div class="form-group"><label for="dosage">Dosage</label><input type="text" id="dosage" name="dosage" placeholder="e.g., 500mg" required></div><div class="form-group"><label for="frequency">Frequency</label><input type="text" id="frequency" name="frequency" placeholder="e.g., Twice a day" required></div><div class="form-group full-width"><label for="notes-presc">Notes / Instructions</label><textarea id="notes-presc" name="notes" placeholder="e.g., Take with food."></textarea></div></div></form></div>
                 <div class="modal-footer"><button class="btn btn-secondary" data-modal-id="prescription-modal-overlay">Cancel</button><button class="btn btn-primary" id="modal-save-btn-presc">Preview Prescription</button></div>
             </div>
         </div>
@@ -656,7 +503,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
         <div class="modal-overlay" id="admit-patient-modal-overlay">
             <div class="modal-container">
                 <div class="modal-header"><h4>Admit New Patient</h4><button class="modal-close-btn" data-modal-id="admit-patient-modal-overlay">&times;</button></div>
-                <div class="modal-body"><form id="admit-patient-form"><div class="form-grid"><div class="form-group full-width"><label for="patient-select-admit">Select Patient</label><select id="patient-select-admit" name="patient_id" required><option value="">-- Choose an existing patient --</option><option value="P002">P002 - Sarah Johnson</option><option value="P004">P004 - Chris Lee</option><option value="P006">P006 - John Doe</option></select></div><div class="form-group full-width"><label for="bed-select-admit">Assign Bed</label><select id="bed-select-admit" name="bed_id" required><option value="">-- Select an available bed --</option><option value="B001" class="bed-available">Room 101-A (Available)</option><option value="B002" class="bed-occupied" disabled>Room 101-B (Occupied)</option><option value="B003" class="bed-available">Ward A-01 (Available)</option><option value="B004" class="bed-cleaning" disabled>Room 202-A (Cleaning)</option><option value="B005" class="bed-available">Room 202-B (Available)</option></select></div><div class="form-group full-width"><label for="admission-notes">Admission Notes</label><textarea id="admission-notes" name="notes" placeholder="Reason for admission, initial observations, etc."></textarea></div></div></form></div>
+                <div class="modal-body"><form id="admit-patient-form"><div class="form-grid"><div class="form-group full-width"><label for="patient-select-admit">Select Patient</label><select id="patient-select-admit" name="patient_id" required><option value="">-- Choose an existing patient --</option></select></div><div class="form-group full-width"><label for="bed-select-admit">Assign Bed</label><select id="bed-select-admit" name="bed_id" required><option value="">-- Select an available bed --</option></select></div><div class="form-group full-width"><label for="admission-notes">Admission Notes</label><textarea id="admission-notes" name="notes" placeholder="Reason for admission, initial observations, etc."></textarea></div></div></form></div>
                 <div class="modal-footer"><button class="btn btn-secondary" data-modal-id="admit-patient-modal-overlay">Cancel</button><button class="btn btn-primary" id="modal-save-btn-admit">Confirm Admission</button></div>
             </div>
         </div>
@@ -664,7 +511,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
         <div class="modal-overlay" id="discharge-status-modal-overlay">
             <div class="modal-container">
                 <div class="modal-header"><h4 id="discharge-modal-title">Discharge Status</h4><button class="modal-close-btn" data-modal-id="discharge-status-modal-overlay">&times;</button></div>
-                <div class="modal-body"><ul class="timeline"><li class="timeline-item complete"><div class="timeline-icon"><i class="fas fa-user-md"></i></div><div class="timeline-content"><strong>Doctor's Intimation</strong><p>Dr. Emily Carter initiated the discharge. <span>(2025-07-25 10:00 AM)</span></p></div></li><li class="timeline-item complete"><div class="timeline-icon"><i class="fas fa-user-nurse"></i></div><div class="timeline-content"><strong>Nursing Clearance</strong><p>All nursing checks completed by Nurse John. <span>(2025-07-25 10:30 AM)</span></p></div></li><li class="timeline-item complete"><div class="timeline-icon"><i class="fas fa-pills"></i></div><div class="timeline-content"><strong>Pharmacy Clearance</strong><p>Medication returns and billing finalized. <span>(2025-07-25 11:15 AM)</span></p></div></li><li class="timeline-item pending"><div class="timeline-icon"><i class="fas fa-file-invoice-dollar"></i></div><div class="timeline-content"><strong>Bill Settlement</strong><p>Final bill generated. Awaiting payment clearance from accounts.</p></div></li><li class="timeline-item"><div class="timeline-icon"><i class="fas fa-file-alt"></i></div><div class="timeline-content"><strong>Discharge Summary</strong><p>Pending bill settlement.</p></div></li><li class="timeline-item"><div class="timeline-icon"><i class="fas fa-walking"></i></div><div class="timeline-content"><strong>Physical Discharge</strong><p>Pending previous steps.</p></div></li></ul></div>
+                <div class="modal-body"><ul class="timeline"></ul></div>
                 <div class="modal-footer"><button class="btn btn-secondary" data-modal-id="discharge-status-modal-overlay">Close</button></div>
             </div>
         </div>
@@ -717,23 +564,20 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                 </div>
                 <div class="modal-body" id="lab-report-content">
                     <div class="report-view-header">
-                        <div><strong>Patient:</strong> <span id="report-patient-name">Sarah Johnson</span></div>
-                        <div><strong>Test:</strong> Complete Blood Count</div>
-                        <div><strong>Report ID:</strong> LR7201</div>
-                        <div><strong>Date:</strong> 2025-07-24</div>
+                        <div><strong>Patient:</strong> <span id="report-patient-name"></span></div>
+                        <div><strong>Test:</strong> <span id="report-test-name"></span></div>
+                        <div><strong>Report ID:</strong> <span id="report-id"></span></div>
+                        <div><strong>Date:</strong> <span id="report-date"></span></div>
                     </div>
                     <div class="report-view-body">
                         <h5>Findings:</h5>
                         <table class="findings-table">
                             <thead><tr><th>Parameter</th><th>Result</th><th>Reference Range</th></tr></thead>
                             <tbody>
-                                <tr><td>Hemoglobin</td><td>14.5 g/dL</td><td>13.5 - 17.5 g/dL</td></tr>
-                                <tr><td>WBC Count</td><td>7,500 /mcL</td><td>4,500 - 11,000 /mcL</td></tr>
-                                <tr><td>Platelet Count</td><td>250,000 /mcL</td><td>150,000 - 450,000 /mcL</td></tr>
                             </tbody>
                         </table>
                         <h5>Summary:</h5>
-                        <p>All values within normal range. No abnormalities detected.</p>
+                        <p></p>
                     </div>
                 </div>
             </div>
@@ -751,43 +595,29 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         <div class="details-grid">
                             <div><strong>Name:</strong> <span id="record-patient-name">N/A</span></div>
                             <div><strong>Patient ID:</strong> <span id="record-patient-id">N/A</span></div>
-                            <div><strong>Age:</strong> 34</div>
-                            <div><strong>Gender:</strong> Male</div>
+                            <div><strong>Age:</strong> <span id="record-patient-age">N/A</span></div>
+                            <div><strong>Gender:</strong> <span id="record-patient-gender">N/A</span></div>
                         </div>
                     </div>
                     <div class="record-section">
                         <h5><i class="fas fa-procedures"></i> Admission History</h5>
                         <table class="record-history-table">
                             <thead><tr><th>Adm. ID</th><th>Date</th><th>Reason</th></tr></thead>
-                            <tbody>
-                                <tr><td>ADM001</td><td>2025-07-24</td><td>Chest Pain Observation</td></tr>
-                                <tr><td>ADM-PREV-098</td><td>2024-11-10</td><td>Routine Check-up</td></tr>
-                            </tbody>
+                            <tbody></tbody>
                         </table>
                     </div>
                     <div class="record-section">
                         <h5><i class="fas fa-file-prescription"></i> Prescription History</h5>
                         <table class="record-history-table">
                             <thead><tr><th>Rx ID</th><th>Date</th><th>Medication</th><th>Status</th></tr></thead>
-                            <tbody>
-                                <tr><td>RX78901</td><td>2025-07-25</td><td>Aspirin 81mg</td><td><span class="status filled">Filled</span></td></tr>
-                                <tr><td>RX-PREV-451</td><td>2024-11-10</td><td>Lisinopril 10mg</td><td><span class="status completed">Completed</span></td></tr>
-                            </tbody>
+                            <tbody></tbody>
                         </table>
                     </div>
                     <div class="record-section">
                         <h5><i class="fas fa-vials"></i> Lab Results</h5>
                         <table class="record-history-table">
                             <thead><tr><th>Report ID</th><th>Test</th><th>Date</th><th>Action</th></tr></thead>
-                            <tbody>
-                                <tr><td>LR7202</td><td>Lipid Profile</td><td>2025-07-25</td><td><button class="action-btn" disabled><i class="fas fa-spinner"></i> In Progress</button></td></tr>
-                                <tr>
-                                    <td>LR7201</td>
-                                    <td>Complete Blood Count</td>
-                                    <td>2025-07-24</td>
-                                    <td><button class="action-btn view-lab-report" data-patient-name="Michael Brown"><i class="fas fa-file-alt"></i> View</button></td>
-                                </tr>
-                            </tbody>
+                            <tbody></tbody>
                         </table>
                     </div>
                 </div>
@@ -814,8 +644,8 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                             </div>
                         </div>
                         <div class="rx-doctor-details">
-                            <strong>Dr. <?php echo $full_name; ?></strong><br>
-                            <?php echo $specialty; ?><br>
+                            <strong>Dr. <?php echo htmlspecialchars($full_name, ENT_QUOTES, 'UTF-8'); ?></strong><br>
+                            <?php echo htmlspecialchars($specialty, ENT_QUOTES, 'UTF-8'); ?><br>
                             Reg. No: MS-DOC-12345
                         </div>
                     </div>
@@ -877,8 +707,11 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
             </div>
         </div>
 
-
     </div>
+    <script>
+        // Pass the session user ID to JavaScript for client-side logic
+        const currentUserId = <?php echo json_encode($_SESSION['user_id']); ?>;
+    </script>
     <script src="script.js"></script>
 </body>
 </html>
