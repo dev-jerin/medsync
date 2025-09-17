@@ -383,6 +383,9 @@ input:checked + .theme-slider:before {
 .status.ready-discharge { background-color: var(--secondary-color); color: var(--text-on-primary); }
 .status.filled { background-color: var(--secondary-color); color: var(--text-on-primary); }
 .status.pending { background-color: var(--warning-color); color: var(--text-on-primary); }
+.status.dispensed { background-color: var(--secondary-color); color: var(--text-on-primary); }
+.status.partial { background-color: var(--info-color); color: var(--text-on-primary); }
+.status.cancelled { background-color: var(--danger-color); color: var(--text-on-primary); }
 .status.processing { background-color: var(--info-color); color: var(--text-on-primary); }
 
 
@@ -619,7 +622,7 @@ input:checked + .theme-slider:before {
     border-radius: var(--border-radius);
     box-shadow: 0 10px 30px rgba(0,0,0,0.1);
     width: 90%;
-    max-width: 600px;
+    max-width: 800px; /* Increased max-width for prescription modal */
     z-index: 1051;
     opacity: 0;
     transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.3s;
@@ -654,13 +657,12 @@ input:checked + .theme-slider:before {
     grid-template-columns: 1fr 1fr;
     gap: 1.5rem;
 }
-.modal-body .form-group {
-    display: flex;
-    flex-direction: column;
-}
-/* Style for informational text in modals */
 .modal-body p {
     margin-bottom: 1rem;
+}
+.form-group {
+    display: flex;
+    flex-direction: column;
 }
 .form-group.full-width {
     grid-column: 1 / -1;
@@ -700,6 +702,86 @@ input:checked + .theme-slider:before {
 }
 body.dark-theme .btn-secondary:hover {
     background-color: #555;
+}
+
+/* --- Prescription Modal Enhancements (Line-Item Style) --- */
+.medication-row {
+    display: flex;
+    align-items: flex-end; /* Aligns items to the bottom */
+    gap: 1rem;
+    padding: 1rem;
+    background-color: var(--background-body);
+    border-radius: var(--border-radius);
+    margin-bottom: 1rem;
+    position: relative;
+    border: 1px solid var(--border-color);
+}
+
+.medication-row .form-group {
+    margin-bottom: 0; /* Override default form-group margin */
+    flex-grow: 1;
+}
+
+.medication-row .med-search-group {
+    flex-basis: 35%; /* Give more space to the search field */
+}
+
+.medication-row .dosage-group,
+.medication-row .frequency-group {
+    flex-basis: 25%;
+}
+
+.medication-row .quantity-group {
+    flex-basis: 10%;
+}
+
+.medication-row label {
+    font-size: 0.85rem;
+}
+
+.remove-med-row-btn {
+    background: none;
+    border: none;
+    color: var(--danger-color);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0.5rem; /* Make it easier to click */
+    line-height: 1;
+    margin-bottom: 5px; /* Align with input bottom */
+}
+
+.med-search-group {
+    position: relative; /* Crucial for positioning the dropdown */
+}
+
+.search-results-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--background-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 0 0 8px 8px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1060; /* Ensure it's above other modal elements */
+}
+
+.search-results-dropdown.active {
+    display: block;
+}
+
+.search-result-item {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+}
+.search-result-item:hover {
+    background-color: var(--background-body);
+}
+.search-result-item small {
+    color: var(--text-muted);
+    margin-left: 0.5rem;
 }
 
 
@@ -1628,6 +1710,15 @@ body.dark-theme .rx-signature {
     .notification-dropdown {
         width: 90vw;
         max-width: 350px;
+    }
+    .medication-row {
+        flex-wrap: wrap;
+    }
+    .medication-row .form-group {
+        flex-basis: 48% !important;
+    }
+    .medication-row .quantity-group {
+        flex-basis: 100% !important;
     }
 }
 

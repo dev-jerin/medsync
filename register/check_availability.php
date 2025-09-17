@@ -1,7 +1,6 @@
 <?php
 // Handles real-time checking for username and email availability.
 
-// CORRECTED: The path now correctly points to the parent directory
 require_once '../config.php';
 
 // Set the content type to JSON for the response
@@ -19,11 +18,11 @@ $response = ['available' => false, 'message' => 'An error occurred.'];
 // Check for username availability
 if (isset($_POST['username'])) {
     $username = strtolower(trim($_POST['username']));
-    
+
     // Rule: Username must be at least 3 characters
     if (strlen($username) < 3) {
         $response['message'] = 'Username must be at least 3 characters.';
-    } 
+    }
     // Rule: no symbols except underscores and dots
     elseif (preg_match('/[^\w.]/', $username)) {
         $response['message'] = 'Username can only contain letters, numbers, underscores, and dots.';

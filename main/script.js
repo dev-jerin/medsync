@@ -1,108 +1,135 @@
-document.addEventListener("DOMContentLoaded", function() {
-    // --- Header Scroll Effect ---
-    const header = document.getElementById('header');
-    if (header) {
-        window.addEventListener('scroll', () => {
-            if (window.scrollY > 50) {
-                header.classList.add('scrolled');
-            } else {
-                header.classList.remove('scrolled');
-            }
+(function () {
+    'use strict';
+
+    /**
+     * Helper function to run scripts when the DOM is ready.
+     * @param {function} fn The function to execute.
+     */
+    function onReady(fn) {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', fn);
+        } else {
+            fn();
+        }
+    }
+
+    /**
+     * Sets up the interactive mobile navigation menu.
+     */
+    function setupMobileNav() {
+        const hamburger = document.querySelector('.hamburger');
+        const mobileNav = document.querySelector('.mobile-nav');
+        const closeBtn = document.querySelector('.close-btn');
+        const mobileNavLinks = mobileNav.querySelectorAll('.nav-links a');
+
+        const toggleNav = () => mobileNav.classList.toggle('active');
+
+        if (hamburger && mobileNav && closeBtn) {
+            hamburger.addEventListener('click', toggleNav);
+            closeBtn.addEventListener('click', toggleNav);
+
+            // Close nav when a link is clicked (for single-page navigation)
+            mobileNavLinks.forEach(link => {
+                link.addEventListener('click', toggleNav);
+            });
+        }
+    }
+
+    /**
+     * Sets up the FAQ accordion functionality.
+     */
+    function setupFaqAccordion() {
+        const faqItems = document.querySelectorAll('.faq-item');
+
+        faqItems.forEach(item => {
+            const question = item.querySelector('.faq-question');
+            question.addEventListener('click', () => {
+                // Close other open items
+                faqItems.forEach(otherItem => {
+                    if (otherItem !== item && otherItem.classList.contains('active')) {
+                        otherItem.classList.remove('active');
+                    }
+                });
+                // Toggle the clicked item
+                item.classList.toggle('active');
+            });
         });
     }
 
-    // --- Mobile Navigation Logic ---
-    const hamburger = document.querySelector('.hamburger');
-    const mobileNav = document.querySelector('.mobile-nav');
-    if (hamburger && mobileNav) {
-        const closeBtn = document.querySelector('.mobile-nav .close-btn');
-        const mobileNavLinks = document.querySelectorAll('.mobile-nav a');
-        const closeMobileNav = () => mobileNav.classList.remove('active');
-        hamburger.addEventListener('click', () => mobileNav.classList.add('active'));
-        closeBtn?.addEventListener('click', closeMobileNav);
-        mobileNavLinks.forEach(link => link.addEventListener('click', closeMobileNav));
-    }
-    
-    // --- Landing Page Scripts ---
-    const faqQuestions = document.querySelectorAll('.faq-question');
-    if (faqQuestions.length > 0) {
-        handleFaqAccordion(faqQuestions);
-    }
+    /**
+     * Handles the phone number input validation for the contact form.
+     */
+    function setupPhoneValidation() {
+        const phoneInput = document.getElementById('phone');
 
-    // Check if GSAP is loaded before using it
-    if (typeof gsap !== 'undefined') {
-        gsap.registerPlugin(ScrollTrigger);
-        
-        const fadeUpElements = document.querySelectorAll('.anim-fade-up');
-        if (fadeUpElements.length > 0) {
-            handleGsapFadeUp(fadeUpElements);
-        }
+        if (phoneInput) {
+            // Automatically add '+91' when the user starts typing
+            phoneInput.addEventListener('input', function (e) {
+                let value = e.target.value;
 
-        const counters = document.querySelectorAll('.counter');
-        if (counters.length > 0) {
-            handleAnimatedCounters(counters);
-        }
-    }
-});
+                // Remove any characters that are not digits or '+'
+                value = value.replace(/[^\d+]/g, '');
 
-/**
- * Handles FAQ accordion logic.
- */
-function handleFaqAccordion(faqQuestions) {
-    faqQuestions.forEach(question => {
-        question.addEventListener('click', () => {
-            const answer = question.nextElementSibling;
-            const isActive = question.classList.contains('active');
+                // Ensure '+91' is at the start
+                if (value.length > 0 && !value.startsWith('+91')) {
+                    // If user types numbers without '+91', add it for them
+                    value = '+91' + value.replace(/\D/g, '');
+                }
+                
+                // Re-apply the cleaned and formatted value
+                e.target.value = value;
+            });
 
-            // Close all other active questions
-            document.querySelectorAll('.faq-question.active').forEach(activeQ => {
-                if (activeQ !== question) {
-                    activeQ.classList.remove('active');
-                    activeQ.nextElementSibling.style.maxHeight = null;
+            // Add '+91' when the user clicks into the empty field
+            phoneInput.addEventListener('focus', function (e) {
+                if (e.target.value === '') {
+                    e.target.value = '+91';
                 }
             });
 
-            // Toggle current question
-            question.classList.toggle('active');
-            if (question.classList.contains('active')) {
-                answer.style.maxHeight = answer.scrollHeight + "px";
-            } else {
-                answer.style.maxHeight = null;
-            }
-        });
-    });
-}
+            // Prevent the user from deleting the '+91' prefix
+            phoneInput.addEventListener('keydown', function (e) {
+                // If the user tries to backspace when only '+91' is left, prevent it
+                if (e.key === 'Backspace' && e.target.value === '+91') {
+                    e.preventDefault();
+                }
+            });
+        }
+    }
 
-/**
- * Handles GSAP fade-up animations.
- */
-function handleGsapFadeUp(elements) {
-    elements.forEach(el => {
-        gsap.from(el, {
-            scrollTrigger: { trigger: el, start: "top 90%", toggleActions: "play none none none" },
-            y: 50, opacity: 0, duration: 0.8, ease: "power3.out",
-            delay: parseFloat(el.style.getPropertyValue('--delay')) || 0
-        });
-    });
-}
+    /**
+     * Initializes all GSAP animations for the page.
+     */
+    function setupGsapAnimations() {
+        gsap.registerPlugin(ScrollTrigger);
 
-/**
- * Handles animated counters.
- */
-function handleAnimatedCounters(counters) {
-    counters.forEach(counter => {
-        const target = +counter.getAttribute('data-target');
-        const suffix = counter.getAttribute('data-suffix') || '';
-        ScrollTrigger.create({
-            trigger: counter, start: "top 90%", once: true,
-            onEnter: () => {
-                let obj = { val: 0 };
-                gsap.to(obj, {
-                    val: target, duration: 2, ease: "power2.out",
-                    onUpdate: () => { counter.textContent = Math.round(obj.val).toLocaleString(); },
-                    onComplete: () => { counter.textContent = Math.round(target).toLocaleString() + suffix; }
-                });
-            }
+        // Animate elements with class 'anim-fade-up'
+        gsap.utils.toArray('.anim-fade-up').forEach(elem => {
+            gsap.fromTo(elem, 
+                { autoAlpha: 0, y: 50 },
+                { 
+                    autoAlpha: 1, 
+                    y: 0,
+                    duration: 0.8,
+                    ease: 'power2.out',
+                    scrollTrigger: {
+                        trigger: elem,
+                        start: 'top 85%',
+                        toggleActions: 'play none none none'
+                    },
+                    // Use the CSS variable for delay if it exists
+                    delay: parseFloat(getComputedStyle(elem).getPropertyValue('--delay')) || 0
+                }
+            );
         });
+    }
+
+    // Run all setup functions when the DOM is ready
+    onReady(() => {
+        setupMobileNav();
+        setupFaqAccordion();
+        setupPhoneValidation();
+        setupGsapAnimations();
     });
-}
+
+})();

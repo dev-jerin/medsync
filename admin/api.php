@@ -1,12 +1,14 @@
 <?php
 // --- CONFIG & SESSION START ---
-require_once '../config.php';
-require_once '../vendor/autoload.php'; 
+require_once '../config.php'; //loads database connection
+require_once '../vendor/autoload.php'; //vendor files for phpmailer and dompdf
 
+// ---classes from the Dompdf library---
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
 
+// --- LOG ACTIVITY STORING ---
 /**
  * Logs a specific action to the activity_logs table.
  *
@@ -17,6 +19,7 @@ use Dompdf\Options;
  * @param string $details A detailed description of the change.
  * @return bool True on success, false on failure.
  */
+
 function log_activity($conn, $user_id, $action, $target_user_id = null, $details = '')
 {
     $stmt = $conn->prepare("INSERT INTO activity_logs (user_id, action, target_user_id, details) VALUES (?, ?, ?, ?)");
@@ -28,7 +31,7 @@ function log_activity($conn, $user_id, $action, $target_user_id = null, $details
     return $stmt->execute();
 }
 
-
+// -- DISPLAY ID GENERATION --
 /**
  * Generates a unique, sequential display ID for a new user based on their role.
  * Uses a dedicated counter table with row locking to prevent race conditions.
@@ -41,12 +44,7 @@ function log_activity($conn, $user_id, $action, $target_user_id = null, $details
  */
 function generateDisplayId($role_name, $conn)
 {
-    $prefix_map = [
-        'admin' => 'A',
-        'doctor' => 'D',
-        'staff' => 'S',
-        'user' => 'U'
-    ];
+    $prefix_map = ['admin' => 'A','doctor' => 'D','staff' => 'S','user' => 'U' ];
 
     if (!isset($prefix_map[$role_name])) {
         throw new Exception("Invalid role specified for ID generation.");
@@ -57,12 +55,12 @@ function generateDisplayId($role_name, $conn)
     $conn->begin_transaction();
     try {
         // Lock the row for the specific role to prevent race conditions
-        $stmt = $conn->prepare("SELECT last_id FROM role_counters WHERE role_prefix = ? FOR UPDATE");
+        $stmt = $conn->prepare("SELECT last_id FROM role_counters WHERE role_prefix = ? FOR UPDATE"); //FETCHED LAST ID
         $stmt->bind_param("s", $prefix);
         $stmt->execute();
         $result = $stmt->get_result();
         if ($result->num_rows === 0) {
-            // If the prefix doesn't exist, create it.
+            // If the prefix doesn't exist, create it ie first user.
             $insert_stmt = $conn->prepare("INSERT INTO role_counters (role_prefix, last_id) VALUES (?, 0)");
             $insert_stmt->bind_param("s", $prefix);
             $insert_stmt->execute();
@@ -120,18 +118,18 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
         if (isset($_POST['action'])) {
             $action = $_POST['action'];
             switch ($action) {
-                case 'addUser':
-                    // --- Start Transaction ---
+                case 'addUser':                 
                     $conn->begin_transaction();
                     try {
-                        if (empty($_POST['name']) || empty($_POST['username']) || empty($_POST['email']) || empty($_POST['role']) || empty($_POST['password']) || empty($_POST['phone'])) {
+                        if (empty($_POST['name']) || empty($_POST['username']) || empty($_POST['email']) || empty($_POST['role']) || empty($_POST['password']) || empty($_POST['phone']) || empty($_POST['password'])) {
                             throw new Exception('Please fill all required fields.');
                         }
                         $name = $_POST['name'];
                         $username = $_POST['username'];
                         $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
+
                         if (!$email)
-                            throw new Exception('Invalid email format.');
+                        throw new Exception('Invalid email format.');
 
                         $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
                         $role_name = $_POST['role'];
@@ -143,7 +141,9 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $role_stmt->bind_param("s", $role_name);
                         $role_stmt->execute();
                         $role_result = $role_stmt->get_result();
-                        if($role_result->num_rows === 0) throw new Exception('Invalid user role specified.');
+
+                        if($role_result->num_rows === 0) 
+                        throw new Exception('Invalid user role specified.');
                         $role_id = $role_result->fetch_assoc()['id'];
 
                         $profile_picture = 'default.png';
@@ -282,6 +282,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                             $changes[] = "profile picture";
 
                             $target_dir = "../uploads/profile_pictures/";
+
                             if (!file_exists($target_dir)) {
                                 mkdir($target_dir, 0777, true);
                             }
@@ -952,7 +953,6 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
                 
                 case 'download_pdf':
-                    // This action is now protected by the CSRF check at the top of the POST block.
                     if (empty($_POST['report_type']) || empty($_POST['start_date']) || empty($_POST['end_date'])) {
                         die('Report type and date range are required to generate a PDF.');
                     }
@@ -960,74 +960,74 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     header_remove('Content-Type');
             
                     generatePdfReport($conn, $_POST['report_type'], $_POST['start_date'], $_POST['end_date']);
-                    exit(); // Stop script execution after sending the PDF
+                    exit();
 
                 case 'blockIp':
-    if (empty($_POST['ip_address'])) {
-        throw new Exception('IP address is required.');
-    }
-    $ip_address = trim($_POST['ip_address']);
-    $reason = !empty($_POST['reason']) ? trim($_POST['reason']) : null;
+                if (empty($_POST['ip_address'])) {
+                    throw new Exception('IP address is required.');
+                }
+                $ip_address = trim($_POST['ip_address']);
+                $reason = !empty($_POST['reason']) ? trim($_POST['reason']) : null;
 
-    $stmt = $conn->prepare("INSERT INTO ip_blocks (ip_address, reason) VALUES (?, ?)");
-    $stmt->bind_param("ss", $ip_address, $reason);
-    if ($stmt->execute()) {
-        log_activity($conn, $admin_user_id_for_log, 'block_ip', null, "Blocked IP: {$ip_address}");
-        $response = ['success' => true, 'message' => 'IP address blocked successfully.'];
-    } else {
-        throw new Exception('Failed to block IP address. It might already be blocked.');
-    }
-    break;
+                $stmt = $conn->prepare("INSERT INTO ip_blocks (ip_address, reason) VALUES (?, ?)");
+                $stmt->bind_param("ss", $ip_address, $reason);
+                if ($stmt->execute()) {
+                    log_activity($conn, $admin_user_id_for_log, 'block_ip', null, "Blocked IP: {$ip_address}");
+                    $response = ['success' => true, 'message' => 'IP address blocked successfully.'];
+                } else {
+                    throw new Exception('Failed to block IP address. It might already be blocked.');
+                }
+                break;
 
-case 'unblockIp':
-    if (empty($_POST['ip_address'])) {
-        throw new Exception('IP address is required.');
-    }
-    $ip_address = trim($_POST['ip_address']);
+                case 'unblockIp':
+                    if (empty($_POST['ip_address'])) {
+                        throw new Exception('IP address is required.');
+                    }
+                    $ip_address = trim($_POST['ip_address']);
 
-    $stmt = $conn->prepare("DELETE FROM ip_blocks WHERE ip_address = ?");
-    $stmt->bind_param("s", $ip_address);
-    if ($stmt->execute()) {
-        log_activity($conn, $admin_user_id_for_log, 'unblock_ip', null, "Unblocked IP: {$ip_address}");
-        $response = ['success' => true, 'message' => 'IP address unblocked successfully.'];
-    } else {
-        throw new Exception('Failed to unblock IP address.');
-    }
-    break;
-
-case 'updateIpName':
-    if (empty($_POST['ip_address']) || !isset($_POST['name'])) {
-        throw new Exception('IP address and name are required.');
-    }
-    $ip_address = trim($_POST['ip_address']);
-    $name = trim($_POST['name']);
-
-    $stmt = $conn->prepare("UPDATE ip_tracking SET name = ? WHERE ip_address = ?");
-    $stmt->bind_param("ss", $name, $ip_address);
-    if ($stmt->execute()) {
-        log_activity($conn, $admin_user_id_for_log, 'update_ip_name', null, "Updated name for IP {$ip_address} to '{$name}'.");
-        $response = ['success' => true, 'message' => 'IP address name updated successfully.'];
-    } else {
-        throw new Exception('Failed to update IP address name.');
-    }
-    break;
-                    
-            }
-        } elseif (isset($_GET['fetch'])) {
-            $fetch_target = $_GET['fetch'];
-            switch ($fetch_target) {
-
-                case 'active_doctors':
-                    $sql = "SELECT u.id, u.name, d.specialty 
-                            FROM users u 
-                            JOIN doctors d ON u.id = d.user_id 
-                            JOIN roles r ON u.role_id = r.id
-                            WHERE u.is_active = 1 AND r.role_name = 'doctor' 
-                            ORDER BY u.name ASC";
-                    $result = $conn->query($sql);
-                    $data = $result->fetch_all(MYSQLI_ASSOC);
-                    $response = ['success' => true, 'data' => $data];
+                    $stmt = $conn->prepare("DELETE FROM ip_blocks WHERE ip_address = ?");
+                    $stmt->bind_param("s", $ip_address);
+                    if ($stmt->execute()) {
+                        log_activity($conn, $admin_user_id_for_log, 'unblock_ip', null, "Unblocked IP: {$ip_address}");
+                        $response = ['success' => true, 'message' => 'IP address unblocked successfully.'];
+                    } else {
+                        throw new Exception('Failed to unblock IP address.');
+                    }
                     break;
+
+                case 'updateIpName':
+                    if (empty($_POST['ip_address']) || !isset($_POST['name'])) {
+                        throw new Exception('IP address and name are required.');
+                    }
+                    $ip_address = trim($_POST['ip_address']);
+                    $name = trim($_POST['name']);
+
+                    $stmt = $conn->prepare("UPDATE ip_tracking SET name = ? WHERE ip_address = ?");
+                    $stmt->bind_param("ss", $name, $ip_address);
+                    if ($stmt->execute()) {
+                        log_activity($conn, $admin_user_id_for_log, 'update_ip_name', null, "Updated name for IP {$ip_address} to '{$name}'.");
+                        $response = ['success' => true, 'message' => 'IP address name updated successfully.'];
+                    } else {
+                        throw new Exception('Failed to update IP address name.');
+                    }
+                    break;
+                    
+                    }
+                } elseif (isset($_GET['fetch'])) {
+                    $fetch_target = $_GET['fetch'];
+                    switch ($fetch_target) {
+
+                        case 'active_doctors':
+                            $sql = "SELECT u.id, u.name, d.specialty 
+                                    FROM users u 
+                                    JOIN doctors d ON u.id = d.user_id 
+                                    JOIN roles r ON u.role_id = r.id
+                                    WHERE u.is_active = 1 AND r.role_name = 'doctor' 
+                                    ORDER BY u.name ASC";
+                            $result = $conn->query($sql);
+                            $data = $result->fetch_all(MYSQLI_ASSOC);
+                            $response = ['success' => true, 'data' => $data];
+                            break;
 
                 case 'available_accommodations':
                     $type = $_GET['type'] ?? 'bed'; // default to bed
@@ -1049,7 +1049,6 @@ case 'updateIpName':
                     break;
 
                 case 'unassigned_patients':
-                    // Fetches users who are not currently occupying any accommodation
                     $sql = "SELECT u.id, u.name, u.display_user_id 
                             FROM users u
                             LEFT JOIN accommodations a ON u.id = a.patient_id AND a.status = 'occupied'
@@ -1633,9 +1632,9 @@ function generatePdfReport($conn, $reportType, $startDate, $endDate) {
         <meta charset="UTF-8">
         <title>Report</title>
         <style>
-            @page { margin: 20px; }
-            body { font-family: "Poppins", sans-serif; color: #333; }
-            .header { position: fixed; top: 0; left: 0; right: 0; width: 100%; height: 120px; }
+            @page { margin: 130px 20px 20px 20px; }
+            body { font-family: "DejaVu Sans", sans-serif; color: #333; }
+            .header { position: fixed; top: -110px; left: 0; right: 0; width: 100%; height: 120px; }
             .medsync-logo { position: absolute; top: 10px; left: 20px; }
             .medsync-logo img { width: 80px; } /* <-- Reduced size */
             .hospital-logo { position: absolute; top: 10px; right: 20px; }
@@ -1643,7 +1642,7 @@ function generatePdfReport($conn, $reportType, $startDate, $endDate) {
             .hospital-details { text-align: center; margin-top: 0; }
             .hospital-details h2 { margin: 0; font-size: 1.5em; color: #007BFF; }
             .hospital-details p { margin: 2px 0; font-size: 0.85em; }
-            .report-title { text-align: center; margin-top: 130px; margin-bottom: 20px; }
+            .report-title { text-align: center; margin-top: 0; margin-bottom: 20px; }
             .report-title h1 { margin: 0; font-size: 1.8em; }
             .report-title p { margin: 5px 0 0 0; font-size: 1em; color: #666; }
             .data-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }

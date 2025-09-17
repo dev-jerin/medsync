@@ -7,6 +7,9 @@
  * - It fetches doctor profile data for the frontend.
  * - It includes AJAX handlers for updating personal info, managing bed occupancy, and fetching audit logs.
  * - NEW: Includes handlers for managing Lab Results and Messenger.
+ * - NEW: Includes handler for My Patients page.
+ * - NEW: Includes handlers for Admissions.
+ * - NEW: Includes handlers for Prescriptions (get, search, add).
  */
 require_once '../config.php'; // Contains the database connection ($conn)
 
@@ -98,17 +101,196 @@ if (!isset($_REQUEST['action'])) {
 
 
 // --- AJAX Request Handler ---
-if (isset($_REQUEST['action'])) {
+// MODIFIED: This block now correctly handles both standard requests and JSON POST requests
+if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') !== false) {
     
     header('Content-Type: application/json');
     $current_user_id = $_SESSION['user_id'];
+    
+    $action = $_REQUEST['action'] ?? null;
+    $input = [];
+
+    // If it's a JSON request, decode the body and get the action from there
+    if (strpos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') !== false) {
+        $input = json_decode(file_get_contents('php://input'), true);
+        // If an action is set in the JSON body, it takes precedence
+        $action = $input['action'] ?? $action; 
+    }
+
+    // ==========================================================
+    // --- START: ADMISSIONS ACTIONS ---
+    // ==========================================================
+    
+    if ($action == 'get_admissions') {
+        $admissions = [];
+        $sql = "
+            SELECT 
+                adm.id,
+                p.name AS patient_name,
+                p.display_user_id,
+                adm.admission_date,
+                CASE
+                    WHEN acc.type = 'room' THEN CONCAT('Room ', acc.number)
+                    ELSE CONCAT(w.name, ' - Bed ', acc.number)
+                END AS room_bed,
+                IF(adm.discharge_date IS NULL, 'Active', 'Discharged') AS status
+            FROM admissions adm
+            JOIN users p ON adm.patient_id = p.id
+            LEFT JOIN accommodations acc ON adm.accommodation_id = acc.id
+            LEFT JOIN wards w ON acc.ward_id = w.id
+            WHERE adm.doctor_id = ?
+            ORDER BY adm.admission_date DESC
+        ";
+        
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $current_user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result) {
+            $admissions = $result->fetch_all(MYSQLI_ASSOC);
+        }
+        $stmt->close();
+        
+        echo json_encode(['success' => true, 'data' => $admissions]);
+        exit();
+    }
+
+    if ($action == 'get_available_accommodations') {
+        $accommodations = [];
+        $sql = "
+            SELECT 
+                acc.id,
+                CASE
+                    WHEN acc.type = 'room' THEN CONCAT('Room ', acc.number)
+                    ELSE CONCAT(w.name, ' - Bed ', acc.number)
+                END AS identifier
+            FROM accommodations acc
+            LEFT JOIN wards w ON acc.ward_id = w.id
+            WHERE acc.status = 'available'
+            ORDER BY identifier ASC
+        ";
+        $result = $conn->query($sql);
+        if ($result) {
+            $accommodations = $result->fetch_all(MYSQLI_ASSOC);
+        }
+        
+        echo json_encode(['success' => true, 'data' => $accommodations]);
+        exit();
+    }
+
+    if ($action == 'admit_patient' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $patient_id = (int)$_POST['patient_id'];
+        $accommodation_id = (int)$_POST['accommodation_id'];
+        // Note: admission_notes are not in your DB schema for admissions, but good practice to have.
+        // We will log it instead.
+        $notes = trim($_POST['notes'] ?? 'No notes provided.');
+
+        if (empty($patient_id) || empty($accommodation_id)) {
+            echo json_encode(['success' => false, 'message' => 'Patient and Bed are required.']);
+            exit();
+        }
+
+        $conn->begin_transaction();
+        try {
+            // 1. Create the admission record
+            $stmt_adm = $conn->prepare("INSERT INTO admissions (patient_id, doctor_id, accommodation_id, admission_date) VALUES (?, ?, ?, NOW())");
+            $stmt_adm->bind_param("iii", $patient_id, $current_user_id, $accommodation_id);
+            $stmt_adm->execute();
+            $admission_id = $conn->insert_id;
+            $stmt_adm->close();
+
+            // 2. Update the accommodation status
+            $stmt_acc = $conn->prepare("UPDATE accommodations SET status = 'occupied', patient_id = ?, doctor_id = ?, occupied_since = NOW() WHERE id = ? AND status = 'available'");
+            $stmt_acc->bind_param("iii", $patient_id, $current_user_id, $accommodation_id);
+            $stmt_acc->execute();
+
+            // Check if the bed was actually updated (prevents race conditions)
+            if ($stmt_acc->affected_rows === 0) {
+                throw new Exception('Selected bed is no longer available. Please choose another one.');
+            }
+            $stmt_acc->close();
+
+            // 3. Log the activity
+            log_activity($conn, $current_user_id, 'Patient Admitted', $patient_id, "Admission ID: {$admission_id}. Notes: {$notes}");
+            
+            $conn->commit();
+            echo json_encode(['success' => true, 'message' => 'Patient admitted successfully.']);
+
+        } catch (Exception $e) {
+            $conn->rollback();
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit();
+    }
+    
+    // ==========================================================
+    // --- END: ADMISSIONS ACTIONS ---
+    // ==========================================================
+
+    // ==========================================================
+    // --- START: APPOINTMENTS ACTIONS ---
+    // ==========================================================
+
+    if ($action == 'get_appointments') {
+        // Default to fetching today's appointments if no period is specified
+        $period = $_GET['period'] ?? 'today'; 
+        
+        $sql = "
+            SELECT 
+                a.id,
+                a.appointment_date,
+                a.status,
+                a.token_number,
+                p.name AS patient_name,
+                p.display_user_id AS patient_display_id
+            FROM appointments a
+            JOIN users p ON a.user_id = p.id
+            WHERE a.doctor_id = ? 
+        ";
+
+        // Append date filtering based on the 'period' parameter
+        switch ($period) {
+            case 'upcoming':
+                $sql .= " AND DATE(a.appointment_date) > CURDATE() ORDER BY a.appointment_date ASC";
+                break;
+            case 'past':
+                $sql .= " AND DATE(a.appointment_date) < CURDATE() ORDER BY a.appointment_date DESC";
+                break;
+            case 'today':
+            default:
+                $sql .= " AND DATE(a.appointment_date) = CURDATE() ORDER BY a.appointment_date ASC";
+                break;
+        }
+
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) {
+            // Handle SQL error
+            echo json_encode(['success' => false, 'message' => 'Query preparation failed: ' . $conn->error]);
+            exit();
+        }
+        
+        $stmt->bind_param("i", $current_user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $appointments = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        $stmt->close();
+
+        echo json_encode(['success' => true, 'data' => $appointments]);
+        exit();
+    }
+
+    // ==========================================================
+    // --- END: APPOINTMENTS ACTIONS ---
+    // ==========================================================
+
 
     // ==========================================================
     // --- START: BED MANAGEMENT ACTIONS ---
     // ==========================================================
 
     // Action: Fetch Wards and Rooms for the Bed Management filter
-    if ($_REQUEST['action'] == 'get_locations') {
+    if ($action == 'get_locations') {
         $locations = ['wards' => [], 'rooms' => []];
         
         $ward_result = $conn->query("SELECT id, name FROM wards WHERE is_active = 1 ORDER BY name ASC");
@@ -128,7 +310,7 @@ if (isset($_REQUEST['action'])) {
     }
 
     // Action: Fetch all bed/room occupancy data
-    if ($_REQUEST['action'] == 'get_occupancy_data') {
+    if ($action == 'get_occupancy_data') {
         $occupancy_data = [];
 
         $sql = "
@@ -153,7 +335,7 @@ if (isset($_REQUEST['action'])) {
     }
 
     // Action: Update status for a bed or room in 'accommodations' table
-    if ($_REQUEST['action'] == 'update_location_status' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ($action == 'update_location_status' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
         $type = isset($_POST['type']) ? $_POST['type'] : ''; 
         $new_status = isset($_POST['status']) ? $_POST['status'] : '';
@@ -182,8 +364,163 @@ if (isset($_REQUEST['action'])) {
     // --- END: BED MANAGEMENT ACTIONS ---
     // ==========================================================
 
+    // ==========================================================
+    // --- START: MY PATIENTS ACTIONS ---
+    // ==========================================================
+
+    if ($action == 'get_my_patients') {
+        $patients = [];
+        // This complex query retrieves all unique patients associated with the current doctor
+        // from admissions, appointments, prescriptions, and lab results.
+        // It then LEFT JOINs to find the patient's current status (In-Patient/Out-Patient)
+        // and their assigned bed/room if they are admitted.
+        $sql = "
+            SELECT DISTINCT
+                u.id,
+                u.display_user_id,
+                u.name,
+                IF(adm.id IS NOT NULL, 'In-Patient', 'Out-Patient') AS status,
+                CASE
+                    WHEN acc.id IS NOT NULL THEN 
+                        IF(acc.type = 'room', acc.number, CONCAT(w.name, ' - ', acc.number))
+                    ELSE 'N/A'
+                END AS room_bed
+            FROM users u
+            JOIN (
+                SELECT patient_id FROM admissions WHERE doctor_id = ?
+                UNION
+                SELECT user_id AS patient_id FROM appointments WHERE doctor_id = ?
+                UNION
+                SELECT patient_id FROM prescriptions WHERE doctor_id = ?
+                UNION
+                SELECT patient_id FROM lab_results WHERE doctor_id = ?
+            ) AS doctor_patients ON u.id = doctor_patients.patient_id
+            LEFT JOIN admissions adm ON u.id = adm.patient_id AND adm.discharge_date IS NULL
+            LEFT JOIN accommodations acc ON adm.accommodation_id = acc.id
+            LEFT JOIN wards w ON acc.ward_id = w.id
+            WHERE u.role_id = (SELECT id FROM roles WHERE role_name = 'user')
+            ORDER BY u.name ASC
+        ";
+        
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("iiii", $current_user_id, $current_user_id, $current_user_id, $current_user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result) {
+            $patients = $result->fetch_all(MYSQLI_ASSOC);
+        }
+        $stmt->close();
+        
+        echo json_encode(['success' => true, 'data' => $patients]);
+        exit();
+    }
+
+    // ==========================================================
+    // --- END: MY PATIENTS ACTIONS ---
+    // ==========================================================
+
+    // ==========================================================
+    // --- START: PRESCRIPTIONS ACTIONS ---
+    // ==========================================================
+
+    if ($action == 'get_prescriptions') {
+        $prescriptions = [];
+        $sql = "
+            SELECT 
+                pr.id,
+                p.name AS patient_name,
+                pr.prescription_date,
+                pr.status
+            FROM prescriptions pr
+            JOIN users p ON pr.patient_id = p.id
+            WHERE pr.doctor_id = ?
+            ORDER BY pr.prescription_date DESC
+        ";
+
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $current_user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result) {
+            $prescriptions = $result->fetch_all(MYSQLI_ASSOC);
+        }
+        $stmt->close();
+        
+        echo json_encode(['success' => true, 'data' => $prescriptions]);
+        exit();
+    }
+
+    if ($action == 'search_medicines' && isset($_GET['term'])) {
+        $term = '%' . $_GET['term'] . '%';
+        $medicines = [];
+        
+        // Return only medicines that are in stock
+        $stmt = $conn->prepare("SELECT id, name, quantity FROM medicines WHERE name LIKE ? AND quantity > 0 LIMIT 10");
+        $stmt->bind_param("s", $term);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result) {
+            $medicines = $result->fetch_all(MYSQLI_ASSOC);
+        }
+        $stmt->close();
+        
+        echo json_encode(['success' => true, 'data' => $medicines]);
+        exit();
+    }
+
+    // MODIFIED: Uses the new $action variable and the pre-decoded $input array
+    if ($action == 'add_prescription' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $patient_id = (int)($input['patient_id'] ?? 0);
+        $notes = trim($input['notes'] ?? '');
+        $items = $input['items'] ?? [];
+
+        if (empty($patient_id) || empty($items)) {
+            echo json_encode(['success' => false, 'message' => 'Patient and at least one medication are required.']);
+            exit();
+        }
+
+        $conn->begin_transaction();
+        try {
+            // 1. Create the main prescription record
+            $stmt_pr = $conn->prepare("INSERT INTO prescriptions (patient_id, doctor_id, prescription_date, notes, status) VALUES (?, ?, CURDATE(), ?, 'pending')");
+            $stmt_pr->bind_param("iis", $patient_id, $current_user_id, $notes);
+            $stmt_pr->execute();
+            $prescription_id = $conn->insert_id;
+            $stmt_pr->close();
+
+            // 2. Insert each prescribed item
+            $stmt_item = $conn->prepare("INSERT INTO prescription_items (prescription_id, medicine_id, dosage, frequency, quantity_prescribed) VALUES (?, ?, ?, ?, ?)");
+            foreach ($items as $item) {
+                $medicine_id = (int)$item['medicine_id'];
+                $dosage = trim($item['dosage']);
+                $frequency = trim($item['frequency']);
+                $quantity = (int)$item['quantity'];
+
+                $stmt_item->bind_param("iissi", $prescription_id, $medicine_id, $dosage, $frequency, $quantity);
+                $stmt_item->execute();
+            }
+            $stmt_item->close();
+
+            $conn->commit();
+            log_activity($conn, $current_user_id, 'Prescription Issued', $patient_id, "Prescription ID: {$prescription_id}");
+            echo json_encode(['success' => true, 'message' => 'Prescription created successfully!']);
+
+        } catch (Exception $e) {
+            $conn->rollback();
+            echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
+        }
+        exit();
+    }
+
+    // ==========================================================
+    // --- END: PRESCRIPTIONS ACTIONS ---
+    // ==========================================================
+    
     // Action: Update doctor's personal information
-    if ($_REQUEST['action'] == 'update_personal_info' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ($action == 'update_personal_info' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = trim($_POST['name'] ?? '');
         $email = trim($_POST['email'] ?? '');
         $phone = trim($_POST['phone'] ?? '');
@@ -230,7 +567,7 @@ if (isset($_REQUEST['action'])) {
     }
     
     // Action: Fetch audit log for the current doctor
-    if ($_REQUEST['action'] == 'get_audit_log') {
+    if ($action == 'get_audit_log') {
         $audit_logs = [];
         $sql = "
             SELECT 
@@ -261,7 +598,7 @@ if (isset($_REQUEST['action'])) {
     }
 
     // Action: Search for users to message
-    if ($_REQUEST['action'] == 'searchUsers') {
+    if ($action == 'searchUsers') {
         if (!isset($_GET['term'])) {
             echo json_encode(['success' => false, 'message' => 'Search term is required.']);
             exit();
@@ -283,7 +620,7 @@ if (isset($_REQUEST['action'])) {
     }
 
     // Action: Fetch conversations
-    if ($_REQUEST['action'] == 'get_conversations') {
+    if ($action == 'get_conversations') {
         $stmt = $conn->prepare("
             SELECT
                 c.id AS conversation_id,
@@ -308,7 +645,7 @@ if (isset($_REQUEST['action'])) {
     }
 
     // Action: Fetch messages for a conversation
-    if ($_REQUEST['action'] == 'get_messages' && isset($_GET['conversation_id'])) {
+    if ($action == 'get_messages' && isset($_GET['conversation_id'])) {
         $conversation_id = (int)$_GET['conversation_id'];
         // Mark messages as read
         $update_stmt = $conn->prepare("UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND receiver_id = ?");
@@ -325,7 +662,7 @@ if (isset($_REQUEST['action'])) {
     }
 
     // Action: Send a new message
-    if ($_REQUEST['action'] == 'send_message' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ($action == 'send_message' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $receiver_id = (int)$_POST['receiver_id'];
         $message_text = trim($_POST['message_text']);
 
@@ -378,7 +715,7 @@ if (isset($_REQUEST['action'])) {
     // ==========================================================
 
     // Action: Get all lab results for display in the table
-    if ($_REQUEST['action'] == 'get_lab_results') {
+    if ($action == 'get_lab_results') {
         $sql = "SELECT
                     lr.id,
                     lr.test_name,
@@ -402,7 +739,7 @@ if (isset($_REQUEST['action'])) {
     }
 
     // Action: Get detailed information for a single lab report (for viewing modal)
-    if ($_REQUEST['action'] == 'get_lab_report_details' && isset($_GET['id'])) {
+    if ($action == 'get_lab_report_details' && isset($_GET['id'])) {
         $report_id = (int)$_GET['id'];
         $sql = "SELECT 
                     lr.*, 
@@ -430,7 +767,7 @@ if (isset($_REQUEST['action'])) {
     }
 
     // Action: Get a list of patients for dropdowns
-    if ($_REQUEST['action'] == 'get_patients_for_dropdown') {
+    if ($action == 'get_patients_for_dropdown') {
         $sql = "SELECT id, display_user_id, name FROM users WHERE role_id = (SELECT id FROM roles WHERE role_name = 'user') AND is_active = 1 ORDER BY name ASC";
         $result = $conn->query($sql);
         $patients = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
@@ -439,7 +776,7 @@ if (isset($_REQUEST['action'])) {
     }
 
     // Action: Add a new lab result (handles file upload)
-    if ($_REQUEST['action'] == 'add_lab_result' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ($action == 'add_lab_result' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $patient_id = (int)$_POST['patient_id'];
         $test_name = trim($_POST['test_name']);
         $test_date = !empty($_POST['test_date']) ? $_POST['test_date'] : date('Y-m-d');

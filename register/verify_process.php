@@ -167,7 +167,7 @@ try {
         // Clean up session and redirect to login with a success message
         unset($_SESSION['registration_data']);
         $_SESSION['register_success'] = "Registration successful! Your User ID is " . $display_user_id . ". You can now log in.";
-        header("Location: index.php");
+        header("Location: ../login");
         exit();
 
     } else {

@@ -1,15 +1,13 @@
 <?php
 /**
- * Processes registration, handles file upload, and sends OTP.
- *
- * UPDATED for new schema: Now prepares 'role_id' instead of a role string.
+ * Processes registration, validates data, handles file upload, and sends OTP.
  */
 
 // --- PHPMailer Inclusion ---
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-require '../vendor/autoload.php'; // Use Composer's autoload
+require '../vendor/autoload.php';
 require_once '../config.php';
 require_once 'otp_email_template.php';
 
@@ -34,30 +32,45 @@ $date_of_birth = trim($_POST['date_of_birth']);
 $gender = trim($_POST['gender']);
 $password = $_POST['password'];
 $confirm_password = $_POST['confirm_password'];
+$role_id = 1; // 'user' role has an ID of 1 in the schema.
 
-// **MODIFICATION**: Set role_id directly. 'user' role has an ID of 1 in the new schema.
-$role_id = 1;
-
-// --- Server-Side Validation ---
+// --- Final Server-Side Validation ---
+$errors = [];
+// Required fields check
 if (empty($name) || empty($username) || empty($email) || empty($phone) || empty($date_of_birth) || empty($gender) || empty($password)) {
-    $_SESSION['register_error'] = "All fields are required.";
-    header("Location: index.php");
-    exit();
+    $errors[] = "All fields are required.";
 }
-if ($password !== $confirm_password) {
-    $_SESSION['register_error'] = "Passwords do not match.";
-    header("Location: index.php");
-    exit();
+// Username validation
+if (strlen($username) < 3) {
+    $errors[] = "Username must be at least 3 characters.";
+} elseif (preg_match('/[^\w.]/', $username)) {
+    $errors[] = "Username can only contain letters, numbers, underscores, and dots.";
+} elseif (preg_match('/^(u|a|s|d)\d{4}$/i', $username)) {
+    $errors[] = "This username format is reserved.";
 }
+// Email validation
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    $_SESSION['register_error'] = "Invalid email format.";
+    $errors[] = "Invalid email format.";
+}
+// Phone validation
+if (!preg_match('/^\+91\d{10}$/', $phone)) {
+    $errors[] = "Phone number must be in the format +91 followed by 10 digits.";
+}
+// Password validation
+if (strlen($password) < 6) {
+    $errors[] = "Password must be at least 6 characters long.";
+} elseif ($password !== $confirm_password) {
+    $errors[] = "Passwords do not match.";
+}
+
+if (!empty($errors)) {
+    $_SESSION['register_error'] = implode('<br>', $errors);
     header("Location: index.php");
     exit();
 }
 
 // --- Profile Picture Handling ---
-$profile_picture_filename = 'default.png'; // Default value
-
+$profile_picture_filename = 'default.png';
 if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == UPLOAD_ERR_OK) {
     $upload_dir = '../uploads/profile_pictures/';
     $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
@@ -71,13 +84,12 @@ if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == 
         $file_extension = strtolower(pathinfo($_FILES['profile_picture']['name'], PATHINFO_EXTENSION));
         $new_filename = 'user_' . uniqid('', true) . '.' . $file_extension;
         
-        if (move_uploaded_file($_FILES['profile_picture']['tmp_name'], $upload_dir . $new_filename)) {
-            $profile_picture_filename = $new_filename;
-        } else {
+        if (!move_uploaded_file($_FILES['profile_picture']['tmp_name'], $upload_dir . $new_filename)) {
             $_SESSION['register_error'] = "Could not upload profile picture. Please try again.";
             header("Location: index.php");
             exit();
         }
+        $profile_picture_filename = $new_filename;
     } else {
         $_SESSION['register_error'] = "Invalid file type or size. Please upload a JPG, PNG, or GIF under 2MB.";
         header("Location: index.php");
@@ -85,7 +97,7 @@ if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == 
     }
 }
 
-// --- Check for Existing User ---
+// --- Check for Existing User in Database ---
 $conn = getDbConnection();
 $sql_check = "SELECT id FROM users WHERE username = ? OR email = ?";
 $stmt_check = $conn->prepare($sql_check);
@@ -106,7 +118,6 @@ $stmt_check->close();
 $otp = random_int(100000, 999999);
 $hashed_password = password_hash($password, PASSWORD_BCRYPT);
 
-// **MODIFICATION**: Storing 'role_id' in the session for the verification step.
 $_SESSION['registration_data'] = [
     'name' => $name,
     'username' => $username,
@@ -115,7 +126,7 @@ $_SESSION['registration_data'] = [
     'date_of_birth' => $date_of_birth,
     'gender' => $gender,
     'password' => $hashed_password,
-    'role_id' => $role_id, // Storing role_id instead of role name
+    'role_id' => $role_id,
     'profile_picture' => $profile_picture_filename,
     'otp' => $otp,
     'timestamp' => time()
@@ -123,13 +134,12 @@ $_SESSION['registration_data'] = [
 
 // --- Email OTP using PHPMailer ---
 $mail = new PHPMailer(true);
-
 try {
     $system_email = get_system_setting($conn, 'system_email');
     $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
 
     if (empty($system_email) || empty($gmail_app_password)) {
-        throw new Exception("Mail service is not configured.");
+        throw new Exception("Mail service is not configured in system settings.");
     }
 
     $mail->isSMTP();
@@ -149,7 +159,8 @@ try {
     $mail->AltBody = "Your OTP for MedSync is: $otp. It's valid for 10 minutes.";
 
     $mail->send();
-    header("Location: ../register/verify_otp");
+    $conn->close();
+    header("Location: verify_otp.php");
     exit();
 
 } catch (Exception $e) {
@@ -157,10 +168,10 @@ try {
     if ($profile_picture_filename !== 'default.png') {
         unlink('../uploads/profile_pictures/' . $profile_picture_filename);
     }
-    $_SESSION['register_error'] = "Could not send OTP. Mailer Error: {$mail->ErrorInfo}";
+    error_log("Mailer Error: " . $mail->ErrorInfo); // Log the detailed error for debugging
+    $_SESSION['register_error'] = "Could not send OTP email. Please check the email address and try again.";
+    $conn->close();
     header("Location: index.php");
     exit();
-} finally {
-    $conn->close();
 }
 ?>

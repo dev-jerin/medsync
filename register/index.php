@@ -17,7 +17,6 @@ if (isset($_SESSION['user_id'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create Your Account - MedSync</title>
     
-    <!-- Fonts, Favicon, Icons -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -27,13 +26,9 @@ if (isset($_SESSION['user_id'])) {
     <link rel="manifest" href="../images/favicon/site.webmanifest">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
-    <!-- Stylesheets -->
-    <link rel="stylesheet" href="../main/styles.css"> <!-- Main styles for header/footer -->
-    <link rel="stylesheet" href="styles.css"> <!-- Page-specific styles -->
-</head>
+    <link rel="stylesheet" href="../main/styles.css"> <link rel="stylesheet" href="styles.css"> </head>
 <body>
 
-    <!-- Header -->
     <header class="header" id="header">
         <nav class="container navbar">
             <a href="../index.php" class="logo">
@@ -48,7 +43,6 @@ if (isset($_SESSION['user_id'])) {
 
     <main class="auth-page">
         <div class="auth-container">
-            <!-- Left Panel: Branding & Illustration -->
             <div class="auth-panel">
                 <img src="https://images.unsplash.com/photo-1551601651-2a8555f1a136?q=80&w=2147&auto=format&fit=crop" alt="A friendly male doctor smiling in a modern clinic" class="auth-image">
                 <div class="auth-panel-overlay">
@@ -57,7 +51,6 @@ if (isset($_SESSION['user_id'])) {
                 </div>
             </div>
 
-            <!-- Right Panel: Registration Form -->
             <div class="auth-form-wrapper">
                 <div class="auth-form-container">
                     <div class="auth-header">
@@ -67,7 +60,7 @@ if (isset($_SESSION['user_id'])) {
 
                     <?php
                     if (isset($_SESSION['register_error'])) {
-                        echo '<div class="message-box error-message">' . htmlspecialchars($_SESSION['register_error']) . '</div>';
+                        echo '<div class="message-box error-message">' . $_SESSION['register_error'] . '</div>';
                         unset($_SESSION['register_error']);
                     }
                     ?>
@@ -75,7 +68,6 @@ if (isset($_SESSION['user_id'])) {
                     <form id="registerForm" action="register_process.php" method="POST" enctype="multipart/form-data">
                         <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
 
-                        <!-- Profile Picture Uploader -->
                         <div class="form-group profile-picture-uploader">
                             <label for="profile_picture_input">Profile Picture</label>
                             <div class="profile-picture-container">
@@ -103,8 +95,9 @@ if (isset($_SESSION['user_id'])) {
                         </div>
 
                         <div class="form-group">
-                            <input type="tel" id="phone" name="phone" class="form-control" placeholder=" " pattern="\+[0-9]{10,15}" title="Format: +911234567890" required>
+                            <input type="tel" id="phone" name="phone" class="form-control" placeholder=" " pattern="\+91[0-9]{10}" title="Format: +911234567890" required>
                             <label for="phone" class="form-label">Phone Number (e.g., +91...)</label>
+                            <div id="phone-message" class="availability-message"></div>
                         </div>
 
                         <div class="form-group-row">
@@ -127,9 +120,9 @@ if (isset($_SESSION['user_id'])) {
                             <input type="password" id="password" name="password" class="form-control" placeholder=" " required>
                             <label for="password" class="form-label">Password</label>
                             <i class="fa fa-eye-slash password-toggle-icon" id="togglePassword"></i>
+                            <div id="password-message" class="availability-message"></div>
                         </div>
                         
-                        <!-- Password Strength Indicator -->
                         <div class="password-strength-container">
                             <div id="password-strength-meter">
                                 <div id="password-strength-bar"></div>
@@ -140,6 +133,7 @@ if (isset($_SESSION['user_id'])) {
                         <div class="form-group password-group">
                             <input type="password" id="confirm_password" name="confirm_password" class="form-control" placeholder=" " required>
                             <label for="confirm_password" class="form-label">Confirm Password</label>
+                            <div class="availability-message"></div>
                         </div>
                         
                         <button type="submit" class="btn btn-primary btn-full-width">Create Account</button>

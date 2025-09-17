@@ -10,6 +10,65 @@ document.addEventListener("DOMContentLoaded", function() {
     let patientListCache = null;
 
     // ===================================================================
+    // --- My Patients Page Logic ---
+    // ===================================================================
+    let allPatientsData = []; // Cache for client-side filtering
+
+    async function loadMyPatients() {
+        const tableBody = document.querySelector('#patients-table tbody');
+        if (!tableBody) return;
+        tableBody.innerHTML = `<tr><td colspan="5" class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading your patients...</td></tr>`;
+
+        try {
+            const response = await fetch('api.php?action=get_my_patients');
+            const result = await response.json();
+
+            tableBody.innerHTML = '';
+            if (result.success && result.data.length > 0) {
+                allPatientsData = result.data; // Cache the data
+                renderPatientsTable(allPatientsData);
+            } else {
+                tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 2rem;">No patients found.</td></tr>`;
+            }
+        } catch (error) {
+            console.error("Error loading patients:", error);
+            tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--danger-color);">Failed to load patient data.</td></tr>`;
+        }
+    }
+
+    function renderPatientsTable(patientsToRender) {
+        const tableBody = document.querySelector('#patients-table tbody');
+        tableBody.innerHTML = '';
+        patientsToRender.forEach(patient => {
+            const statusClass = patient.status.toLowerCase().replace(' ', '-');
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td data-label="Patient ID">${patient.display_user_id}</td>
+                <td data-label="Name">${patient.name}</td>
+                <td data-label="Status"><span class="status ${statusClass}">${patient.status}</span></td>
+                <td data-label="Room/Bed">${patient.room_bed}</td>
+                <td data-label="Actions">
+                    <button class="action-btn view-record" data-id="${patient.id}"><i class="fas fa-file-medical"></i> View Record</button>
+                </td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    }
+
+    function filterPatients() {
+        const searchTerm = document.getElementById('patient-search').value.toLowerCase();
+        const statusFilter = document.getElementById('patient-status-filter').value;
+
+        const filteredPatients = allPatientsData.filter(patient => {
+            const nameMatch = patient.name.toLowerCase().includes(searchTerm) || patient.display_user_id.toLowerCase().includes(searchTerm);
+            const statusMatch = (statusFilter === 'all') || (patient.status.toLowerCase().replace(' ', '-') === statusFilter);
+            return nameMatch && statusMatch;
+        });
+
+        renderPatientsTable(filteredPatients);
+    }
+
+    // ===================================================================
     // --- Lab Results Page Logic ---
     // ===================================================================
     async function loadLabResults() {
@@ -63,6 +122,349 @@ document.addEventListener("DOMContentLoaded", function() {
             tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--danger-color);">Failed to load lab results.</td></tr>`;
         }
     }
+    
+    // ===================================================================
+    // --- Admissions Page Logic ---
+    // ===================================================================
+    let allAdmissionsData = []; // Cache for client-side filtering
+
+    async function loadAdmissions() {
+        const tableBody = document.querySelector('#admissions-table tbody');
+        if (!tableBody) return;
+        tableBody.innerHTML = `<tr><td colspan="6" class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading admissions...</td></tr>`;
+
+        try {
+            const response = await fetch('api.php?action=get_admissions');
+            const result = await response.json();
+
+            if (result.success) {
+                allAdmissionsData = result.data;
+                renderAdmissionsTable(allAdmissionsData);
+            } else {
+                tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">${result.message || 'No admissions found.'}</td></tr>`;
+            }
+        } catch (error) {
+            console.error("Error loading admissions:", error);
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger-color);">Failed to load admissions data.</td></tr>`;
+        }
+    }
+
+    function renderAdmissionsTable(admissionsToRender) {
+        const tableBody = document.querySelector('#admissions-table tbody');
+        tableBody.innerHTML = '';
+        if (admissionsToRender.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No admissions found.</td></tr>`;
+            return;
+        }
+
+        admissionsToRender.forEach(adm => {
+            const tr = document.createElement('tr');
+            const admissionDate = new Date(adm.admission_date).toLocaleString();
+            tr.innerHTML = `
+                <td data-label="Adm. ID">ADM-${adm.id}</td>
+                <td data-label="Patient Name">${adm.patient_name} (${adm.display_user_id})</td>
+                <td data-label="Room/Bed">${adm.room_bed}</td>
+                <td data-label="Adm. Date">${admissionDate}</td>
+                <td data-label="Status"><span class="status ${adm.status === 'Active' ? 'in-patient' : 'completed'}">${adm.status}</span></td>
+                <td data-label="Actions">
+                    <button class="action-btn" data-id="${adm.id}"><i class="fas fa-file-medical"></i> View</button>
+                    <button class="action-btn danger" data-id="${adm.id}"><i class="fas fa-sign-out-alt"></i> Discharge</button>
+                </td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    }
+
+    // Function to handle the "Admit Patient" modal opening
+    async function openAdmitPatientModal() {
+        const form = document.getElementById('admit-patient-form');
+        form.reset();
+
+        const patientSelect = document.getElementById('patient-select-admit');
+        const bedSelect = document.getElementById('bed-select-admit');
+        patientSelect.innerHTML = '<option value="">Loading...</option>';
+        bedSelect.innerHTML = '<option value="">Loading...</option>';
+        
+        openModalById('admit-patient-modal-overlay');
+
+        try {
+            // Re-use patient cache logic
+            if (!patientListCache) {
+                const response = await fetch('api.php?action=get_patients_for_dropdown');
+                const result = await response.json();
+                if (result.success) patientListCache = result.data;
+            }
+            patientSelect.innerHTML = '<option value="">-- Choose a patient --</option>';
+            patientListCache.forEach(p => {
+                patientSelect.innerHTML += `<option value="${p.id}">${p.display_user_id} - ${p.name}</option>`;
+            });
+
+            // Fetch available beds
+            const bedsResponse = await fetch('api.php?action=get_available_accommodations');
+            const bedsResult = await bedsResponse.json();
+            if (bedsResult.success) {
+                bedSelect.innerHTML = '<option value="">-- Select an available bed --</option>';
+                bedsResult.data.forEach(bed => {
+                    bedSelect.innerHTML += `<option value="${bed.id}">${bed.identifier}</option>`;
+                });
+            } else {
+                 bedSelect.innerHTML = '<option value="">Could not load beds</option>';
+            }
+        } catch (error) {
+            console.error('Failed to populate modal:', error);
+            patientSelect.innerHTML = '<option value="">Error loading patients</option>';
+            bedSelect.innerHTML = '<option value="">Error loading beds</option>';
+        }
+    }
+    
+    // ===================================================================
+    // --- Prescriptions Page Logic (NEW / REFACTORED) ---
+    // ===================================================================
+    let allPrescriptionsData = []; // Cache for client-side filtering
+
+    async function loadPrescriptions() {
+        const tableBody = document.querySelector('#prescriptions-table tbody');
+        if (!tableBody) return;
+        tableBody.innerHTML = `<tr><td colspan="5" class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading prescriptions...</td></tr>`;
+
+        try {
+            const response = await fetch('api.php?action=get_prescriptions');
+            const result = await response.json();
+
+            if (result.success) {
+                allPrescriptionsData = result.data; // Cache the data
+                renderPrescriptionsTable(allPrescriptionsData);
+            } else {
+                tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">No prescriptions found.</td></tr>`;
+            }
+        } catch (error) {
+            console.error("Error loading prescriptions:", error);
+            tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--danger-color);">Failed to load data.</td></tr>`;
+        }
+    }
+
+    function renderPrescriptionsTable(prescriptionsToRender) {
+        const tableBody = document.querySelector('#prescriptions-table tbody');
+        tableBody.innerHTML = '';
+        if (prescriptionsToRender.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">No matching prescriptions found.</td></tr>`;
+            return;
+        }
+
+        prescriptionsToRender.forEach(rx => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td data-label="Rx ID">RX-${rx.id}</td>
+                <td data-label="Patient">${rx.patient_name}</td>
+                <td data-label="Date Issued">${rx.prescription_date}</td>
+                <td data-label="Status"><span class="status ${rx.status.toLowerCase()}">${rx.status}</span></td>
+                <td data-label="Actions">
+                    <button class="action-btn view-prescription" data-id="${rx.id}"><i class="fas fa-eye"></i> View</button>
+                    <button class="action-btn" data-id="${rx.id}"><i class="fas fa-share-square"></i> Share</button>
+                </td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    }
+
+    function filterPrescriptions() {
+        const searchTerm = document.getElementById('prescription-search').value.toLowerCase();
+        const dateFilter = document.getElementById('prescription-date-filter').value;
+
+        const filteredData = allPrescriptionsData.filter(rx => {
+            const searchMatch = rx.patient_name.toLowerCase().includes(searchTerm) ||
+                                `rx-${rx.id}`.includes(searchTerm.toLowerCase());
+            
+            const dateMatch = (dateFilter === '') || (rx.prescription_date === dateFilter);
+
+            return searchMatch && dateMatch;
+        });
+
+        renderPrescriptionsTable(filteredData);
+    }
+    
+    // --- Create Prescription Modal Logic (NEW / REFACTORED) ---
+    const createPrescriptionBtn = document.getElementById('create-prescription-btn');
+    const prescriptionModal = document.getElementById('prescription-modal-overlay');
+    
+    if (createPrescriptionBtn) {
+        const rowsContainer = document.getElementById('medication-rows-container');
+        const addRowBtn = document.getElementById('add-medication-row-btn');
+        let searchTimeout;
+    
+        // Function to create and return the HTML for a new medication row
+        function createMedicationRowHtml() {
+            return `
+                <div class="medication-row">
+                    <input type="hidden" class="medicine-id-input">
+                    <div class="form-group med-search-group">
+                        <label>Medication</label>
+                        <input type="text" class="medicine-name-search" placeholder="Type to search..." autocomplete="off" required>
+                        <div class="search-results-dropdown"></div>
+                    </div>
+                    <div class="form-group dosage-group">
+                        <label>Dosage</label>
+                        <input type="text" class="dosage-input" placeholder="e.g., 500mg" required>
+                    </div>
+                    <div class="form-group frequency-group">
+                        <label>Frequency</label>
+                        <input type="text" class="frequency-input" placeholder="e.g., Twice a day" required>
+                    </div>
+                    <div class="form-group quantity-group">
+                        <label>Qty</label>
+                        <input type="number" class="quantity-input" value="1" min="1" required>
+                    </div>
+                    <button type="button" class="remove-med-row-btn">&times;</button>
+                </div>
+            `;
+        }
+    
+        // Function to add a new row to the container
+        function addMedicationRow() {
+            rowsContainer.insertAdjacentHTML('beforeend', createMedicationRowHtml());
+        }
+    
+        // 1. Open Modal and set up the initial state
+        createPrescriptionBtn.addEventListener('click', async () => {
+            const form = document.getElementById('prescription-form');
+            form.reset();
+            rowsContainer.innerHTML = ''; // Clear previous rows
+            addMedicationRow(); // Add the first row automatically
+            
+            const patientSelect = document.getElementById('patient-select-presc');
+            patientSelect.innerHTML = '<option value="">Loading...</option>';
+            openModalById('prescription-modal-overlay');
+    
+            if (!patientListCache) { // Use the global patient cache
+                const response = await fetch('api.php?action=get_patients_for_dropdown');
+                const result = await response.json();
+                if (result.success) patientListCache = result.data;
+            }
+            patientSelect.innerHTML = '<option value="">-- Choose a patient --</option>';
+            patientListCache.forEach(p => {
+                patientSelect.innerHTML += `<option value="${p.id}">${p.display_user_id} - ${p.name}</option>`;
+            });
+        });
+    
+        // 2. Add a new medication row when the button is clicked
+        addRowBtn.addEventListener('click', addMedicationRow);
+    
+        // 3. Use event delegation for actions within the rows container
+        rowsContainer.addEventListener('click', (e) => {
+            // Handle removing a row
+            if (e.target.classList.contains('remove-med-row-btn')) {
+                e.target.closest('.medication-row').remove();
+                if (rowsContainer.children.length === 0) {
+                    addMedicationRow(); // Always ensure at least one row exists
+                }
+            }
+    
+            // Handle selecting a medicine from the search results
+            if (e.target.classList.contains('search-result-item')) {
+                const row = e.target.closest('.medication-row');
+                row.querySelector('.medicine-id-input').value = e.target.dataset.medId;
+                row.querySelector('.medicine-name-search').value = e.target.dataset.medName;
+                row.querySelector('.search-results-dropdown').classList.remove('active');
+            }
+        });
+    
+        // 4. Handle the search input using event delegation
+        rowsContainer.addEventListener('input', (e) => {
+            if (e.target.classList.contains('medicine-name-search')) {
+                const inputField = e.target;
+                const resultsDropdown = inputField.nextElementSibling;
+                clearTimeout(searchTimeout);
+    
+                const term = inputField.value.trim();
+                if (term.length < 2) {
+                    resultsDropdown.classList.remove('active');
+                    return;
+                }
+    
+                searchTimeout = setTimeout(async () => {
+                    const response = await fetch(`api.php?action=search_medicines&term=${encodeURIComponent(term)}`);
+                    const result = await response.json();
+                    resultsDropdown.innerHTML = '';
+                    if (result.success && result.data.length > 0) {
+                        result.data.forEach(med => {
+                            const item = document.createElement('div');
+                            item.className = 'search-result-item';
+                            item.innerHTML = `${med.name} <small>(Stock: ${med.quantity})</small>`;
+                            item.dataset.medId = med.id;
+                            item.dataset.medName = med.name;
+                            resultsDropdown.appendChild(item);
+                        });
+                        resultsDropdown.classList.add('active');
+                    } else {
+                        resultsDropdown.classList.remove('active');
+                    }
+                }, 300);
+            }
+        });
+    
+        // Hide search results dropdowns when clicking elsewhere
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.med-search-group')) {
+                document.querySelectorAll('.search-results-dropdown').forEach(d => d.classList.remove('active'));
+            }
+        });
+    
+        // 5. Handle the final form submission
+        document.getElementById('prescription-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const saveButton = document.getElementById('modal-save-btn-presc');
+            
+            const prescriptionData = {
+                patient_id: document.getElementById('patient-select-presc').value,
+                notes: document.getElementById('notes-presc').value,
+                items: []
+            };
+    
+            // Gather data from each medication row
+            document.querySelectorAll('.medication-row').forEach(row => {
+                const medicineId = row.querySelector('.medicine-id-input').value;
+                if (medicineId) { // Only add rows where a medicine has been selected
+                    prescriptionData.items.push({
+                        medicine_id: medicineId,
+                        dosage: row.querySelector('.dosage-input').value,
+                        frequency: row.querySelector('.frequency-input').value,
+                        quantity: row.querySelector('.quantity-input').value,
+                    });
+                }
+            });
+    
+            if (!prescriptionData.patient_id || prescriptionData.items.length === 0) {
+                alert('Please select a patient and add at least one valid medication.');
+                return;
+            }
+    
+            saveButton.disabled = true;
+            saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
+    
+            try {
+                const response = await fetch('api.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'add_prescription', ...prescriptionData })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    alert(result.message);
+                    prescriptionModal.classList.remove('active');
+                    loadPrescriptions(); // Refresh the main table
+                } else {
+                    alert(`Error: ${result.message}`);
+                }
+            } catch (error) {
+                console.error('Error creating prescription:', error);
+                alert('A network error occurred.');
+            } finally {
+                saveButton.disabled = false;
+                saveButton.innerHTML = `Save Prescription`;
+            }
+        });
+    }
+
 
     function toggleMenu() {
         sidebar.classList.toggle('active');
@@ -92,6 +494,18 @@ document.addEventListener("DOMContentLoaded", function() {
             // --- Page specific initializers ---
             if (pageId === 'bed-management') {
                 initializeOccupancyManagement();
+            }
+            if (pageId === 'appointments') { 
+                loadAppointments('today'); 
+            }
+            if (pageId === 'patients') {
+                loadMyPatients();
+            }
+            if (pageId === 'admissions') {
+                loadAdmissions();
+            }
+            if (pageId === 'prescriptions') {
+                loadPrescriptions();
             }
             if (pageId === 'labs') {
                 loadLabResults();
@@ -143,6 +557,63 @@ document.addEventListener("DOMContentLoaded", function() {
             localStorage.setItem('theme', 'light-theme');
         }
     });
+
+    // ===================================================================
+    // --- Appointments Page Logic ---
+    // ===================================================================
+    async function loadAppointments(period = 'today') {
+        const listContainer = document.querySelector(`#${period}-tab .appointment-list`);
+        if (!listContainer) return;
+
+        listContainer.innerHTML = `<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading appointments...</div>`;
+
+        try {
+            const response = await fetch(`api.php?action=get_appointments&period=${period}`);
+            const result = await response.json();
+
+            if (result.success) {
+                renderAppointments(result.data, listContainer);
+            } else {
+                listContainer.innerHTML = `<div class="message-placeholder" style="color: var(--danger-color);">${result.message || 'Failed to load appointments.'}</div>`;
+            }
+        } catch (error) {
+            console.error(`Error loading ${period} appointments:`, error);
+            listContainer.innerHTML = `<div class="message-placeholder" style="color: var(--danger-color);">Could not connect to the server.</div>`;
+        }
+    }
+
+    function renderAppointments(appointments, container) {
+        container.innerHTML = '';
+        if (appointments.length === 0) {
+            container.innerHTML = `<div class="message-placeholder" style="padding: 2rem; text-align: center;">No appointments found for this period.</div>`;
+            return;
+        }
+
+        appointments.forEach(appt => {
+            const appointmentDate = new Date(appt.appointment_date);
+            const formattedDate = appointmentDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+            const formattedTime = appointmentDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+            const item = document.createElement('div');
+            item.className = 'appointment-item';
+            item.innerHTML = `
+                <div class="patient-info">
+                    <div class="patient-name">${appt.patient_name} (${appt.patient_display_id})</div>
+                    <div class="appointment-details">
+                        <i class="fas fa-calendar-alt"></i> ${formattedDate} at ${formattedTime}
+                    </div>
+                </div>
+                <div class="appointment-status">
+                    <span class="status ${appt.status.toLowerCase()}">${appt.status}</span>
+                </div>
+                <div class="appointment-actions">
+                    <button class="action-btn"><i class="fas fa-file-medical"></i> View Record</button>
+                    ${appt.status === 'scheduled' ? '<button class="action-btn"><i class="fas fa-play-circle"></i> Start</button>' : ''}
+                </div>
+            `;
+            container.appendChild(item);
+        });
+    }
 
     // Reusable open modal function
     function openModalById(modalId) {
@@ -864,6 +1335,99 @@ document.addEventListener("DOMContentLoaded", function() {
                 saveButton.disabled = false;
                 saveButton.textContent = originalButtonText;
             }
+        });
+    }
+
+    // --- My Patients Page Filter Listeners ---
+    const patientSearchInput = document.getElementById('patient-search');
+    const patientStatusFilter = document.getElementById('patient-status-filter');
+
+    if (patientSearchInput && patientStatusFilter) {
+        patientSearchInput.addEventListener('input', filterPatients);
+        patientStatusFilter.addEventListener('change', filterPatients);
+    }
+    
+    // --- Admissions Page Event Listeners ---
+    const admissionsPage = document.getElementById('admissions-page');
+    if (admissionsPage) {
+        document.getElementById('admit-patient-btn').addEventListener('click', openAdmitPatientModal);
+        
+        document.getElementById('admit-patient-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const saveButton = document.getElementById('modal-save-btn-admit');
+            const originalButtonText = saveButton.innerHTML;
+            saveButton.disabled = true;
+            saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Admitting...`;
+
+            const formData = new FormData(this);
+            formData.append('action', 'admit_patient');
+
+            try {
+                const response = await fetch('api.php', { method: 'POST', body: formData });
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('Patient admitted successfully!');
+                    document.getElementById('admit-patient-modal-overlay').classList.remove('active');
+                    loadAdmissions(); // Refresh the table
+                } else {
+                    alert(`Error: ${result.message || 'An unknown error occurred.'}`);
+                }
+            } catch (error) {
+                console.error('Error admitting patient:', error);
+                alert('A network or server error occurred.');
+            } finally {
+                saveButton.disabled = false;
+                saveButton.innerHTML = originalButtonText;
+            }
+        });
+
+        document.getElementById('admissions-search').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const filteredData = allAdmissionsData.filter(adm => 
+                adm.patient_name.toLowerCase().includes(searchTerm) ||
+                adm.display_user_id.toLowerCase().includes(searchTerm)
+            );
+            renderAdmissionsTable(filteredData);
+        });
+    }
+
+    // --- Prescriptions Page Event Listeners ---
+    const prescriptionsPage = document.getElementById('prescriptions-page');
+    if (prescriptionsPage) {
+        document.getElementById('prescription-search').addEventListener('input', filterPrescriptions);
+        document.getElementById('prescription-date-filter').addEventListener('change', filterPrescriptions);
+
+        // Connect the save button in the modal to the form submit logic
+        const saveButton = document.getElementById('modal-save-btn-presc');
+        saveButton.textContent = 'Save Prescription'; // Change from "Preview"
+        saveButton.addEventListener('click', () => {
+            document.getElementById('prescription-form').requestSubmit();
+        });
+    }
+
+    // --- Appointments Page Event Listeners ---
+    const appointmentsPage = document.getElementById('appointments-page');
+    if (appointmentsPage) {
+        const tabs = appointmentsPage.querySelectorAll('.tab-link');
+        const tabContents = appointmentsPage.querySelectorAll('.appointment-tab');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                // Update active tab styles
+                tabs.forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+
+                const period = this.dataset.tab;
+
+                // Show the correct tab content div
+                tabContents.forEach(content => {
+                    content.style.display = content.id === `${period}-tab` ? 'block' : 'none';
+                });
+
+                // Load data for the selected tab
+                loadAppointments(period);
+            });
         });
     }
 

@@ -403,9 +403,9 @@ CREATE TABLE `prescription_items` (
   CONSTRAINT `fk_items_medicine` FOREIGN KEY (`medicine_id`) REFERENCES `medicines` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
----
----Table for automated discharge process
----
+--
+--Table for automated discharge process
+--
 CREATE TABLE `discharge_clearance` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
   `admission_id` INT(11) NOT NULL,

@@ -1,36 +1,35 @@
 <?php
-// Start the session to manage user login state
-session_start();
+// 1. Include your configuration file.
+// This handles the database connection and starts the session.
+require_once 'config.php';
 
-// Check if a user is already logged in. If so, redirect them to their respective dashboard.
-// This prevents a logged-in user from seeing the landing page.
+// 2. Check if a user is already logged in (This logic is preserved from your original file).
 if (isset($_SESSION['user_id'])) {
-    // Redirect based on user role
+    // Redirect based on user role.
     switch ($_SESSION['role']) {
-        case 'admin':
-            header("Location: admin/dashboard");
-            break;
-        case 'doctor':
-            header("Location: doctor/dashboard");
-            break;
-        case 'staff':
-            header("Location: staff/dashboard");
-            break;
-        case 'user':
-            header("Location: user/dashboard");
-            break;
-        default:
-            // If role is not set or unknown, logout to be safe
-            header("Location: logout");
-            break;
+        case 'admin':   header("Location: admin/dashboard");   break;
+        case 'doctor':  header("Location: doctor/dashboard");  break;
+        case 'staff':   header("Location: staff/dashboard");   break;
+        case 'user':    header("Location: user/dashboard");    break;
+        default:        header("Location: logout");            break;
     }
-    exit(); // Stop further script execution after redirection
+    exit();
 }
 
-// Generate a CSRF token if one doesn't exist in the session
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
+// 3. Query for dynamic data for the "Impact" section.
+// The $conn object is available from your config.php file.
+// The role_id for 'user' is 1.
+$user_sql = "SELECT COUNT(id) AS user_count FROM users WHERE role_id = 1";
+$user_result = $conn->query($user_sql);
+$user_count = ($user_result && $user_result->num_rows > 0) ? $user_result->fetch_assoc()['user_count'] : 0;
+
+// The role_id for 'doctor' is 2.
+$doctor_sql = "SELECT COUNT(id) AS doctor_count FROM users WHERE role_id = 2";
+$doctor_result = $conn->query($doctor_sql);
+$doctor_count = ($doctor_result && $doctor_result->num_rows > 0) ? $doctor_result->fetch_assoc()['doctor_count'] : 0;
+
+// 4. Close the connection as it's no longer needed for rendering the rest of this page.
+$conn->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -179,31 +178,31 @@ if (empty($_SESSION['csrf_token'])) {
         </section>
 
         <section id="impact" class="impact-section">
-            <div class="container">
-                <div class="section-title">
-                    <h2 class="anim-fade-up">Our Impact in Numbers</h2>
-                    <p class="anim-fade-up" style="--delay: 0.2s;">We are proud of the positive change we bring to our community's health and well-being.</p>
-                </div>
-                <div class="impact-grid">
-                    <div class="impact-card anim-fade-up" style="--delay: 0s;">
-                        <h3 class="counter" data-target="20000" data-suffix="+">0</h3>
-                        <p>Happy Patients</p>
-                    </div>
-                    <div class="impact-card anim-fade-up" style="--delay: 0.2s;">
-                        <h3 class="counter" data-target="25" data-suffix="+">0</h3>
-                        <p>Specialist Doctors</p>
-                    </div>
-                    <div class="impact-card anim-fade-up" style="--delay: 0.4s;">
-                        <h3 class="counter" data-target="98" data-suffix="%">0</h3>
-                        <p>Patient Satisfaction</p>
-                    </div>
-                    <div class="impact-card anim-fade-up" style="--delay: 0.6s;">
-                        <h3 class="counter" data-target="40" data-suffix="%">0</h3>
-                        <p>Reduction in Wait Times</p>
-                    </div>
-                </div>
+    <div class="container">
+        <div class="section-title">
+            <h2 class="anim-fade-up">Our Impact in Numbers</h2>
+            <p class="anim-fade-up" style="--delay: 0.2s;">We are proud of the positive change we bring to our community's health and well-being.</p>
+        </div>
+        <div class="impact-grid">
+            <div class="impact-card anim-fade-up" style="--delay: 0s;">
+                <h3><?php echo $user_count; ?></h3>
+                <p>Happy Users</p>
             </div>
-        </section>
+            <div class="impact-card anim-fade-up" style="--delay: 0.2s;">
+                <h3><?php echo $doctor_count; ?></h3>
+                <p>Specialist Doctors</p>
+            </div>
+            <div class="impact-card anim-fade-up" style="--delay: 0.4s;">
+                <h3>98%</h3>
+                <p>Patient Satisfaction</p>
+            </div>
+            <div class="impact-card anim-fade-up" style="--delay: 0.6s;">
+                <h3>40%</h3>
+                <p>Reduction in Wait Times</p>
+            </div>
+        </div>
+    </div>
+</section>
 
         <section id="testimonials" class="testimonials-section">
             <div class="container">
@@ -282,7 +281,7 @@ if (empty($_SESSION['csrf_token'])) {
                                 <label for="name" class="form-label">Full Name</label>
                             </div>
                             <div class="form-group">
-                                <input type="tel" id="phone" name="phone" class="form-control" placeholder=" " required>
+                                <input type="tel" id="phone" name="phone" class="form-control" placeholder=" " required maxlength="13">
                                 <label for="phone" class="form-label">Phone Number</label>
                             </div>
                             <button type="submit" class="btn btn-primary" style="width:100%; padding: 1rem;">Request Call</button>
@@ -355,7 +354,7 @@ if (empty($_SESSION['csrf_token'])) {
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" role="img"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
                         </a>
                         <a href="#" aria-label="Instagram">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" role="img"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.85s-.011 3.584-.069 4.85c-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07s-3.584-.012-4.85-.07c-3.252-.148-4.771-1.691-4.919-4.919-.058-1.265-.069-1.645-.069-4.85s.011-3.584.069-4.85c.149-3.225 1.664-4.771 4.919-4.919C8.416 2.175 8.796 2.163 12 2.163zm0 1.441c-3.117 0-3.482.01-4.694.063-2.433.11-3.58 1.1-3.69 3.69-.052 1.21-.062 1.556-.062 4.634s.01 3.424.062 4.634c.11 2.59 1.257 3.58 3.69 3.69 1.212.053 1.577.063 4.694.063s3.482-.01 4.694-.063c2.433-.11 3.58-1.1 3.69-3.69.052-1.21.062-1.556.062-4.634s-.01-3.424-.062-4.634c-.11-2.59-1.257-3.58-3.69-3.69C15.482 3.613 15.117 3.604 12 3.604zM12 8.25c-2.071 0-3.75 1.679-3.75 3.75s1.679 3.75 3.75 3.75 3.75-1.679 3.75-3.75S14.071 8.25 12 8.25zm0 6c-1.24 0-2.25-1.01-2.25-2.25S10.76 9.75 12 9.75s2.25 1.01 2.25 2.25S13.24 14.25 12 14.25zm6.36-7.18c-.414 0-.75.336-.75.75s.336.75.75.75.75-.336.75-.75-.336-.75-.75-.75z"></path></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" role="img"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.85s-.011 3.584-.069 4.85c-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07s-3.584-.012-4.85-.07c-3.252-.148-4.771-1.691-4.919-4.919-.058-1.265-.069-1.645-.069-4.85s.011-3.584.069-4.85c.149-3.225 1.664 4.771 4.919-4.919C8.416 2.175 8.796 2.163 12 2.163zm0 1.441c-3.117 0-3.482.01-4.694.063-2.433.11-3.58 1.1-3.69 3.69-.052 1.21-.062 1.556-.062 4.634s.01 3.424.062 4.634c.11 2.59 1.257 3.58 3.69 3.69 1.212.053 1.577.063 4.694.063s3.482-.01 4.694-.063c2.433-.11 3.58-1.1 3.69-3.69.052-1.21.062-1.556.062-4.634s-.01-3.424-.062-4.634c-.11-2.59-1.257-3.58-3.69-3.69C15.482 3.613 15.117 3.604 12 3.604zM12 8.25c-2.071 0-3.75 1.679-3.75 3.75s1.679 3.75 3.75 3.75 3.75-1.679 3.75-3.75S14.071 8.25 12 8.25zm0 6c-1.24 0-2.25-1.01-2.25-2.25S10.76 9.75 12 9.75s2.25 1.01 2.25 2.25S13.24 14.25 12 14.25zm6.36-7.18c-.414 0-.75.336-.75.75s.336.75.75.75.75-.336.75-.75-.336-.75-.75-.75z"></path></svg>
                         </a>
                         <a href="#" aria-label="LinkedIn">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" role="img"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"></path></svg>

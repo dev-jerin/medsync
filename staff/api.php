@@ -2074,9 +2074,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pharmacy_bill') {
         <meta charset="UTF-8">
         <title>Pharmacy Bill</title>
         <style>
-            @page { margin: 20px; }
+            @page { margin: 130px 20px 20px 20px; }
             body { font-family: "Poppins", sans-serif; color: #333; font-size: 14px; }
-            .header { position: fixed; top: 0; left: 0; right: 0; width: 100%; height: 120px; }
+            .header { position: fixed; top: -110px; left: 0; right: 0; width: 100%; height: 120px; }
             .medsync-logo { position: absolute; top: 10px; left: 20px; }
             .medsync-logo img { width: 80px; }
             .hospital-logo { position: absolute; top: 10px; right: 20px; }
@@ -2084,7 +2084,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pharmacy_bill') {
             .hospital-details { text-align: center; margin-top: 0; }
             .hospital-details h2 { margin: 0; font-size: 1.5em; color: #007BFF; }
             .hospital-details p { margin: 2px 0; font-size: 0.85em; }
-            .report-title { text-align: center; margin-top: 130px; margin-bottom: 20px; }
+            .report-title { text-align: center; margin-top: 0; margin-bottom: 20px; }
             .report-title h1 { margin: 0; font-size: 1.8em; }
             .bill-details { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px; }
             .bill-details p { margin: 5px 0; }

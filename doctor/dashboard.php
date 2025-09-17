@@ -149,7 +149,9 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
 
             <div id="patients-page" class="page">
                 <div class="content-panel">
-                    <h3 class="page-header"><i class="fas fa-users"></i> My Patients</h3>
+                    <div class="page-header">
+    <h3><i class="fas fa-users"></i> My Patients</h3>
+</div>
                     <div class="filters"><input type="text" id="patient-search" class="search-bar" placeholder="Search by patient name or ID..."><select id="patient-status-filter"><option value="all">All Patients</option><option value="in-patient">In-Patients</option><option value="out-patient">Out-Patients</option></select></div>
                     <div class="table-container">
                         <table class="data-table" id="patients-table">
@@ -164,7 +166,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
             <div id="prescriptions-page" class="page">
                 <div class="content-panel">
                     <div class="page-header"><h3><i class="fas fa-file-prescription"></i> Manage Prescriptions</h3><button class="btn btn-primary" id="create-prescription-btn"><i class="fas fa-plus"></i> Create New Prescription</button></div>
-                    <div class="filters"><input type="text" id="prescription-search" class="search-bar" placeholder="Search by Patient or Rx ID..."><input type="date" id="prescription-date-filter"></div>
+                    <div class="filters"><input type="text" id="prescription-search" class="search-bar" placeholder="Search by Patient or Rx ID..."><input type="date" id="prescription-date-filter" min="1900-01-01" max="2050-01-01"></div>
                     <div class="table-container">
                         <table class="data-table" id="prescriptions-table">
                             <thead><tr><th>Rx ID</th><th>Patient</th><th>Date Issued</th><th>Status</th><th>Actions</th></tr></thead>
@@ -495,8 +497,33 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
         <div class="modal-overlay" id="prescription-modal-overlay">
             <div class="modal-container">
                 <div class="modal-header"><h4>Create New Prescription</h4><button class="modal-close-btn" data-modal-id="prescription-modal-overlay">&times;</button></div>
-                <div class="modal-body"><form id="prescription-form"><div class="form-grid"><div class="form-group full-width"><label for="patient-select-presc">Select Patient</label><select id="patient-select-presc" name="patient_id" required><option value="">-- Choose a patient --</option></select></div><div class="form-group full-width"><label for="medication">Medication Name</label><input type="text" id="medication" name="medication" placeholder="e.g., Amoxicillin" required></div><div class="form-group"><label for="dosage">Dosage</label><input type="text" id="dosage" name="dosage" placeholder="e.g., 500mg" required></div><div class="form-group"><label for="frequency">Frequency</label><input type="text" id="frequency" name="frequency" placeholder="e.g., Twice a day" required></div><div class="form-group full-width"><label for="notes-presc">Notes / Instructions</label><textarea id="notes-presc" name="notes" placeholder="e.g., Take with food."></textarea></div></div></form></div>
-                <div class="modal-footer"><button class="btn btn-secondary" data-modal-id="prescription-modal-overlay">Cancel</button><button class="btn btn-primary" id="modal-save-btn-presc">Preview Prescription</button></div>
+                <div class="modal-body">
+                    <form id="prescription-form">
+                        <div class="form-grid">
+                            <div class="form-group full-width">
+                                <label for="patient-select-presc">Select Patient</label>
+                                <select id="patient-select-presc" name="patient_id" required>
+                                    <option value="">-- Choose a patient --</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div id="medication-rows-container">
+                            </div>
+
+                        <button type="button" class="btn" id="add-medication-row-btn" style="margin-top: 1rem;">
+                            <i class="fas fa-plus"></i> Add Another Medication
+                        </button>
+                        
+                        <div class="form-grid" style="margin-top: 1.5rem;">
+                            <div class="form-group full-width">
+                                <label for="notes-presc">Notes / Instructions</label>
+                                <textarea id="notes-presc" name="notes" placeholder="e.g., Take with food. Complete the full course."></textarea>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer"><button class="btn btn-secondary" data-modal-id="prescription-modal-overlay">Cancel</button><button class="btn btn-primary" id="modal-save-btn-presc">Save Prescription</button></div>
             </div>
         </div>
 
