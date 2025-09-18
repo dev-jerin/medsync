@@ -1,5 +1,5 @@
 <?php
-// config.php initializes the session and generates the CSRF token
+//database connection
 require_once '../config.php';
 
 // If a user is already logged in, redirect them to their dashboard
@@ -8,6 +8,7 @@ if (isset($_SESSION['user_id'])) {
     exit();
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -15,10 +16,12 @@ if (isset($_SESSION['user_id'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - MedSync</title>
     
-    <!-- Fonts, Favicon, and Icons -->
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Favicon -->
     <link rel="apple-touch-icon" sizes="180x180" href="../images/favicon/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="../images/favicon/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="../images/favicon/favicon-16x16.png">
@@ -46,7 +49,7 @@ if (isset($_SESSION['user_id'])) {
 
     <main class="auth-page">
         <div class="auth-container">
-            <!-- Left Panel: Branding & Illustration -->
+            <!-- Left Panel: Branding & Illustration (visible only to desktop or supported device) -->
             <div class="auth-panel">
                 <img src="https://images.unsplash.com/photo-1579684385127-1ef15d508118?q=80&w=1780&auto=format&fit=crop" alt="Medical professionals collaborating" class="auth-image">
                 <div class="auth-panel-overlay">
@@ -64,7 +67,7 @@ if (isset($_SESSION['user_id'])) {
                     </div>
 
                     <?php
-                    // Display messages from other pages (e.g., registration success, password reset)
+                    // Display messages from other pages - register
                     if (isset($_SESSION['register_success'])) {
                         echo '<div class="message-box success-message">' . htmlspecialchars($_SESSION['register_success']) . '</div>';
                         unset($_SESSION['register_success']);
@@ -82,6 +85,7 @@ if (isset($_SESSION['user_id'])) {
                     }
                     ?>
 
+                    <!-- FORM SUBMITTED TO login_process.php -->
                     <form action="login_process.php" method="POST">
                         <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                         

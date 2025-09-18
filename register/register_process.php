@@ -17,6 +17,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: index.php");
     exit();
 }
+
 if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
     $_SESSION['register_error'] = "CSRF validation failed. Please try again.";
     header("Location: index.php");
@@ -40,6 +41,7 @@ $errors = [];
 if (empty($name) || empty($username) || empty($email) || empty($phone) || empty($date_of_birth) || empty($gender) || empty($password)) {
     $errors[] = "All fields are required.";
 }
+
 // Username validation
 if (strlen($username) < 3) {
     $errors[] = "Username must be at least 3 characters.";
@@ -48,14 +50,17 @@ if (strlen($username) < 3) {
 } elseif (preg_match('/^(u|a|s|d)\d{4}$/i', $username)) {
     $errors[] = "This username format is reserved.";
 }
+
 // Email validation
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     $errors[] = "Invalid email format.";
 }
+
 // Phone validation
 if (!preg_match('/^\+91\d{10}$/', $phone)) {
     $errors[] = "Phone number must be in the format +91 followed by 10 digits.";
 }
+
 // Password validation
 if (strlen($password) < 6) {
     $errors[] = "Password must be at least 6 characters long.";
@@ -64,7 +69,7 @@ if (strlen($password) < 6) {
 }
 
 if (!empty($errors)) {
-    $_SESSION['register_error'] = implode('<br>', $errors);
+    $_SESSION['register_error'] = implode('<br>', $errors); //implode acts like a glue to show more than 1 error
     header("Location: index.php");
     exit();
 }

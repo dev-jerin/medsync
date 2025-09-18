@@ -1,68 +1,69 @@
 # ----------------------------------------------------------------------
-# MedSync Apache Configuration v2.2 - For Local Development
+# MedSync Apache Configuration v2.4 - For Local Development
 # ----------------------------------------------------------------------
 
-# Turn on the rewrite engine
 RewriteEngine On
 
-# Set the base path to match the one in your config.php
+# Set the base path for your project.
+# This assumes the .htaccess file is in the /medsync/ directory.
 RewriteBase /medsync/
 
 # ----------------------------------------------------------------------
-# Section 1: Canonical URLs
+# Section 1: Security & Core Directives
 # ----------------------------------------------------------------------
 
-# Remove trailing slash from non-directories
-# This rule is now more explicit to prevent incorrect redirects.
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^(.*)/$ /medsync/$1 [R=301,L]
+# Prevent directory listing for security
+Options -Indexes
 
-# Remove index.php from the URL
-RewriteCond %{THE_REQUEST} ^[A-Z]{3,}\s(.*)/index\.php [NC]
-RewriteRule ^ %1/ [R=301,L]
+# Prevent content negotiation issues that can interfere with rewrites
+Options -MultiViews
 
-# Add .php extension to files
+# ----------------------------------------------------------------------
+# Section 2: Rewrite Rules
+# ----------------------------------------------------------------------
+
+# Rule 1: Remove trailing slashes from URLs that are not actual directories
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteCond %{REQUEST_FILENAME}\.php -f
+RewriteRule ^(.*)/$ $1 [R=301,L]
+
+# Rule 2 (NEW): Explicitly block requests with extra path info after a .php file.
+# This is a key part of the fix. It finds invalid URLs like "/dashboard.php/foo"
+# and immediately triggers a 404 error, preventing the 500 error.
+RewriteCond %{THE_REQUEST} \.php/
+RewriteRule .? - [R=404,L]
+
+# Rule 3 (IMPROVED): Add the .php extension for clean URLs.
+# This is now safer and prevents rewrite loops.
+# - It won't apply to existing files or directories.
+# - Most importantly, it checks if the .php file actually exists before rewriting.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{DOCUMENT_ROOT}/medsync/$1.php -f
 RewriteRule ^(.*)$ $1.php [L]
 
 # ----------------------------------------------------------------------
-# Section 2: Maintenance Mode (with correct 503 status)
+# Section 3: Custom Error Documents
 # ----------------------------------------------------------------------
-# To enable, create an empty ".maintenance" file in your root directory.
-RewriteCond %{DOCUMENT_ROOT}/medsync/.maintenance -f
-
-# Allow access to the 503 page itself and its assets
-RewriteCond %{REQUEST_URI} !/medsync/error/503\.php$
-RewriteCond %{REQUEST_URI} !/medsync/error/styles\.css$
-RewriteCond %{REQUEST_URI} !/medsync/images/
-
-# Send a 503 Service Unavailable header, then show the 503 page.
-RewriteRule ^.*$ /medsync/error/503.php [R=503,L]
-
-# ----------------------------------------------------------------------
-# Section 3: PHP Error Logging & Security for Development
-# ----------------------------------------------------------------------
-# Display errors for easier debugging on local server
-php_flag display_errors on
-php_flag log_errors on
-php_value error_log log.txt
-
-# Secure the log file from being accessed via browser
-<Files "log.txt">
-    Require all denied
-</Files>
-
-# ----------------------------------------------------------------------
-# Section 4: Custom Error Documents
-# ----------------------------------------------------------------------
+# Using absolute paths from the web root is more reliable and avoids rewrite loops.
 ErrorDocument 404 /medsync/error/404.php
 ErrorDocument 403 /medsync/error/403.php
 ErrorDocument 500 /medsync/error/500.php
 ErrorDocument 503 /medsync/error/503.php
 
 # ----------------------------------------------------------------------
-# Section 5: Directory Listing
+# Section 4: Maintenance Mode
 # ----------------------------------------------------------------------
-# Prevent directory listing
-Options -Indexes
+RewriteCond %{DOCUMENT_ROOT}/medsync/.maintenance -f
+RewriteCond %{REQUEST_URI} !^/medsync/error/503\.php$
+RewriteRule ^.*$ /medsync/error/503.php [R=503,L]
+
+# ----------------------------------------------------------------------
+# Section 5: PHP Settings & Security for Development
+# ----------------------------------------------------------------------
+php_flag display_errors on
+php_flag log_errors on
+php_value error_log log.txt
+
+<Files "log.txt">
+    Require all denied
+</Files>

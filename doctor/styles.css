@@ -82,11 +82,10 @@ body {
 .sidebar-header .logo-img {
     height: 40px;
     margin-right: 10px;
+    filter: hue-rotate(-40deg); /* MODIFIED: Turns the blue logo green */
 }
 
-body.dark-theme .sidebar-header .logo-img {
-    filter: invert(1) hue-rotate(180deg); /* Adjust logo for dark mode if needed */
-}
+/* REMOVED the dark theme logo filter that was causing issues */
 
 .sidebar-header .logo-text {
     font-size: 1.5rem;

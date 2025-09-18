@@ -135,16 +135,12 @@ function handleRegistrationForm() {
 
     // --- Server-Side Availability Check Function ---
     const checkAvailability = (input, messageDiv, type) => {
-        // Don't check the server if the client-side format is invalid
         if (!validateField(input, messageDiv)) {
             return;
         }
-
-        // Don't check availability for empty fields
         if(input.value.trim() === '') {
             return;
         }
-
         fetch('check_availability.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -159,23 +155,20 @@ function handleRegistrationForm() {
     };
 
     // --- Event Listeners ---
-    // Check format as user types
     usernameInput.addEventListener('keyup', () => validateField(usernameInput, usernameMessage));
     emailInput.addEventListener('keyup', () => validateField(emailInput, emailMessage));
     phoneInput.addEventListener('keyup', () => validateField(phoneInput, phoneMessage));
     passwordInput.addEventListener('keyup', () => {
         validateField(passwordInput, passwordMessage);
-        validateField(confirmPasswordInput, confirmPasswordMessage); // Re-validate confirm password
+        validateField(confirmPasswordInput, confirmPasswordMessage);
     });
     confirmPasswordInput.addEventListener('keyup', () => validateField(confirmPasswordInput, confirmPasswordMessage));
-
-    // Check availability when user leaves the field (blur event)
     usernameInput.addEventListener('blur', () => checkAvailability(usernameInput, usernameMessage, 'username'));
     emailInput.addEventListener('blur', () => checkAvailability(emailInput, emailMessage, 'email'));
 }
 
 /**
- * Handles the logic for smart OTP input fields.
+ * Handles the logic for smart OTP input fields and the resend functionality.
  */
 function handleOtpInputs() {
     const inputs = document.querySelectorAll('.otp-input');
@@ -183,11 +176,9 @@ function handleOtpInputs() {
     
     inputs.forEach((input, index) => {
         input.addEventListener('keyup', (e) => {
-            // If the key is a number, move to the next input
             if (e.key >= 0 && e.key <= 9 && input.nextElementSibling) {
                 input.nextElementSibling.focus();
             } else if (e.key === "Backspace" && input.previousElementSibling) {
-                // On backspace, clear current and move to the previous input
                 input.previousElementSibling.focus();
             }
             updateHiddenOtp();
@@ -196,14 +187,13 @@ function handleOtpInputs() {
         input.addEventListener('paste', (e) => {
             e.preventDefault();
             const paste = (e.clipboardData || window.clipboardData).getData('text').trim();
-            // Check if the pasted text is exactly 6 digits
             if (/^\d{6}$/.test(paste)) {
                 for (let i = 0; i < paste.length; i++) {
                     if (inputs[i]) {
                         inputs[i].value = paste[i];
                     }
                 }
-                inputs[5]?.focus(); // Focus the last input
+                inputs[5]?.focus();
                 updateHiddenOtp();
             }
         });
@@ -215,5 +205,59 @@ function handleOtpInputs() {
             otp += input.value;
         });
         hiddenOtpInput.value = otp;
+    }
+
+    // --- Resend OTP Logic ---
+    const resendLink = document.getElementById('resendOtpLink');
+    const resendMessage = document.getElementById('resend-message');
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+    if (resendLink) {
+        resendLink.addEventListener('click', function(e) {
+            e.preventDefault();
+
+            let countdown = 60;
+            resendLink.style.pointerEvents = 'none';
+            resendLink.style.opacity = '0.5';
+            resendMessage.textContent = `Resend available in ${countdown}s`;
+            resendMessage.className = 'availability-message';
+
+            const timer = setInterval(() => {
+                countdown--;
+                resendMessage.textContent = `Resend available in ${countdown}s`;
+                if (countdown <= 0) {
+                    clearInterval(timer);
+                    resendLink.style.pointerEvents = 'auto';
+                    resendLink.style.opacity = '1';
+                    resendMessage.textContent = '';
+                    resendLink.textContent = 'Resend OTP';
+                }
+            }, 1000);
+
+            fetch('resend_otp.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'csrf_token=' + encodeURIComponent(csrfToken)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    resendMessage.textContent = data.message;
+                    resendMessage.className = 'availability-message success';
+                } else {
+                    clearInterval(timer);
+                    resendLink.style.pointerEvents = 'auto';
+                    resendLink.style.opacity = '1';
+                    resendLink.textContent = 'Resend OTP';
+                    resendMessage.textContent = data.message;
+                    resendMessage.className = 'availability-message error';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                resendMessage.textContent = 'An unexpected error occurred.';
+                resendMessage.className = 'availability-message error';
+            });
+        });
     }
 }

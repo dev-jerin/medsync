@@ -244,6 +244,22 @@
     text-decoration: underline;
 }
 
+/* --- Resend OTP Link Styles --- */
+.resend-otp-link a[disabled] {
+    color: var(--text-muted);
+    pointer-events: none;
+    text-decoration: none;
+    opacity: 0.6;
+}
+
+.availability-message {
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    height: 1.2rem; /* Reserve space to prevent layout shift */
+}
+
+
 /* --- Responsive Design --- */
 @media (max-width: 576px) {
     .auth-form-container {

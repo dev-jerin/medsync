@@ -64,8 +64,9 @@ if (!isset($_SESSION['password_reset'])) {
                 <button type="submit" class="btn btn-primary btn-full-width">Verify Code</button>
             </form>
 
-            <div class="extra-links">
-                <p>Didn't get a code? <a href="index.php">Request a new one</a></p>
+            <div class="resend-otp-link extra-links">
+                <p>Didn't receive the code? <a href="#" id="resendOtpLink">Resend OTP</a></p>
+                <div id="resend-message" class="availability-message"></div>
             </div>
         </div>
     </main>

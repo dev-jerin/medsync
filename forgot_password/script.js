@@ -4,6 +4,7 @@
  * This script handles client-side interactivity for the password reset flow.
  * - Manages smart OTP input fields for a better user experience.
  * - Provides a password strength meter and visibility toggle for the new password form.
+ * - Implements an AJAX-powered "Resend OTP" feature with a countdown timer.
  */
 document.addEventListener("DOMContentLoaded", function() {
     // Attach event handlers based on the current page's content
@@ -12,6 +13,10 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     if (document.getElementById('newPasswordForm')) {
         handleNewPasswordForm();
+    }
+    // Call the new function for the resend OTP link
+    if (document.getElementById('resendOtpLink')) {
+        handleResendOtpLink();
     }
 });
 
@@ -139,4 +144,75 @@ function handleNewPasswordForm() {
             strengthText.style.color = color;
         });
     }
+}
+
+/**
+ * Handles the "Resend OTP" link with a countdown timer and AJAX request.
+ */
+function handleResendOtpLink() {
+    const resendLink = document.getElementById('resendOtpLink');
+    if (!resendLink) return;
+
+    const messageDiv = document.getElementById('resend-message');
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+    resendLink.addEventListener('click', function(e) {
+        e.preventDefault();
+
+        // Prevent multiple clicks
+        if (this.hasAttribute('disabled')) {
+            return;
+        }
+
+        // Disable link and start countdown
+        this.setAttribute('disabled', 'true');
+        this.style.opacity = '0.5';
+        this.style.pointerEvents = 'none';
+        messageDiv.textContent = '';
+        messageDiv.style.color = '';
+
+        let countdown = 60;
+        this.textContent = `Resend OTP (${countdown})`;
+
+        const timer = setInterval(() => {
+            countdown--;
+            this.textContent = `Resend OTP (${countdown})`;
+            if (countdown <= 0) {
+                clearInterval(timer);
+                this.textContent = 'Resend OTP';
+                this.removeAttribute('disabled');
+                this.style.opacity = '1';
+                this.style.pointerEvents = 'auto';
+            }
+        }, 1000);
+
+        // Make AJAX request to resend the OTP
+        fetch('resend_reset_otp.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `csrf_token=${encodeURIComponent(csrfToken)}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                messageDiv.textContent = data.message;
+                messageDiv.style.color = 'var(--success-color)';
+            } else {
+                messageDiv.textContent = data.message;
+                messageDiv.style.color = 'var(--error-color)';
+                // If there's an error, stop the timer and re-enable the link immediately
+                clearInterval(timer);
+                this.textContent = 'Resend OTP';
+                this.removeAttribute('disabled');
+                this.style.opacity = '1';
+                this.style.pointerEvents = 'auto';
+            }
+        })
+        .catch(() => {
+            messageDiv.textContent = 'An unexpected error occurred. Please try again.';
+            messageDiv.style.color = 'var(--error-color)';
+        });
+    });
 }

@@ -1,8 +1,6 @@
 /*
  * MedSync - Login Page Styles
  *
- * This stylesheet provides a consistent, modern, and responsive design
- * for the main login page, mirroring the registration page's layout.
  */
 
 /* --- Base & Variables (Consistent with main/styles.css) --- */
@@ -231,6 +229,7 @@
 }
 
 /* --- Responsive Design --- */
+/* --FOR TABLETS-- */
 @media (max-width: 992px) {
     .auth-container {
         grid-template-columns: 1fr;
@@ -243,6 +242,7 @@
     }
 }
 
+/* --FOR PHONES-- */
 @media (max-width: 576px) {
     .auth-page {
         padding-top: 100px;

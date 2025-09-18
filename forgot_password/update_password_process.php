@@ -9,70 +9,9 @@ use PHPMailer\PHPMailer\Exception;
 
 require '../vendor/autoload.php';
 require_once '../config.php';
+// UPDATED: Include the new file with only the email template functions.
+require_once 'email_templates.php';
 
-/**
- * Returns the HTML content for the password reset confirmation email.
- *
- * @param string $name The user's full name.
- * @param string $datetime The date and time of the password change.
- * @return string The complete HTML email body.
- */
-function getPasswordResetConfirmationTemplate($name, $datetime) {
-    $currentYear = date('Y');
-
-    return <<<HTML
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Security Alert: Your MedSync Password Was Changed</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
-        body { margin: 0; padding: 0; width: 100% !important; font-family: 'Inter', Arial, sans-serif; background-color: #f7fafc; color: #4a5568; }
-        .container { padding: 20px; }
-        .main-content { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; margin: 0 auto; max-width: 600px; overflow: hidden; }
-        .header { background-color: #ffc107; color: #1a202c; padding: 40px 20px; text-align: center; border-bottom: 5px solid #e9a900; }
-        .header h1 { margin: 0; font-size: 28px; font-weight: 700; }
-        .content-body { padding: 40px 35px; line-height: 1.6; text-align: left; }
-        .content-body p { font-size: 16px; margin: 0 0 20px 0; }
-        .alert-details { background-color: #fffbeb; border-left: 4px solid #ffc107; margin: 25px 0; padding: 20px; border-radius: 8px; }
-        .alert-details p { margin: 10px 0; font-size: 15px; color: #5c3f00; }
-        .alert-details strong { color: #1a202c; }
-        .footer { text-align: center; padding: 25px; font-size: 13px; color: #a0aec0; }
-    </style>
-</head>
-<body>
-    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="100%" class="container">
-        <tr>
-            <td align="center">
-                <div class="main-content">
-                    <div class="header">
-                        <h1>Security Alert</h1>
-                    </div>
-                    <div class="content-body">
-                        <p>Hello <strong>{$name}</strong>,</p>
-                        <p>This is a confirmation that the password for your MedSync account was successfully changed. Your account security is our top priority.</p>
-                        <div class="alert-details">
-                            <p><strong>Date & Time of Change:</strong> {$datetime}</p>
-                        </div>
-                        <p>If you made this change, you can safely ignore this email. Your account is secure.</p>
-                        <p><strong>If you did NOT authorize this change,</strong> please contact our support team immediately so we can help you secure your account.</p>
-                        <p>Sincerely,<br>The MedSync Security Team</p>
-                    </div>
-                </div>
-                <div class="footer">
-                    &copy; {$currentYear} Calysta Health Institute. All Rights Reserved.<br>
-                    Kerala, India
-                </div>
-            </td>
-        </tr>
-    </table>
-</body>
-</html>
-HTML;
-}
 
 // --- Security Checks ---
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token']) || !isset($_SESSION['reset_otp_verified']) || $_SESSION['reset_otp_verified'] !== true) {
@@ -159,5 +98,3 @@ if ($stmt_update->execute()) {
     header("Location: create_new_password");
     exit();
 }
-
-

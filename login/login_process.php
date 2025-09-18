@@ -79,7 +79,7 @@ if ($result->num_rows === 1) {
         $_SESSION['display_user_id'] = $user['display_user_id'];
         $_SESSION['loggedin_time'] = time();
 
-        // --- NEW: IP Tracking ---
+        // --- IP Tracking ---
         $ip_address = $_SERVER['REMOTE_ADDR'];
         $user_id = $user['id'];
         $stmt_ip = $conn->prepare("INSERT INTO ip_tracking (user_id, ip_address) VALUES (?, ?)");

@@ -74,8 +74,8 @@ if (!isset($_SESSION['registration_data'])) {
                 <button type="submit" class="btn btn-primary btn-full-width">Verify & Register</button>
             </form>
             <div class="resend-otp-link">
-                <p>Didn't receive the code? <a href="#">Resend OTP</a></p>
-                <!-- Note: Resend OTP functionality requires backend logic -->
+                <p>Didn't receive the code? <a href="#" id="resendOtpLink">Resend OTP</a></p>
+                <div id="resend-message" class="availability-message"></div>
             </div>
         </div>
     </main>
