@@ -370,6 +370,11 @@ $conn->close();
                 <div
                     style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
                     <h2>Medicine Inventory</h2>
+                    <div class="search-container" style="flex-grow: 1; max-width: 400px;">
+                        <i class="fas fa-search search-icon"></i>
+                        <input type="text" id="medicine-search-input" placeholder="Search...">
+                        <label for="medicine-search-input" id="medicine-search-label">Search by name or description...</label>
+                    </div>
                     <button id="add-medicine-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Add New
                         Medicine</button>
                 </div>
@@ -556,8 +561,8 @@ $conn->close();
                     </div>
                     <div class="form-group">
                         <label for="profile-phone">Phone Number</label>
-                        <input type="tel" id="profile-phone" name="phone" pattern="\+[0-9]{10,15}"
-                            title="Enter in format +CountryCodeNumber">
+                        <input type="tel" id="profile-phone" name="phone" pattern="\+91[0-9]{10}"
+                            title="Enter in format +91 followed by 10 digits" maxlength="13" minlength="13">
                     </div>
                     <div class="form-group">
                         <label for="profile-username">Username</label>
@@ -577,6 +582,14 @@ $conn->close();
             <div id="system-settings-panel" class="content-panel">
                 <h3>System Settings</h3>
                 <p>Configure system-wide settings here. Changes will take effect immediately.</p>
+
+                <div style="margin-top: 1.5rem; padding: 1rem; background-color: var(--bg-grey); border-radius: 8px; border: 1px solid var(--border-light);">
+                    <p style="margin: 0; font-weight: 500;">
+                        <strong>Current System Email:</strong> 
+                        <span id="current-system-email-display">Loading...</span>
+                    </p>
+                </div>
+
                 <form id="system-settings-form" style="margin-top: 2rem; max-width: 600px;">
                     <input type="hidden" name="action" value="updateSystemSettings">
                     <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
@@ -780,7 +793,7 @@ $conn->close();
                 </div>
                 <div class="form-group">
                     <label for="phone">Phone Number</label>
-                    <input type="tel" id="phone" name="phone" pattern="\+[0-9]{10,15}"
+                    <input type="tel" id="phone" name="phone" pattern="\+91[0-9]{10}" minlength="13" maxlength="13"
                         title="Enter in format +CountryCodeNumber" required>
                     <div class="error-message"></div>
                 </div>

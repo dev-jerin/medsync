@@ -21,14 +21,14 @@
 }
 
 body.dark-mode {
-    --primary-color: #818CF8;
-    --primary-color-dark: #6366F1;
-    --text-dark: #F8FAFC;
-    --text-light: #1E293B;
-    --text-muted: #94A3B8;
-    --bg-light: #1E293B;
-    --bg-grey: #0F172A;
-    --border-light: #334155;
+    --primary-color: #3B82F6;      /* Changed: Active color is now blue */
+    --primary-color-dark: #2563EB; /* Changed: A darker blue for hover states */
+    --text-dark: #F9FAFB;          /* Unchanged */
+    --text-light: #1F2937;         /* Unchanged */
+    --text-muted: #94A3B8;         /* Unchanged */
+    --bg-light: #1b232d;           /* Changed: Sidebar/card background to a dark charcoal */
+    --bg-grey: #0f1521;            /* Changed: Main background to a very dark, near-black color */
+    --border-light: #262c37;       /* Changed: Borders adjusted for the new darker theme */
 }
 
 /* --- BASE STYLES --- */
@@ -1170,4 +1170,76 @@ body.dark-mode .send-btn:disabled {
 .doctor-search-result-item.none {
     cursor: default;
     color: var(--text-muted);
+}
+
+/* --- ENHANCED SEARCH BAR (FOR BOTH USERS AND MEDICINE) --- */
+.search-container {
+    position: relative;
+    background-color: var(--bg-grey);
+    border-radius: var(--border-radius);
+    display: flex;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+.search-container:focus-within {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    background-color: var(--bg-light);
+}
+
+.search-icon {
+    position: absolute;
+    left: 1rem;
+    color: var(--text-muted);
+    font-size: 1rem;
+    transition: color 0.3s ease;
+    pointer-events: none; /* Make icon non-interactive */
+}
+
+.search-container:focus-within .search-icon {
+    color: var(--primary-color);
+}
+
+/* Apply this style to both search inputs */
+#user-search-input,
+#medicine-search-input {
+    width: 100%;
+    border: 1px solid var(--border-light);
+    background-color: transparent;
+    border-radius: var(--border-radius);
+    /* Adjust padding for the label */
+    padding: 1.5rem 1rem 0.5rem 3rem;
+    font-size: 1rem;
+    color: var(--text-dark);
+    outline: none;
+}
+
+/* Hide the default placeholder text */
+#user-search-input::placeholder,
+#medicine-search-input::placeholder {
+    color: transparent;
+}
+
+/* Style for both labels */
+#user-search-label,
+#medicine-search-label {
+    position: absolute;
+    left: 3rem;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    color: var(--text-muted);
+    transition: all 0.3s ease;
+    font-size: 1rem;
+}
+
+/* Floating label effect for both inputs */
+#user-search-input:focus + #user-search-label,
+#user-search-input:not(:placeholder-shown) + #user-search-label,
+#medicine-search-input:focus + #medicine-search-label,
+#medicine-search-input:not(:placeholder-shown) + #medicine-search-label {
+    top: 0.5rem;
+    transform: translateY(0);
+    font-size: 0.75rem;
+    color: var(--primary-color);
 }

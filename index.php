@@ -237,7 +237,7 @@ $conn->close();
                         </div>
                         <p>"I received my lab results and discharge summary directly on my phone. The level of transparency and efficiency is something I've never seen before in a hospital."</p>
                         <div class="author">
-                            <strong>Fatima R.</strong>
+                            <strong>Arun</strong>
                             <span>Kozhikode</span>
                         </div>
                     </div>

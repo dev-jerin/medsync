@@ -175,8 +175,12 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
 
                         if ($role_name === 'doctor') {
                             $is_available = isset($_POST['is_available']) ? (int)$_POST['is_available'] : 1;
+                            // Check if department_id is empty. If so, use NULL, otherwise use the provided ID.
+                            $department_id = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
+                            
                             $stmt_doctor = $conn->prepare("INSERT INTO doctors (user_id, specialty, qualifications, department_id, is_available) VALUES (?, ?, ?, ?, ?)");
-                            $stmt_doctor->bind_param("issii", $user_id, $_POST['specialty'], $_POST['qualifications'], $_POST['department_id'], $is_available);
+                            // Use the new sanitized $department_id variable here
+                            $stmt_doctor->bind_param("issii", $user_id, $_POST['specialty'], $_POST['qualifications'], $department_id, $is_available);
                             $stmt_doctor->execute();
                         } elseif ($role_name === 'staff') {
                             $stmt_staff = $conn->prepare("INSERT INTO staff (user_id, shift, assigned_department_id) VALUES (?, ?, ?)");
@@ -311,8 +315,13 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $stmt->bind_param($types, ...$params);
                         $stmt->execute();
 
+                        // In api.php, inside case 'updateUser':
+
                         if ($old_user_data['role_name'] === 'doctor') {
+                            // Sanitize the department_id input, converting an empty value to NULL
+                            $department_id = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
                             $is_available = isset($_POST['is_available']) ? (int)$_POST['is_available'] : 1;
+                            
                             $stmt_doctor = $conn->prepare("
                                 INSERT INTO doctors (user_id, specialty, qualifications, department_id, is_available) 
                                 VALUES (?, ?, ?, ?, ?)
@@ -322,7 +331,8 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                                 department_id = VALUES(department_id), 
                                 is_available = VALUES(is_available)
                             ");
-                            $stmt_doctor->bind_param("issii", $id, $_POST['specialty'], $_POST['qualifications'], $_POST['department_id'], $is_available);
+                            // **THE FIX**: Use the sanitized $department_id variable instead of the raw $_POST value.
+                            $stmt_doctor->bind_param("issii", $id, $_POST['specialty'], $_POST['qualifications'], $department_id, $is_available);
                             $stmt_doctor->execute();
                         } elseif ($old_user_data['role_name'] === 'staff') {
                             $stmt_staff = $conn->prepare("
@@ -1017,6 +1027,19 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $fetch_target = $_GET['fetch'];
                     switch ($fetch_target) {
 
+                        case 'get_system_settings':
+                    $settings = [];
+                    $result = $conn->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('system_email')");
+                    while ($row = $result->fetch_assoc()) {
+                        $settings[$row['setting_key']] = $row['setting_value'];
+                    }
+                    // Provide a default value if not set in the database
+                    if (!isset($settings['system_email'])) {
+                        $settings['system_email'] = 'Not configured';
+                    }
+                    $response = ['success' => true, 'data' => $settings];
+                    break;
+
                         case 'active_doctors':
                             $sql = "SELECT u.id, u.name, d.specialty 
                                     FROM users u 
@@ -1333,8 +1356,29 @@ case 'staff_for_shifting':
 
                 // --- INVENTORY FETCH ENDPOINTS ---
                 case 'medicines':
-                    $result = $conn->query("SELECT * FROM medicines ORDER BY name ASC");
+                    $search = $_GET['search'] ?? '';
+                    
+                    $sql = "SELECT * FROM medicines";
+                    $params = [];
+                    $types = "";
+
+                    if (!empty($search)) {
+                        $sql .= " WHERE name LIKE ? OR description LIKE ?";
+                        $searchTerm = "%{$search}%";
+                        array_push($params, $searchTerm, $searchTerm);
+                        $types .= "ss";
+                    }
+
+                    $sql .= " ORDER BY name ASC";
+                    
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                    $stmt->execute();
+                    $result = $stmt->get_result();
                     $data = $result->fetch_all(MYSQLI_ASSOC);
+                    
                     $response = ['success' => true, 'data' => $data];
                     break;
 

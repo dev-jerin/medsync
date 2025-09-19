@@ -73,6 +73,7 @@ document.addEventListener("DOMContentLoaded", function () {
     
     userSearchInput.addEventListener('keyup', () => {
         setTimeout(() => {
+            // *** THIS IS THE CORRECTED LINE ***
             fetchUsers(currentRole, userSearchInput.value.trim());
         }, 300);
     });
@@ -107,33 +108,61 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     // --- GENERIC HELPER: REUSABLE MODAL HANDLER ---
-    const setupModal = (config) => {
-        const { modalId, openBtnId, formId, onOpen } = config;
-        const modal = document.getElementById(modalId);
-        const openBtn = document.getElementById(openBtnId);
-        const form = document.getElementById(formId);
+        const setupModal = (config) => {
+            const { modalId, openBtnId, formId, onOpen } = config;
+            const modal = document.getElementById(modalId);
+            const openBtn = document.getElementById(openBtnId);
+            const form = document.getElementById(formId);
 
-        if (!modal) return null;
+            if (!modal) return null;
 
-        const open = (mode, data = {}) => {
-            if (form) {
-                form.reset();
-                form.querySelectorAll('.invalid').forEach(el => el.classList.remove('invalid'));
-                form.querySelectorAll('.error-message').forEach(el => el.textContent = '');
-            }
-            if (onOpen) onOpen(mode, data);
-            modal.classList.add('show');
+            // NEW: Variable to track if the form has been changed
+            let isFormDirty = false;
+
+            const open = (mode, data = {}) => {
+                if (form) {
+                    form.reset();
+                    form.querySelectorAll('.invalid').forEach(el => el.classList.remove('invalid'));
+                    form.querySelectorAll('.error-message').forEach(el => el.textContent = '');
+                    
+                    // NEW: Reset dirty state and add listeners when the modal opens
+                    isFormDirty = false;
+                    form.addEventListener('input', () => { isFormDirty = true; });
+                    form.addEventListener('change', () => { isFormDirty = true; });
+                }
+                if (onOpen) onOpen(mode, data);
+                modal.classList.add('show');
+            };
+
+            // NEW: Reusable close function with confirmation check
+            const closeModal = async () => {
+                if (isFormDirty) {
+                    const confirmed = await showConfirmation(
+                        'Discard Changes?',
+                        'You have unsaved changes in the form. Are you sure you want to close it?'
+                    );
+                    // If the user clicks "Cancel" in the confirmation, do nothing.
+                    if (!confirmed) {
+                        return; 
+                    }
+                }
+                // If the form is not dirty, or if the user confirmed, close the modal.
+                modal.classList.remove('show');
+                isFormDirty = false; // Reset for the next time it's opened.
+            };
+
+            if (openBtn) openBtn.addEventListener('click', () => open('add'));
+            
+            // UPDATED: Use the new closeModal function
+            modal.querySelector('.modal-close-btn')?.addEventListener('click', closeModal);
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    closeModal();
+                }
+            });
+
+            return open;
         };
-
-        if (openBtn) openBtn.addEventListener('click', () => open('add'));
-        
-        modal.querySelector('.modal-close-btn')?.addEventListener('click', () => modal.classList.remove('show'));
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.classList.remove('show');
-        });
-
-        return open;
-    };
 
     // --- GENERIC HELPER: REUSABLE DATA FETCHER & RENDERER ---
     const fetchAndRender = async (config) => {
@@ -255,6 +284,7 @@ document.addEventListener("DOMContentLoaded", function () {
             welcomeMessage.style.display = (targetId === 'dashboard') ? 'block' : 'none';
 
             if (targetId === 'settings') fetchMyProfile();
+            if (targetId === 'system-settings') fetchSystemSettings();
             if (targetId === 'appointments') {
                 fetchDoctorsForAppointmentFilter();
                 fetchAppointments();
@@ -385,6 +415,10 @@ document.addEventListener("DOMContentLoaded", function () {
                     updateNotificationCount();
                 }
 
+                if (action === 'updateSystemSettings') {
+                    fetchSystemSettings(); // Refresh the displayed email
+                }
+
                 // Close any open modal
                 document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
 
@@ -458,8 +492,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const doctorFields = document.getElementById('doctor-fields');
     const staffFields = document.getElementById('staff-fields');
     
-    userForm.querySelectorAll('input').forEach(input => {
-        input.addEventListener('input', () => validateField(input));
+    userForm.querySelectorAll('input, select').forEach(field => {
+        field.addEventListener('input', () => validateField(field));
     });
 
     const openDetailedProfileModal = async (userId) => {
@@ -696,12 +730,14 @@ document.addEventListener("DOMContentLoaded", function () {
         e.preventDefault();
         
         let isFormValid = true;
-        userForm.querySelectorAll('input').forEach(input => {
-            if(input.required || input.minLength > -1 || input.pattern) {
-                if (input.id === 'password' && document.getElementById('form-action').value === 'updateUser' && input.value.trim() === '') {
-                    if (!validateField(input, true)) isFormValid = false;
+        // UPDATED: Query for both inputs and selects to validate all required fields
+        userForm.querySelectorAll('input, select').forEach(field => {
+            if(field.required || field.minLength > -1 || field.pattern) {
+                // Keep special handling for optional password on update
+                if (field.id === 'password' && document.getElementById('form-action').value === 'updateUser' && field.value.trim() === '') {
+                    if (!validateField(field, true)) isFormValid = false;
                 } else {
-                    if (!validateField(input)) isFormValid = false;
+                    if (!validateField(field)) isFormValid = false;
                 }
             }
         });
@@ -715,7 +751,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
 
-    // --- ADMIN PROFILE EDIT ---
+    // --- ADMIN PROFILE & SYSTEM SETTINGS ---
     const fetchMyProfile = async () => {
         try {
             const response = await fetch(`api.php?fetch=my_profile`);
@@ -728,6 +764,26 @@ document.addEventListener("DOMContentLoaded", function () {
             document.getElementById('profile-username').value = profile.username || '';
         } catch (error) {
             showNotification('Could not load your profile data.', 'error');
+        }
+    };
+
+    const fetchSystemSettings = async () => {
+        const displayElement = document.getElementById('current-system-email-display');
+        if (!displayElement) return;
+
+        displayElement.textContent = 'Loading...';
+        try {
+            const response = await fetch('api.php?fetch=get_system_settings');
+            const result = await response.json();
+            if (result.success && result.data.system_email) {
+                displayElement.textContent = result.data.system_email;
+            } else {
+                displayElement.textContent = 'Not configured';
+            }
+        } catch (error) {
+            console.error('Failed to fetch system settings:', error);
+            displayElement.textContent = 'Error loading setting';
+            displayElement.style.color = 'var(--danger-color)';
         }
     };
 
@@ -775,6 +831,18 @@ document.addEventListener("DOMContentLoaded", function () {
         handleFormSubmit(new FormData(e.target), 'medicine');
     });
 
+    // START: Add search functionality for medicine
+    const medicineSearchInput = document.getElementById('medicine-search-input');
+    let medicineSearchDebounce;
+
+    medicineSearchInput.addEventListener('keyup', () => {
+        clearTimeout(medicineSearchDebounce);
+        medicineSearchDebounce = setTimeout(() => {
+            fetchMedicineInventory(medicineSearchInput.value.trim());
+        }, 300); // Wait 300ms after user stops typing
+    });
+    // END: Add search functionality for medicine
+
     const renderMedicineRow = (med) => {
         const isLowStock = parseInt(med.quantity) <= parseInt(med.low_stock_threshold);
         return `
@@ -794,8 +862,8 @@ document.addEventListener("DOMContentLoaded", function () {
         `;
     };
 
-    const fetchMedicineInventory = () => fetchAndRender({
-        endpoint: 'api.php?fetch=medicines',
+    const fetchMedicineInventory = (searchTerm = '') => fetchAndRender({
+        endpoint: `api.php?fetch=medicines&search=${encodeURIComponent(searchTerm)}`,
         target: document.getElementById('medicine-table-body'),
         renderRow: renderMedicineRow,
         columns: 8,
@@ -1928,92 +1996,92 @@ staffSearchInput.addEventListener('keyup', () => {
     }
 
     // --- IP MANAGEMENT ---
-const ipManagementPanel = document.getElementById('ip-management-panel');
+    const ipManagementPanel = document.getElementById('ip-management-panel');
 
-const fetchAndRenderTrackedIps = () => {
-    fetchAndRender({
-        endpoint: 'api.php?fetch=getTrackedIps',
-        target: document.getElementById('ip-tracking-table-body'),
-        renderRow: (ip) => `
-            <tr>
-                <td data-label="IP Address">${ip.ip_address}</td>
-                <td data-label="Name/Label">${ip.name || 'N/A'}</td>
-                <td data-label="Associated Users">${ip.usernames}</td>
-                <td data-label="Last Login">${new Date(ip.last_login).toLocaleString()}</td>
-                <td data-label="Status"><span class="status-badge ${ip.is_blocked == 1 ? 'inactive' : 'active'}">${ip.is_blocked == 1 ? 'Blocked' : 'Active'}</span></td>
-                <td data-label="Actions" class="action-buttons">
-                    <button class="btn-edit-ip-name btn-edit" data-ip="${ip.ip_address}" data-name="${ip.name || ''}" title="Edit Name"><i class="fas fa-tag"></i></button>
-                    ${ip.is_blocked == 1
-                        ? `<button class="btn-unblock-ip btn-delete" data-ip="${ip.ip_address}" title="Unblock"><i class="fas fa-check-circle"></i></button>`
-                        : `<button class="btn-block-ip btn-delete" data-ip="${ip.ip_address}" title="Block"><i class="fas fa-ban"></i></button>`
-                    }
-                </td>
-            </tr>
-        `,
-        columns: 6,
-        emptyMessage: 'No IP addresses have been tracked yet.'
+    const fetchAndRenderTrackedIps = () => {
+        fetchAndRender({
+            endpoint: 'api.php?fetch=getTrackedIps',
+            target: document.getElementById('ip-tracking-table-body'),
+            renderRow: (ip) => `
+                <tr>
+                    <td data-label="IP Address">${ip.ip_address}</td>
+                    <td data-label="Name/Label">${ip.name || 'N/A'}</td>
+                    <td data-label="Associated Users">${ip.usernames}</td>
+                    <td data-label="Last Login">${new Date(ip.last_login).toLocaleString()}</td>
+                    <td data-label="Status"><span class="status-badge ${ip.is_blocked == 1 ? 'inactive' : 'active'}">${ip.is_blocked == 1 ? 'Blocked' : 'Active'}</span></td>
+                    <td data-label="Actions" class="action-buttons">
+                        <button class="btn-edit-ip-name btn-edit" data-ip="${ip.ip_address}" data-name="${ip.name || ''}" title="Edit Name"><i class="fas fa-tag"></i></button>
+                        ${ip.is_blocked == 1
+                            ? `<button class="btn-unblock-ip btn-delete" data-ip="${ip.ip_address}" title="Unblock"><i class="fas fa-check-circle"></i></button>`
+                            : `<button class="btn-block-ip btn-delete" data-ip="${ip.ip_address}" title="Block"><i class="fas fa-ban"></i></button>`
+                        }
+                    </td>
+                </tr>
+            `,
+            columns: 6,
+            emptyMessage: 'No IP addresses have been tracked yet.'
+        });
+    };
+
+    document.querySelector('.nav-link[data-target="ip-management"]').addEventListener('click', fetchAndRenderTrackedIps);
+
+    document.getElementById('ip-tracking-table-body').addEventListener('click', async (e) => {
+        const button = e.target.closest('button');
+        if (!button || !button.dataset.ip) return;
+
+        const ipAddress = button.dataset.ip;
+
+        if (button.classList.contains('btn-block-ip')) {
+            const reason = prompt(`Enter a reason for blocking ${ipAddress} (optional):`);
+            if (reason !== null) { // Proceed even if reason is empty, but not if canceled
+                const formData = new FormData();
+                formData.append('action', 'blockIp');
+                formData.append('ip_address', ipAddress);
+                formData.append('reason', reason);
+                formData.append('csrf_token', csrfToken);
+                await handleFormSubmit(formData);
+                fetchAndRenderTrackedIps();
+            }
+        } else if (button.classList.contains('btn-unblock-ip')) {
+            const confirmed = await showConfirmation('Unblock IP', `Are you sure you want to unblock ${ipAddress}?`);
+            if (confirmed) {
+                const formData = new FormData();
+                formData.append('action', 'unblockIp');
+                formData.append('ip_address', ipAddress);
+                formData.append('csrf_token', csrfToken);
+                await handleFormSubmit(formData);
+                fetchAndRenderTrackedIps();
+            }
+        } else if (button.classList.contains('btn-edit-ip-name')) {
+            const currentName = button.dataset.name;
+            const newName = prompt(`Enter a new name/label for ${ipAddress}:`, currentName);
+            if (newName !== null) {
+                const formData = new FormData();
+                formData.append('action', 'updateIpName');
+                formData.append('ip_address', ipAddress);
+                formData.append('name', newName);
+                formData.append('csrf_token', csrfToken);
+                await handleFormSubmit(formData);
+                fetchAndRenderTrackedIps();
+            }
+        }
     });
-};
 
-document.querySelector('.nav-link[data-target="ip-management"]').addEventListener('click', fetchAndRenderTrackedIps);
-
-document.getElementById('ip-tracking-table-body').addEventListener('click', async (e) => {
-    const button = e.target.closest('button');
-    if (!button || !button.dataset.ip) return;
-
-    const ipAddress = button.dataset.ip;
-
-    if (button.classList.contains('btn-block-ip')) {
-        const reason = prompt(`Enter a reason for blocking ${ipAddress} (optional):`);
-        if (reason !== null) { // Proceed even if reason is empty, but not if canceled
-            const formData = new FormData();
-            formData.append('action', 'blockIp');
-            formData.append('ip_address', ipAddress);
-            formData.append('reason', reason);
-            formData.append('csrf_token', csrfToken);
-            await handleFormSubmit(formData);
-            fetchAndRenderTrackedIps();
+    document.getElementById('add-ip-block-btn').addEventListener('click', async () => {
+        const ipAddress = prompt('Enter the IP address to block:');
+        if (ipAddress) {
+            const reason = prompt(`Enter a reason for blocking ${ipAddress} (optional):`);
+            if (reason !== null) {
+                const formData = new FormData();
+                formData.append('action', 'blockIp');
+                formData.append('ip_address', ipAddress);
+                formData.append('reason', reason);
+                formData.append('csrf_token', csrfToken);
+                await handleFormSubmit(formData);
+                fetchAndRenderTrackedIps();
+            }
         }
-    } else if (button.classList.contains('btn-unblock-ip')) {
-        const confirmed = await showConfirmation('Unblock IP', `Are you sure you want to unblock ${ipAddress}?`);
-        if (confirmed) {
-            const formData = new FormData();
-            formData.append('action', 'unblockIp');
-            formData.append('ip_address', ipAddress);
-            formData.append('csrf_token', csrfToken);
-            await handleFormSubmit(formData);
-            fetchAndRenderTrackedIps();
-        }
-    } else if (button.classList.contains('btn-edit-ip-name')) {
-        const currentName = button.dataset.name;
-        const newName = prompt(`Enter a new name/label for ${ipAddress}:`, currentName);
-        if (newName !== null) {
-            const formData = new FormData();
-            formData.append('action', 'updateIpName');
-            formData.append('ip_address', ipAddress);
-            formData.append('name', newName);
-            formData.append('csrf_token', csrfToken);
-            await handleFormSubmit(formData);
-            fetchAndRenderTrackedIps();
-        }
-    }
-});
-
-document.getElementById('add-ip-block-btn').addEventListener('click', async () => {
-    const ipAddress = prompt('Enter the IP address to block:');
-    if (ipAddress) {
-        const reason = prompt(`Enter a reason for blocking ${ipAddress} (optional):`);
-        if (reason !== null) {
-            const formData = new FormData();
-            formData.append('action', 'blockIp');
-            formData.append('ip_address', ipAddress);
-            formData.append('reason', reason);
-            formData.append('csrf_token', csrfToken);
-            await handleFormSubmit(formData);
-            fetchAndRenderTrackedIps();
-        }
-    }
-});
+    });
 
 
     // --- INITIAL LOAD ---

@@ -114,25 +114,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    if (avatarUploadInput && profilePageAvatar) {
-        avatarUploadInput.addEventListener('change', () => {
-            const file = avatarUploadInput.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    profilePageAvatar.src = e.target.result;
-                    if (profileAvatar) profileAvatar.src = e.target.result;
-                    // TODO: Add an AJAX/Fetch call here to upload the new avatar to the server.
-                    // Example:
-                    // const formData = new FormData();
-                    // formData.append('profile_picture', file);
-                    // fetch('api/update_avatar.php', { method: 'POST', body: formData });
-                };
-                reader.readAsDataURL(file);
-            }
-        });
-    }
-
     if (menuToggle) {
         menuToggle.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -156,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Renders a single notification item ---
     const createNotificationElement = (notification) => {
         const item = document.createElement('div');
-        item.className = `notification-item ${notification.is_read ? '' : 'unread'}`;
+        item.className = `notification-item ${notification.is_read == 0 ? 'unread' : ''}`;
         item.dataset.id = notification.id;
         item.dataset.type = notification.type;
 
@@ -171,13 +152,14 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="notification-icon ${notification.type}"><i class="fas ${icons[notification.type] || 'fa-bell'}"></i></div>
             <div class="notification-content">
                 <p>${notification.message}</p>
-                <small class="timestamp">${notification.timestamp}</small>
+                <small class="timestamp">${new Date(notification.timestamp).toLocaleString()}</small>
             </div>
             <a href="#" class="notification-action" data-page="${notification.type}" title="View Details"><i class="fas fa-arrow-right"></i></a>
         `;
         
         // Add click listener to the whole item for navigation and marking as read
-        item.addEventListener('click', () => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
             markNotificationAsRead(notification.id);
             navigateToPage(notification.type);
         });
@@ -190,18 +172,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!notificationList) return;
         
         const filter = notificationFilter ? notificationFilter.value : 'all';
-        // You need to create this backend file.
-        // It should query the DB and return a JSON array of notifications.
-        const apiUrl = `api/get_notifications.php?filter=${filter}`;
+        const apiUrl = `api.php?action=get_notifications&filter=${filter}`;
 
         try {
-            // Show a loading state (optional)
             notificationList.innerHTML = '<p>Loading notifications...</p>';
             
             const response = await fetch(apiUrl);
+            if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
             const data = await response.json();
 
-            notificationList.innerHTML = ''; // Clear loading/previous state
+            notificationList.innerHTML = ''; 
 
             if (data.success && data.notifications.length > 0) {
                 data.notifications.forEach(notification => {
@@ -221,12 +201,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Marks a single notification as read ---
     const markNotificationAsRead = async (notificationId) => {
-        // You need to create this backend file.
-        // It should take a notification ID and update its 'is_read' status in the DB.
         try {
             const formData = new FormData();
+            formData.append('action', 'mark_read');
             formData.append('id', notificationId);
-            await fetch('api/mark_read.php', { method: 'POST', body: formData });
+            
+            const response = await fetch('api.php', { method: 'POST', body: formData });
+            const result = await response.json();
+
+            if (result.success) {
+                const item = notificationList.querySelector(`.notification-item[data-id="${notificationId}"]`);
+                if (item) item.classList.remove('unread');
+                // Optionally, refetch to update the count
+                fetchAndRenderNotifications();
+            }
+
         } catch (error) {
             console.error('Error marking notification as read:', error);
         }
@@ -250,11 +239,10 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (markAllReadBtn) {
         markAllReadBtn.addEventListener('click', async () => {
-            // You need to create this backend file.
-            // It should mark all user's unread notifications as read.
             try {
-                await fetch('api/mark_all_read.php', { method: 'POST' });
-                // Refresh the list after marking all as read
+                const formData = new FormData();
+                formData.append('action', 'mark_all_read');
+                await fetch('api.php', { method: 'POST', body: formData });
                 fetchAndRenderNotifications();
             } catch (error) {
                 console.error('Error marking all as read:', error);
@@ -266,7 +254,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===   DISCHARGE SUMMARY PAGE LOGIC      ===
     // ===========================================
 
-    // Using event delegation for dynamically added summary cards
     document.addEventListener('click', (e) => {
         const toggleBtn = e.target.closest('.toggle-details-btn');
         if (!toggleBtn) return;
@@ -276,7 +263,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         summaryCard.classList.toggle('active');
 
-        // Update button text and icon for better UX
         if (summaryCard.classList.contains('active')) {
             toggleBtn.innerHTML = `<i class="fas fa-eye-slash"></i> Hide Details`;
         } else {
@@ -286,10 +272,74 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ===========================================
-    // ===   PROFILE PAGE FORM LOGIC (Existing)  ===
+    // ===       PROFILE PAGE LOGIC (UPDATED)    ===
     // ===========================================
 
-    // --- Password Strength Meter ---
+    // --- Generic function to handle form submissions via Fetch ---
+    const handleFormSubmit = async (form, action) => {
+        const formData = new FormData(form);
+        formData.append('action', action);
+        const button = form.querySelector('button[type="submit"]');
+        const originalButtonHtml = button.innerHTML;
+        button.innerHTML = 'Saving...';
+        button.disabled = true;
+
+        try {
+            const response = await fetch('api.php', { method: 'POST', body: formData });
+            const result = await response.json();
+
+            if (!response.ok) {
+                alert(`Error: ${result.message || 'An unknown error occurred.'}`);
+                return;
+            }
+
+            if (result.success) {
+                alert(result.message);
+                if (action === 'change_password') {
+                    form.reset(); // Clear password fields
+                }
+            } else {
+                alert(`Update failed: ${result.message}`);
+            }
+        } catch (error) {
+            console.error('Form submission error:', error);
+            alert('An unexpected error occurred. Please check the console.');
+        } finally {
+            button.innerHTML = originalButtonHtml;
+            button.disabled = false;
+        }
+    };
+    
+    // --- Handle profile picture upload ---
+    if (avatarUploadInput) {
+        avatarUploadInput.addEventListener('change', async () => {
+            const file = avatarUploadInput.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('action', 'update_profile_picture');
+            formData.append('profile_picture', file);
+
+            try {
+                const response = await fetch('api.php', { method: 'POST', body: formData });
+                const result = await response.json();
+
+                if (result.success) {
+                    const newImageUrl = `../uploads/profile_pictures/${result.filepath}?t=${new Date().getTime()}`; // Add timestamp to break cache
+                    if (profilePageAvatar) profilePageAvatar.src = newImageUrl;
+                    if (profileAvatar) profileAvatar.src = newImageUrl;
+                    alert('Profile picture updated successfully!');
+                } else {
+                     alert(`Upload failed: ${result.message}`);
+                }
+            } catch (error) {
+                console.error('Avatar upload error:', error);
+                alert('An error occurred during upload. Please try again.');
+            }
+        });
+    }
+
+    // --- Password strength checker ---
     const checkPasswordStrength = (password) => {
         let score = 0;
         if (password.length >= 8) score++;
@@ -316,8 +366,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- Password Confirmation Validation ---
     const validatePasswordConfirmation = () => {
+        if (!newPasswordInput || !confirmPasswordInput) return;
         if (newPasswordInput.value !== confirmPasswordInput.value) {
             confirmPasswordInput.style.borderColor = 'var(--status-red)';
             return false;
@@ -331,14 +381,11 @@ document.addEventListener('DOMContentLoaded', () => {
         confirmPasswordInput.addEventListener('input', validatePasswordConfirmation);
     }
     
-    // --- Form Submit Handlers ---
+    // --- Attach event listeners to forms ---
     if (personalInfoForm) {
         personalInfoForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            // TODO: Add AJAX/Fetch call to a backend script (e.g., api/update_profile.php).
-            // Collect form data using: new FormData(personalInfoForm)
-            // On success, show a success message. On error, show an error.
-            alert('Saving Personal Information... (Backend logic needed)');
+            handleFormSubmit(personalInfoForm, 'update_personal_info');
         });
     }
 
@@ -349,22 +396,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Passwords do not match.');
                 return;
             }
-            if (newPasswordInput.value.length < 8) {
-                alert('Password must be at least 8 characters long.');
-                return;
-            }
-            // TODO: Add AJAX/Fetch call to a backend script (e.g., api/update_password.php).
-            // Send current_password, new_password, etc.
-            // On success, clear fields and show success message. On error, show error.
-            alert('Updating password... (Backend logic needed)');
+            handleFormSubmit(changePasswordForm, 'change_password');
         });
     }
 
     if (notificationPrefsForm) {
         notificationPrefsForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            // TODO: Add AJAX/Fetch call to a backend script (e.g., api/update_preferences.php).
-            // Collect checkbox states and send them to the server.
             alert('Saving Notification Preferences... (Backend logic needed)');
         });
     }
@@ -383,7 +421,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const bookingModalTitle = document.getElementById('booking-modal-title');
     
     let currentStep = 1;
-    let bookingData = {}; // Object to hold { doctorId, doctorName, date, slot, token }
+    let bookingData = {}; 
 
     const stepTitles = [
         "Step 1: Find Your Doctor", "Step 2: Select Date & Time",
@@ -400,15 +438,13 @@ document.addEventListener('DOMContentLoaded', () => {
         bookingNextBtn.style.display = (step < 4) ? 'inline-flex' : 'none';
         bookingConfirmBtn.style.display = (step === 4) ? 'inline-flex' : 'none';
         
-        // --- Step-specific actions when moving TO a step ---
         if (step === 2) {
             document.getElementById('selected-doctor-name').textContent = bookingData.doctorName;
-            fetchAndRenderSlots(bookingData.doctorId); // Fetch slots for the selected doctor
+            fetchAndRenderSlots(bookingData.doctorId); 
         } else if (step === 3) {
             document.getElementById('token-doctor-name').textContent = bookingData.doctorName;
             document.getElementById('token-selected-date').textContent = bookingData.date;
             document.getElementById('token-selected-slot').textContent = bookingData.slot;
-            // ** FIX: Renamed function to avoid conflict **
             fetchAndRenderTokenGrid(bookingData.doctorId, bookingData.date, bookingData.slot);
         } else if (step === 4) {
             document.getElementById('confirm-doctor').textContent = `${bookingData.doctorName}`;
@@ -429,7 +465,6 @@ document.addEventListener('DOMContentLoaded', () => {
         bookingNextBtn.disabled = !enabled;
     };
 
-    // --- Tab logic for Appointments Page ---
     if (appointmentsPage) {
         const tabs = appointmentsPage.querySelectorAll('.tab-link');
         const tabContents = appointmentsPage.querySelectorAll('.tab-content');
@@ -444,10 +479,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- Event Listeners for Booking Wizard ---
     if (bookNewBtn) {
         bookNewBtn.addEventListener('click', () => {
-            bookingData = {}; // Reset data
+            bookingData = {}; 
             goToStep(1);
             fetchAndRenderDoctors();
             bookingModal.classList.add('show');
@@ -462,35 +496,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (bookingConfirmBtn) {
         bookingConfirmBtn.addEventListener('click', async () => {
             console.log("Submitting booking:", bookingData);
-            // REAL IMPLEMENTATION:
-            // try {
-            //     const response = await fetch('api/book_appointment.php', {
-            //         method: 'POST',
-            //         headers: { 'Content-Type': 'application/json' },
-            //         body: JSON.stringify(bookingData)
-            //     });
-            //     const result = await response.json();
-            //     if (result.success) {
-            //         alert('Appointment booked successfully!');
-            //         bookingModal.classList.remove('show');
-            //         fetchAndRenderAppointments(); // Refresh the list
-            //     } else {
-            //         alert('Error: ' + result.message);
-            //     }
-            // } catch (err) {
-            //     alert('An error occurred. Please try again.');
-            // }
             alert('Appointment Confirmed! (This is a demo).');
             bookingModal.classList.remove('show');
             fetchAndRenderAppointments();
         });
     }
     
-    // --- MOCK DATA AND API FUNCTIONS (Replace with real fetch calls) ---
-    
-    // Mock: Fetches and displays existing appointments
     const fetchAndRenderAppointments = async () => {
-        // In a real app, you would fetch this from an API
         const mockAppointments = {
             upcoming: [
                 { id: 1, doctorName: 'Dr. Emily Carter', specialty: 'Cardiology', date: '2025-09-01', time: '11:00 AM', token: 8, status: 'scheduled' },
@@ -523,7 +535,6 @@ document.addEventListener('DOMContentLoaded', () => {
         `).join('');
     };
 
-    // Mock: Fetches and displays doctors for Step 1
     const fetchAndRenderDoctors = async () => {
         const mockDoctors = [
             { id: 1, name: 'Dr. Emily Carter', specialty: 'Cardiology', profile_picture: 'doc1.jpg' },
@@ -553,11 +564,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
     
-    // Mock: Fetches and renders available slots for Step 2
     const fetchAndRenderSlots = async (doctorId) => {
-        // This would fetch from `api/get_doctor_availability.php?doctor_id=${doctorId}`
-        // For now, using a simple date and mock slots
-        bookingData.date = '2025-09-10'; // Assume user picked a date
+        bookingData.date = '2025-09-10'; 
         const mockSlots = ["09:00 AM - 10:00 AM", "10:00 AM - 11:00 AM", "11:00 AM - 12:00 PM"];
         
         const slotsContainer = document.getElementById('slots-container');
@@ -573,15 +581,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
     
-    // ** FIX: Renamed function to fetchAndRenderTokenGrid to avoid conflict **
-    // Mock: Fetches and renders the token selection grid for Step 3
     const fetchAndRenderTokenGrid = async (doctorId, date, slot) => {
-        // This would fetch from `api/get_booked_tokens.php?doctor_id=...`
         const totalTokens = 12;
-        const bookedTokens = [2, 5, 8]; // Mock booked tokens
+        const bookedTokens = [2, 5, 8]; 
 
         const tokenGrid = document.getElementById('token-grid');
-        tokenGrid.innerHTML = ''; // Clear previous tokens
+        tokenGrid.innerHTML = ''; 
         for (let i = 1; i <= totalTokens; i++) {
             const isBooked = bookedTokens.includes(i);
             const tokenEl = document.createElement('div');
@@ -611,7 +616,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const prescriptionsLoadingState = document.getElementById('prescriptions-loading-state');
     const applyPrescriptionFiltersBtn = document.getElementById('prescription-apply-filters');
 
-    // --- Renders a single prescription card ---
     const createPrescriptionCard = (prescription) => {
         const card = document.createElement('div');
         card.className = 'summary-card prescription-card';
@@ -675,7 +679,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return card;
     };
 
-    // --- Fetches and renders prescriptions ---
     const fetchAndRenderPrescriptions = async () => {
         if (!prescriptionsPage) return;
 
@@ -687,7 +690,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const dateFilter = document.getElementById('prescription-filter-date').value;
             const statusFilter = document.getElementById('prescription-filter-status').value;
             
-            // IMPORTANT: You must create this backend API endpoint.
             const apiUrl = `api/get_prescriptions.php?date=${dateFilter}&status=${statusFilter}`;
             const response = await fetch(apiUrl);
             
@@ -714,7 +716,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- Event Listeners for Prescription Page ---
     if (prescriptionsPage) {
         applyPrescriptionFiltersBtn.addEventListener('click', fetchAndRenderPrescriptions);
     }
@@ -900,9 +901,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const yourToken = parseInt(tokenData.your_token, 10);
         const currentToken = parseInt(tokenData.current_token, 10);
         
-        // --- Estimated Wait Time Calculation ---
         const tokensAhead = yourToken > currentToken ? yourToken - currentToken - 1 : 0;
-        const avgTimePerToken = 5; // Assuming 5 minutes per token on average
+        const avgTimePerToken = 5; 
         const estimatedWait = tokensAhead * avgTimePerToken;
         let waitMessage = `Approximately ${estimatedWait} minutes remaining.`;
         if (tokensAhead === 0 && yourToken > currentToken) {
@@ -913,9 +913,8 @@ document.addEventListener('DOMContentLoaded', () => {
             waitMessage = "Your turn is complete or has passed.";
         }
 
-        // --- Progress Bar Calculation ---
         const progressPercentage = yourToken > 0 ? (currentToken / yourToken) * 100 : 0;
-        const finalProgress = Math.min(progressPercentage, 100); // Cap at 100%
+        const finalProgress = Math.min(progressPercentage, 100); 
 
         card.innerHTML = `
             <div class="token-card-header">
@@ -953,17 +952,17 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const fetchAndRenderTokens = async () => {
-        if (!tokenListPage.classList.contains('active')) return; // Only run if page is active
+        if (!tokenListPage.classList.contains('active')) return; 
 
         tokenLoadingState.style.display = 'block';
         tokenEmptyState.style.display = 'none';
         
         try {
-            // You will need to create this backend file.
+            // NOTE: This API endpoint (get_live_tokens.php) needs to be created
             const response = await fetch('api/get_live_tokens.php');
             const data = await response.json();
             
-            tokenContainer.innerHTML = ''; // Clear previous cards
+            tokenContainer.innerHTML = ''; 
 
             if (data.success && data.tokens.length > 0) {
                 data.tokens.forEach(token => {
@@ -1001,117 +1000,133 @@ document.addEventListener('DOMContentLoaded', () => {
 // ===========================================
 
 const fetchAndRenderDashboardData = async () => {
-    // In a real app, you would fetch from multiple API endpoints
-    // For this demo, we'll use mock data and a timeout to simulate a network request.
-    const getDashboardData = () => {
-        return new Promise(resolve => {
-            setTimeout(() => {
-                const mockData = {
-                    appointments: [
-                        { doctorName: 'Dr. Emily Carter', specialty: 'Cardiology', time: 'Tomorrow, 11:00 AM', date: 'Sep 01', avatar: 'doc1.jpg' },
-                        { doctorName: 'Dr. Alan Grant', specialty: 'General Medicine', time: '02:30 PM', date: 'Sep 05', avatar: 'doc2.jpg' }
-                    ],
-                    activity: [
-                        { type: 'labs', icon: 'fa-vial', message: 'Your <strong>Lipid Profile</strong> lab result is ready.', time: '1 day ago', page: 'labs'},
-                        { type: 'billing', icon: 'fa-file-invoice-dollar', message: 'You made a payment of <strong>$50.00</strong> for Consultation.', time: '2 days ago', page: 'billing'},
-                        { type: 'prescriptions', icon: 'fa-pills', message: 'A new prescription was added by <strong>Dr. James Smith</strong>.', time: '5 days ago', page: 'prescriptions'}
-                    ],
-                    token: { doctorName: "Dr. Carter's Clinic", current: 5, yours: 8 }
-                    // To test empty states, use this:
-                    // appointments: [], activity: [], token: null
-                };
-                resolve(mockData);
-            }, 1000); // Simulate 1-second loading time
-        });
-    };
-
-    const data = await getDashboardData();
-    
-    // --- Render Appointments ---
+    // Selectors for dashboard elements
     const appointmentsList = document.getElementById('dashboard-appointments-list');
     const appointmentsEmpty = document.getElementById('dashboard-appointments-empty');
-    appointmentsList.innerHTML = ''; // Clear skeleton
-    if (data.appointments && data.appointments.length > 0) {
-        appointmentsEmpty.style.display = 'none';
-        data.appointments.forEach(app => {
-            const card = document.createElement('div');
-            card.className = 'appointment-card';
-            card.dataset.page = 'appointments'; // For navigation
-            card.innerHTML = `
-                <div class="doctor-avatar">
-                    <img src="../uploads/profile_pictures/${app.avatar}" alt="${app.doctorName}">
-                </div>
-                <div class="appointment-details">
-                    <p>${app.specialty} with <strong>${app.doctorName}</strong></p>
-                    <small>You have an upcoming appointment.</small>
-                </div>
-                <div class="appointment-time">
-                    <span>${app.time}</span>
-                    <small>${app.date}</small>
-                </div>
-            `;
-            card.addEventListener('click', () => navigateToPage('appointments'));
-            appointmentsList.appendChild(card);
-        });
-        document.getElementById('welcome-subtext').textContent = `You have ${data.appointments.length} upcoming appointment(s).`;
-    } else {
-        appointmentsEmpty.style.display = 'block';
-        document.getElementById('welcome-subtext').textContent = `You're all caught up. No upcoming appointments.`;
-    }
-
-    // --- Render Activity Feed ---
     const activityFeed = document.getElementById('dashboard-activity-feed');
     const activityEmpty = document.getElementById('dashboard-activity-empty');
-    activityFeed.innerHTML = ''; // Clear skeleton
-    if (data.activity && data.activity.length > 0) {
-        activityEmpty.style.display = 'none';
-        data.activity.forEach(act => {
-            const item = document.createElement('div');
-            item.className = 'activity-item notification-item'; // Re-use notification styles
-            item.dataset.page = act.page;
-            item.innerHTML = `
-                <div class="notification-icon ${act.type}"><i class="fas ${act.icon}"></i></div>
-                <div class="notification-content">
-                    <p>${act.message}</p>
-                    <small class="timestamp">${act.time}</small>
-                </div>
-            `;
-            item.addEventListener('click', () => navigateToPage(act.page));
-            activityFeed.appendChild(item);
-        });
-    } else {
-        activityEmpty.style.display = 'block';
-    }
-
-    // --- Render Token Widget ---
     const tokenWidget = document.getElementById('dashboard-token-widget');
     const tokenEmpty = document.getElementById('dashboard-token-empty');
-    tokenWidget.innerHTML = ''; // Clear skeleton
-    if (data.token) {
-        tokenEmpty.style.display = 'none';
-        tokenWidget.innerHTML = `
-            <div class="mini-token-card">
-                <h4>${data.token.doctorName}</h4>
-                <div class="mini-token-body">
-                    <div class="mini-token-number">
-                        <p>Serving</p>
-                        <span>#${String(data.token.current).padStart(2, '0')}</span>
+    const welcomeSubtext = document.getElementById('welcome-subtext');
+
+    try {
+        const response = await fetch('api.php?action=get_dashboard_data');
+        if (!response.ok) {
+            throw new Error(`HTTP Error: ${response.status}`);
+        }
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to fetch dashboard data.');
+        }
+
+        const data = result.data;
+        
+        // Render Appointments
+        appointmentsList.innerHTML = ''; 
+        if (data.appointments && data.appointments.length > 0) {
+            appointmentsEmpty.style.display = 'none';
+            data.appointments.forEach(app => {
+                const date = new Date(app.appointment_date);
+                const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+                const card = document.createElement('div');
+                card.className = 'appointment-card';
+                card.dataset.page = 'appointments'; 
+                card.innerHTML = `
+                    <div class="doctor-avatar">
+                        <img src="../uploads/profile_pictures/${app.avatar}" alt="${app.doctorName}">
                     </div>
-                    <div class="mini-token-divider"></div>
-                    <div class="mini-token-number your">
-                        <p>Your Token</p>
-                        <span>#${String(data.token.yours).padStart(2, '0')}</span>
+                    <div class="appointment-details">
+                        <p>${app.specialty} with <strong>${app.doctorName}</strong></p>
+                        <small>You have an upcoming appointment.</small>
                     </div>
+                    <div class="appointment-time">
+                        <span>${time}</span>
+                        <small>${dateStr}</small>
+                    </div>
+                `;
+                card.addEventListener('click', () => navigateToPage('appointments'));
+                appointmentsList.appendChild(card);
+            });
+            welcomeSubtext.textContent = `You have ${data.appointments.length} upcoming appointment(s).`;
+        } else {
+            appointmentsEmpty.style.display = 'block';
+            welcomeSubtext.textContent = `You're all caught up. No upcoming appointments.`;
+        }
+
+        // Render Activity Feed
+        activityFeed.innerHTML = ''; 
+        if (data.activity && data.activity.length > 0) {
+            activityEmpty.style.display = 'none';
+            const icons = {
+                labs: { icon: 'fa-vial', page: 'labs'},
+                billing: { icon: 'fa-file-invoice-dollar', page: 'billing' },
+                prescriptions: { icon: 'fa-pills', page: 'prescriptions' },
+                appointments: { icon: 'fa-calendar-check', page: 'appointments'}
+            };
+            
+            data.activity.forEach(act => {
+                const item = document.createElement('div');
+                const activityInfo = icons[act.type] || { icon: 'fa-bell', page: 'notifications' };
+                item.className = 'activity-item notification-item'; 
+                item.dataset.page = activityInfo.page;
+                
+                const timeAgo = new Date(act.time);
+                
+                item.innerHTML = `
+                    <div class="notification-icon ${act.type}"><i class="fas ${activityInfo.icon}"></i></div>
+                    <div class="notification-content">
+                        <p>${act.message}</p>
+                        <small class="timestamp">${timeAgo.toLocaleString()}</small>
+                    </div>
+                `;
+                item.addEventListener('click', () => navigateToPage(activityInfo.page));
+                activityFeed.appendChild(item);
+            });
+        } else {
+            activityEmpty.style.display = 'block';
+        }
+
+        // Render Token Widget
+        tokenWidget.innerHTML = ''; 
+        if (data.token) {
+            tokenEmpty.style.display = 'none';
+            tokenWidget.innerHTML = `
+                <div class="mini-token-card">
+                    <h4>Dr. ${data.token.doctorName}</h4>
+                    <div class="mini-token-body">
+                        <div class="mini-token-number">
+                            <p>Serving</p>
+                            <span>#${String(data.token.current).padStart(2, '0')}</span>
+                        </div>
+                        <div class="mini-token-divider"></div>
+                        <div class="mini-token-number your">
+                            <p>Your Token</p>
+                            <span>#${String(data.token.yours).padStart(2, '0')}</span>
+                        </div>
+                    </div>
+                    <a href="#" class="btn-primary full-width" data-page="token">View Details</a>
                 </div>
-                <a href="#" class="btn-primary full-width" data-page="token">View Details</a>
-            </div>
-        `;
-        // Re-attach event listener for the new button
-        tokenWidget.querySelector('[data-page="token"]').addEventListener('click', (e) => {
-            e.preventDefault();
-            navigateToPage('token');
-        });
-    } else {
+            `;
+            tokenWidget.querySelector('[data-page="token"]').addEventListener('click', (e) => {
+                e.preventDefault();
+                navigateToPage('token');
+            });
+        } else {
+            tokenEmpty.style.display = 'block';
+        }
+
+    } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+        appointmentsList.innerHTML = '';
+        activityFeed.innerHTML = '';
+        tokenWidget.innerHTML = '';
+        appointmentsEmpty.style.display = 'block';
+        activityEmpty.style.display = 'block';
         tokenEmpty.style.display = 'block';
+        appointmentsEmpty.innerHTML = '<p>Could not load appointments.</p>';
+        activityEmpty.innerHTML = '<p>Could not load activity.</p>';
+        tokenEmpty.innerHTML = '<p>Could not load token status.</p>';
     }
 };

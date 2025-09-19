@@ -203,13 +203,30 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     break;
                 
                 case 'active_doctors':
-                    $stmt = $conn->prepare("
+                    $search_query = $_GET['search'] ?? '';
+                    $sql = "
                         SELECT u.id, u.name 
                         FROM users u 
                         JOIN doctors d ON u.id = d.user_id 
-                        WHERE u.is_active = 1 
-                        ORDER BY u.name ASC
-                    ");
+                        WHERE u.is_active = 1
+                    ";
+                    $params = [];
+                    $types = "";
+
+                    if (!empty($search_query)) {
+                        $sql .= " AND u.name LIKE ?";
+                        $search_term = "%{$search_query}%";
+                        $params[] = $search_term;
+                        $types .= "s";
+                    }
+
+                    $sql .= " ORDER BY u.name ASC LIMIT 10"; // Limit results for performance
+                    
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                    
                     $stmt->execute();
                     $doctors = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     $stmt->close();
@@ -574,10 +591,11 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
 
                 case 'lab_results':
                     $search_query = $_GET['search'] ?? '';
+                    $status_filter = $_GET['status'] ?? 'all';
                     
                     $sql = "
                         SELECT 
-                            lr.id, lr.patient_id, lr.doctor_id,
+                            lr.id, lr.patient_id, lr.doctor_id, lr.cost, lr.status,
                             p.display_user_id AS patient_display_id,
                             p.name AS patient_name,
                             doc.name AS doctor_name,
@@ -592,13 +610,23 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     
                     $params = [];
                     $types = "";
+                    $where_clauses = [];
 
                     if (!empty($search_query)) {
-                        $sql .= " WHERE (p.name LIKE ? OR p.display_user_id LIKE ?)";
+                        $where_clauses[] = "(p.name LIKE ? OR p.display_user_id LIKE ?)";
                         $search_term = "%{$search_query}%";
-                        $params[] = $search_term;
-                        $params[] = $search_term;
+                        array_push($params, $search_term, $search_term);
                         $types .= "ss";
+                    }
+
+                    if ($status_filter !== 'all' && in_array($status_filter, ['pending', 'processing', 'completed'])) {
+                        $where_clauses[] = "lr.status = ?";
+                        $params[] = $status_filter;
+                        $types .= "s";
+                    }
+
+                    if (!empty($where_clauses)) {
+                        $sql .= " WHERE " . implode(" AND ", $where_clauses);
                     }
 
                     $sql .= " ORDER BY lr.test_date DESC, lr.id DESC";
@@ -869,9 +897,27 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $department_name = trim($_POST['department']);
                     $date_of_birth = !empty($_POST['date_of_birth']) ? trim($_POST['date_of_birth']) : null;
 
-                    if (empty($name) || empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL) || empty($department_name)) {
-                        throw new Exception('Invalid input. Please check all fields.');
+                    // --- Start: Enhanced Server-Side Validation ---
+                    if (empty($name) || empty($email) || empty($department_name)) {
+                        throw new Exception('Name, Email, and Department are required fields.');
                     }
+                    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                        throw new Exception('Please provide a valid email address.');
+                    }
+                    if (!empty($phone) && !preg_match('/^\+91\d{10}$/', $phone)) {
+                        throw new Exception('Phone number must be in the format +91 followed by 10 digits.');
+                    }
+                    if ($date_of_birth) {
+                        $d = DateTime::createFromFormat('Y-m-d', $date_of_birth);
+                        if (!$d || $d->format('Y-m-d') !== $date_of_birth) {
+                            throw new Exception('Invalid date of birth format provided.');
+                        }
+                        $year = (int)$d->format('Y');
+                        if ($year < 1900 || $year > date('Y')) {
+                            throw new Exception('Please enter a realistic year for the date of birth.');
+                        }
+                    }
+                    // --- End: Enhanced Server-Side Validation ---
                     
                     // Get department ID from name
                     $dept_stmt = $conn->prepare("SELECT id FROM departments WHERE name = ?");
@@ -1028,20 +1074,26 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
 
                     // Staff can search for admins, doctors, and other staff to message them
                     $stmt = $conn->prepare("
-                        SELECT u.id, u.display_user_id, u.name, r.role_name as role, u.profile_picture 
+                        SELECT
+                            u.id, u.display_user_id, u.name, r.role_name as role, u.profile_picture,
+                            c.id as conversation_id,
+                            (SELECT message_text FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message
                         FROM users u
                         JOIN roles r ON u.role_id = r.id
-                        WHERE (u.name LIKE ? OR u.display_user_id LIKE ?) 
-                        AND r.role_name IN ('admin', 'doctor', 'staff') 
+                        LEFT JOIN conversations c ON
+                            (c.user_one_id = u.id AND c.user_two_id = ?) OR
+                            (c.user_one_id = ? AND c.user_two_id = u.id)
+                        WHERE (u.name LIKE ? OR u.display_user_id LIKE ?)
+                        AND r.role_name IN ('admin', 'doctor', 'staff')
                         AND u.id != ?
                     ");
-                    $stmt->bind_param("ssi", $search_term, $search_term, $user_id);
+                    $stmt->bind_param("iissi", $user_id, $user_id, $search_term, $search_term, $user_id);
                     $stmt->execute();
                     $users = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     $stmt->close();
 
                     foreach ($users as &$user) {
-                        $default_avatar = '../images/staff-avatar.jpg';
+                        $default_avatar = '../uploads/profile_pictures/default.png';
                         $picture_filename = $user['profile_picture'];
                         $potential_path_local = dirname(__DIR__) . '/uploads/profile_pictures/' . $picture_filename;
                         $potential_path_web = '../uploads/profile_pictures/' . $picture_filename;
@@ -1136,6 +1188,18 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $date_of_birth = !empty($_POST['date_of_birth']) ? trim($_POST['date_of_birth']) : null;
                         $phone = !empty($_POST['phone']) ? trim($_POST['phone']) : null;
 
+                        // --- START: New Server-Side Validation ---
+                        if ($phone && !preg_match('/^\+91\d{10}$/', $phone)) {
+                            throw new Exception('Invalid phone number format. Use +91xxxxxxxxxx.');
+                        }
+                        if ($date_of_birth) {
+                            $d = DateTime::createFromFormat('Y-m-d', $date_of_birth);
+                            if (!$d || $d->format('Y-m-d') !== $date_of_birth || strlen(explode('-', $date_of_birth)[0]) > 4) {
+                                throw new Exception('Invalid date of birth provided.');
+                            }
+                        }
+                        // --- END: New Server-Side Validation ---
+
                         if (empty($name) || empty($username) || empty($email)) {
                             throw new Exception("Name, Username, and Email fields are required.");
                         }
@@ -1203,6 +1267,18 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $date_of_birth = !empty($_POST['date_of_birth']) ? trim($_POST['date_of_birth']) : null;
                         $active = isset($_POST['active']) ? (int)$_POST['active'] : 1;
 
+                        // --- START: New Server-Side Validation ---
+                        if (!empty($phone) && !preg_match('/^\+91\d{10}$/', $phone)) {
+                            throw new Exception('Invalid phone number format. Use +91xxxxxxxxxx.');
+                        }
+                        if ($date_of_birth) {
+                            $d = DateTime::createFromFormat('Y-m-d', $date_of_birth);
+                            if (!$d || $d->format('Y-m-d') !== $date_of_birth || strlen(explode('-', $date_of_birth)[0]) > 4) {
+                                throw new Exception('Invalid date of birth provided.');
+                            }
+                        }
+                        // --- END: New Server-Side Validation ---
+
                         if (empty($name) || empty($email)) {
                             throw new Exception("Name and Email fields are required.");
                         }
@@ -1221,7 +1297,9 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $stmt_doctor->close();
                         }
 
-                        log_activity($conn, $user_id, 'update_user', $target_user_id, "Staff updated profile for user ID {$target_user_id}.");
+                        // --- MODIFICATION START: Improved User Update Logging ---
+                        log_activity($conn, $user_id, 'update_user', $target_user_id, "Staff updated profile for user '{$name}' (ID: {$target_user_id}).");
+                        // --- MODIFICATION END ---
 
                         $conn->commit();
                         $transaction_active = false;
@@ -1333,7 +1411,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $params = [];
                         $types = "";
 
-                        $stmt_current = $conn->prepare("SELECT type, patient_id FROM accommodations WHERE id = ? FOR UPDATE");
+                        $stmt_current = $conn->prepare("SELECT type, patient_id, `number` FROM accommodations WHERE id = ? FOR UPDATE");
                         $stmt_current->bind_param("i", $id);
                         $stmt_current->execute();
                         $current_accommodation = $stmt_current->get_result()->fetch_assoc();
@@ -1343,6 +1421,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         }
                         $type = $current_accommodation['type'];
                         $old_patient_id = $current_accommodation['patient_id'];
+                        $current_accommodation_number = $current_accommodation['number'];
 
                         if (isset($_POST['price'])) {
                             $price = filter_var($_POST['price'], FILTER_VALIDATE_FLOAT);
@@ -1357,7 +1436,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $types .= "s";
                         }
                         
-                        // Handle direct status change for UNOCCUPIED beds
                         if (isset($_POST['status']) && !isset($_POST['patient_id'])) {
                             if ($old_patient_id) {
                                 throw new Exception("Cannot change status directly while a patient is assigned. Please discharge the patient first.");
@@ -1372,18 +1450,21 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $types .= "s";
                         }
                         
-                        // Handle complex patient assignment/discharge
                         if (isset($_POST['patient_id'])) {
                             $new_patient_id = empty($_POST['patient_id']) ? null : (int)$_POST['patient_id'];
                             $new_doctor_id = empty($_POST['doctor_id']) ? null : (int)$_POST['doctor_id'];
 
                             if ($new_patient_id != $old_patient_id) {
+                                // --- MODIFICATION START: Enhanced Admission/Discharge Logging ---
+                                $old_patient_name = $old_patient_id ? $conn->query("SELECT name FROM users WHERE id = $old_patient_id")->fetch_assoc()['name'] : '';
+                                $new_patient_name = $new_patient_id ? $conn->query("SELECT name FROM users WHERE id = $new_patient_id")->fetch_assoc()['name'] : '';
+                                
                                 if ($old_patient_id) {
                                     $dis_stmt = $conn->prepare("UPDATE admissions SET discharge_date = NOW() WHERE accommodation_id = ? AND patient_id = ? AND discharge_date IS NULL");
                                     $dis_stmt->bind_param("ii", $id, $old_patient_id);
                                     $dis_stmt->execute();
                                     $dis_stmt->close();
-                                    log_activity($conn, $user_id, "discharge_patient", $old_patient_id, "Discharged patient from {$type} ID {$id}.");
+                                    log_activity($conn, $user_id, "discharge_patient", $old_patient_id, "Discharged patient '{$old_patient_name}' from {$type} '{$current_accommodation_number}'.");
                                 }
                                 
                                 if ($new_patient_id) {
@@ -1393,7 +1474,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                                     $adm_stmt->close();
                                     
                                     $updates[] = "status = 'occupied'";
-                                    log_activity($conn, $user_id, "admit_patient", $new_patient_id, "Admitted patient to {$type} ID {$id}.");
+                                    log_activity($conn, $user_id, "admit_patient", $new_patient_id, "Admitted patient '{$new_patient_name}' to {$type} '{$current_accommodation_number}'.");
                                 } else {
                                      if(isset($_POST['status'])) {
                                         $updates[] = "status = ?";
@@ -1401,6 +1482,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                                         $types .= "s";
                                      }
                                 }
+                                // --- MODIFICATION END ---
                                 $updates[] = "patient_id = ?";
                                 $params[] = $new_patient_id;
                                 $types .= "i";
@@ -1412,19 +1494,34 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         }
 
                         if (empty($updates)) {
-                            throw new Exception("No data provided to update.");
+                            // If no updates but patient assignment happened, we still proceed. Otherwise, throw exception.
+                            if (!isset($_POST['patient_id'])) {
+                                throw new Exception("No data provided to update.");
+                            }
                         }
 
-                        $sql = "UPDATE accommodations SET " . implode(", ", $updates) . " WHERE id = ?";
-                        $params[] = $id;
-                        $types .= "i";
+                        if (!empty($updates)) {
+                            $sql = "UPDATE accommodations SET " . implode(", ", $updates) . " WHERE id = ?";
+                            $params[] = $id;
+                            $types .= "i";
+                            
+                            $stmt = $conn->prepare($sql);
+                            $stmt->bind_param($types, ...$params);
+                            $stmt->execute();
+                            $stmt->close();
+                        }
                         
-                        $stmt = $conn->prepare($sql);
-                        $stmt->bind_param($types, ...$params);
-                        $stmt->execute();
-                        $stmt->close();
-                        
-                        log_activity($conn, $user_id, "update_{$type}", null, "Updated details for {$type} ID {$id}");
+                        // --- MODIFICATION START: Detailed Logging for General Updates ---
+                        $log_details = [];
+                        if (isset($_POST['price'])) $log_details[] = "price to ₹" . $_POST['price'];
+                        if (isset($_POST['number'])) $log_details[] = "number to '" . $_POST['number'] . "'";
+                        if (isset($_POST['status']) && !isset($_POST['patient_id'])) $log_details[] = "status to '" . $_POST['status'] . "'";
+
+                        if (!empty($log_details)) {
+                            $accommodation_number_for_log = $_POST['number'] ?? $current_accommodation_number;
+                            log_activity($conn, $user_id, "update_{$type}", null, "Updated {$type} '{$accommodation_number_for_log}': set " . implode(', ', $log_details) . ".");
+                        }
+                        // --- MODIFICATION END ---
                         
                         $conn->commit();
                         $transaction_active = false;
@@ -1483,6 +1580,9 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $test_date = trim($_POST['test_date']);
                         $doctor_id = !empty($_POST['doctor_id']) ? (int)$_POST['doctor_id'] : null;
                         $result_details = !empty($_POST['result_details']) ? trim($_POST['result_details']) : null;
+                        $cost = isset($_POST['cost']) && is_numeric($_POST['cost']) ? (float)$_POST['cost'] : 0.00;
+                        $status = in_array($_POST['status'], ['pending', 'processing', 'completed']) ? $_POST['status'] : 'pending';
+
                         
                         if (empty($patient_id) || empty($test_name) || empty($test_date)) {
                             throw new Exception("Patient, test name, and test date are required.");
@@ -1532,9 +1632,9 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                                 }
                             }
 
-                            $sql = "UPDATE lab_results SET patient_id = ?, doctor_id = ?, test_name = ?, test_date = ?, result_details = ?";
-                            $types = "iisss";
-                            $params = [$patient_id, $doctor_id, $test_name, $test_date, $result_details];
+                            $sql = "UPDATE lab_results SET patient_id = ?, doctor_id = ?, test_name = ?, test_date = ?, result_details = ?, cost = ?, status = ?";
+                            $types = "iisssds";
+                            $params = [$patient_id, $doctor_id, $test_name, $test_date, $result_details, $cost, $status];
 
                             if ($attachment_filename) {
                                 $sql .= ", attachment_path = ?";
@@ -1555,8 +1655,8 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $response = ['success' => true, 'message' => 'Lab result updated successfully.'];
 
                         } else { // Add new
-                            $stmt = $conn->prepare("INSERT INTO lab_results (patient_id, doctor_id, staff_id, test_name, test_date, result_details, attachment_path) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                            $stmt->bind_param("iiissss", $patient_id, $doctor_id, $user_id, $test_name, $test_date, $result_details, $attachment_filename);
+                            $stmt = $conn->prepare("INSERT INTO lab_results (patient_id, doctor_id, staff_id, test_name, test_date, result_details, attachment_path, cost, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                            $stmt->bind_param("iiissssds", $patient_id, $doctor_id, $user_id, $test_name, $test_date, $result_details, $attachment_filename, $cost, $status);
                             $stmt->execute();
                             $new_lab_id = $conn->insert_id;
                             $stmt->close();
@@ -1582,15 +1682,17 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
 
                     $conn->begin_transaction();
                     
-                    // First, get the attachment path to delete the file
+                    // --- MODIFICATION START: Fetch patient_id for logging before deletion ---
                     $upload_dir = __DIR__ . '/report/';
-                    $stmt_select = $conn->prepare("SELECT attachment_path FROM lab_results WHERE id = ?");
+                    $stmt_select = $conn->prepare("SELECT attachment_path, patient_id FROM lab_results WHERE id = ?");
                     $stmt_select->bind_param("i", $lab_id);
                     $stmt_select->execute();
-                    $file_to_delete = $stmt_select->get_result()->fetch_assoc()['attachment_path'];
+                    $result_data = $stmt_select->get_result()->fetch_assoc();
+                    $file_to_delete = $result_data['attachment_path'] ?? null;
+                    $patient_id_for_log = $result_data['patient_id'] ?? null;
                     $stmt_select->close();
+                    // --- MODIFICATION END ---
 
-                    // Now, delete the database record
                     $stmt_delete = $conn->prepare("DELETE FROM lab_results WHERE id = ?");
                     $stmt_delete->bind_param("i", $lab_id);
                     $stmt_delete->execute();
@@ -1599,7 +1701,9 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         if ($file_to_delete && file_exists($upload_dir . $file_to_delete)) {
                             unlink($upload_dir . $file_to_delete);
                         }
-                        log_activity($conn, $user_id, 'delete_lab_result', null, "Deleted lab result #{$lab_id}");
+                        // --- MODIFICATION START: Use fetched patient_id in log ---
+                        log_activity($conn, $user_id, 'delete_lab_result', $patient_id_for_log, "Deleted lab result #{$lab_id}");
+                        // --- MODIFICATION END ---
                         $conn->commit();
                         $response = ['success' => true, 'message' => 'Lab result deleted successfully.'];
                     } else {
@@ -1619,7 +1723,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $conn->begin_transaction();
                     $transaction_active = true;
 
-                    // Get the current step details
                     $stmt_step = $conn->prepare("SELECT admission_id, clearance_step FROM discharge_clearance WHERE id = ? FOR UPDATE");
                     $stmt_step->bind_param("i", $discharge_id);
                     $stmt_step->execute();
@@ -1632,7 +1735,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     
                     $admission_id = $current_step['admission_id'];
 
-                    // Enforce sequential clearing
                     if ($current_step['clearance_step'] === 'pharmacy') {
                         $stmt_check = $conn->prepare("SELECT is_cleared FROM discharge_clearance WHERE admission_id = ? AND clearance_step = 'nursing'");
                         $stmt_check->bind_param("i", $admission_id);
@@ -1656,8 +1758,22 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $stmt->execute();
 
                     if ($stmt->affected_rows > 0) {
+                        // --- MODIFICATION START: Fetch patient info for better logging ---
+                        $stmt_patient = $conn->prepare("SELECT p.id, p.name FROM users p JOIN admissions a ON p.id = a.patient_id WHERE a.id = ?");
+                        $stmt_patient->bind_param("i", $admission_id);
+                        $stmt_patient->execute();
+                        $patient_info = $stmt_patient->get_result()->fetch_assoc();
+                        $stmt_patient->close();
+
                         checkAndFinalizeDischarge($conn, $admission_id);
-                        log_activity($conn, $user_id, 'process_discharge_clearance', null, "Processed discharge clearance #{$discharge_id}. Notes: {$notes}");
+                        log_activity(
+                            $conn, 
+                            $user_id, 
+                            'process_discharge_clearance', 
+                            $patient_info['id'] ?? null, 
+                            "Processed {$current_step['clearance_step']} clearance for patient '{$patient_info['name']}'. Notes: {$notes}"
+                        );
+                        // --- MODIFICATION END ---
                         $conn->commit();
                         $transaction_active = false;
                         $response = ['success' => true, 'message' => 'Clearance processed successfully.'];
@@ -1676,7 +1792,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         }
                         $admission_id = (int)$_POST['admission_id'];
                         
-                        // Fetch admission details
                         $stmt_adm = $conn->prepare("
                             SELECT 
                                 a.patient_id, a.admission_date,
@@ -1693,13 +1808,11 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         
                         if (!$admission) throw new Exception("Admission record not found.");
                         
-                        // 1. Calculate Accommodation Cost
                         $admission_date = new DateTime($admission['admission_date']);
                         $discharge_date = new DateTime($admission['effective_discharge_date']);
                         $duration = max(1, $admission_date->diff($discharge_date)->days + 1);
                         $accommodation_cost = $duration * ($admission['price_per_day'] ?? 0);
                         
-                        // 2. Calculate Medicine Cost for this admission
                         $stmt_med = $conn->prepare("
                             SELECT SUM(pi.quantity_dispensed * m.unit_price) as total_med_cost
                             FROM prescription_items pi
@@ -1712,7 +1825,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $medicine_cost = $stmt_med->get_result()->fetch_assoc()['total_med_cost'] ?? 0.00;
                         $stmt_med->close();
 
-                        // 3. Calculate Lab Test Cost for this admission
                         $stmt_lab = $conn->prepare("
                             SELECT SUM(cost) as total_lab_cost FROM lab_results 
                             WHERE patient_id = ? AND test_date BETWEEN ? AND ?
@@ -1722,14 +1834,12 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $lab_cost = $stmt_lab->get_result()->fetch_assoc()['total_lab_cost'] ?? 0.00;
                         $stmt_lab->close();
 
-                        // 4. Calculate Total Amount and Description
                         $total_amount = $accommodation_cost + $medicine_cost + $lab_cost;
                         $description = sprintf(
                             "Final bill for admission #%d. Accommodation (%d days): ₹%.2f, Medicines: ₹%.2f, Lab Tests: ₹%.2f.",
                             $admission_id, $duration, $accommodation_cost, $medicine_cost, $lab_cost
                         );
                         
-                        // 5. Insert the transaction
                         $stmt_insert = $conn->prepare("
                             INSERT INTO transactions (user_id, admission_id, description, amount, type, status) 
                             VALUES (?, ?, ?, ?, 'payment', 'pending')
@@ -1761,7 +1871,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $transaction_id = (int)$_POST['transaction_id'];
                         $payment_mode = $_POST['payment_mode'];
 
-                        // Update transaction status
                         $stmt = $conn->prepare("UPDATE transactions SET status = 'paid', payment_mode = ?, paid_at = NOW() WHERE id = ? AND status = 'pending'");
                         $stmt->bind_param("si", $payment_mode, $transaction_id);
                         $stmt->execute();
@@ -1771,8 +1880,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         }
                         $stmt->close();
                         
-                        // --- PDF Generation and Emailing ---
-                        // Fetch patient email
                         $stmt_user = $conn->prepare("SELECT u.email FROM users u JOIN transactions t ON u.id = t.user_id WHERE t.id = ?");
                         $stmt_user->bind_param("i", $transaction_id);
                         $stmt_user->execute();
@@ -1780,12 +1887,9 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $stmt_user->close();
 
                         if ($patient_email) {
-                            // Assumes send_mail.php is in the parent directory and configured
                             require_once '../send_mail.php'; 
                             
-                            // Generate the PDF content by including a template
                             ob_start();
-                            // The included file will have access to $conn and $transaction_id
                             include 'invoice_template.php'; 
                             $html = ob_get_clean();
 
@@ -1797,7 +1901,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $dompdf->render();
                             $pdf_output = $dompdf->output();
                             
-                            // Send email with PDF attachment
                             $subject = "Your MedSync Hospital Bill (Invoice #" . $transaction_id . ")";
                             $body = "Dear Patient,<br><br>Thank you for your payment. Please find your detailed bill attached.<br><br>Sincerely,<br>MedSync Hospital";
                             send_mail($patient_email, $subject, $body, $pdf_output, 'invoice-' . $transaction_id . '.pdf');
@@ -1825,7 +1928,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $staff_id = $_SESSION['user_id'];
                         $total_amount = 0;
                         
-                        // 1. Check if prescription is already fully billed
                         $stmt_check = $conn->prepare("SELECT id FROM pharmacy_bills WHERE prescription_id = ?");
                         $stmt_check->bind_param("i", $prescription_id);
                         $stmt_check->execute();
@@ -1834,7 +1936,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         }
                         $stmt_check->close();
 
-                        // 2. Process each item, update stock, and calculate total
                         $patient_id_stmt = $conn->prepare("SELECT patient_id FROM prescriptions WHERE id = ?");
                         $patient_id_stmt->bind_param("i", $prescription_id);
                         $patient_id_stmt->execute();
@@ -1845,9 +1946,8 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $medicine_id = (int)$item['medicine_id'];
                             $quantity_to_dispense = (int)$item['quantity'];
 
-                            if ($quantity_to_dispense <= 0) continue; // Skip items not being dispensed
+                            if ($quantity_to_dispense <= 0) continue;
 
-                            // Lock medicine row for safe stock update
                             $stmt_med = $conn->prepare("SELECT quantity, unit_price FROM medicines WHERE id = ? FOR UPDATE");
                             $stmt_med->bind_param("i", $medicine_id);
                             $stmt_med->execute();
@@ -1857,20 +1957,17 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                                 throw new Exception("Insufficient stock for medicine ID {$medicine_id}.");
                             }
 
-                            // Update medicine stock
                             $new_stock = $medicine['quantity'] - $quantity_to_dispense;
                             $stmt_update_stock = $conn->prepare("UPDATE medicines SET quantity = ? WHERE id = ?");
                             $stmt_update_stock->bind_param("ii", $new_stock, $medicine_id);
                             $stmt_update_stock->execute();
                             $stmt_update_stock->close();
 
-                            // Update prescription item dispensed quantity
                             $stmt_update_item = $conn->prepare("UPDATE prescription_items SET quantity_dispensed = quantity_dispensed + ? WHERE prescription_id = ? AND medicine_id = ?");
                             $stmt_update_item->bind_param("iii", $quantity_to_dispense, $prescription_id, $medicine_id);
                             $stmt_update_item->execute();
                             $stmt_update_item->close();
                             
-                            // Add to total amount
                             $total_amount += $quantity_to_dispense * $medicine['unit_price'];
                         }
 
@@ -1878,7 +1975,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             throw new Exception("Cannot create a bill with zero total amount.");
                         }
 
-                        // 3. Create transaction record
                         $description = "Pharmacy Bill for Prescription #" . $prescription_id;
                         $stmt_trans = $conn->prepare("INSERT INTO transactions (user_id, description, amount, status, payment_mode, paid_at) VALUES (?, ?, ?, 'paid', ?, NOW())");
                         $stmt_trans->bind_param("isds", $patient_id, $description, $total_amount, $payment_mode);
@@ -1886,15 +1982,12 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $transaction_id = $conn->insert_id;
                         $stmt_trans->close();
 
-                        // 4. Create pharmacy bill record
                         $stmt_bill = $conn->prepare("INSERT INTO pharmacy_bills (prescription_id, transaction_id, created_by_staff_id, total_amount) VALUES (?, ?, ?, ?)");
                         $stmt_bill->bind_param("iiid", $prescription_id, $transaction_id, $staff_id, $total_amount);
                         $stmt_bill->execute();
                         $bill_id = $conn->insert_id;
                         $stmt_bill->close();
                         
-                        // 5. Update overall prescription status
-                        // (You can add more complex logic here for partial vs fully dispensed)
                         $stmt_update_presc = $conn->prepare("UPDATE prescriptions SET status = 'dispensed' WHERE id = ?");
                         $stmt_update_presc->bind_param("i", $prescription_id);
                         $stmt_update_presc->execute();

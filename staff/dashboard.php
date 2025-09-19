@@ -196,9 +196,11 @@ require_once 'api.php';
                         <h3><i class="fas fa-ticket-alt"></i> Live Token Queue</h3>
                     </div>
                     <div class="filters">
-                        <select id="token-doctor-filter">
-                            <option value="">-- Select a Doctor to View Queue --</option>
-                        </select>
+                        <div class="patient-search-container" style="flex-grow: 1;">
+                            <input type="text" id="token-doctor-search" placeholder="Search for a doctor by name..." autocomplete="off">
+                            <input type="hidden" id="token-doctor-id-hidden">
+                            <div id="token-doctor-search-results" class="search-results-list"></div>
+                        </div>
                     </div>
                     <div id="token-display-container">
                         <p class="no-items-message">Please select a doctor to see their live token queue for today.</p>
@@ -419,14 +421,22 @@ require_once 'api.php';
                         <h3><i class="fas fa-vials"></i> Lab Results</h3><button class="btn btn-primary"
                             id="add-lab-result-btn"><i class="fas fa-plus"></i> Add Lab Result</button>
                     </div>
-                    <div class="filters"><input type="text" id="lab-search" class="search-bar"
-                            placeholder="Search by patient name or ID..."></div>
+                    <div class="filters">
+                        <input type="text" id="lab-search" class="search-bar" placeholder="Search by patient name or ID...">
+                        <select id="lab-status-filter">
+                            <option value="all">All Statuses</option>
+                            <option value="pending">Pending</option>
+                            <option value="processing">Processing</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </div>
                     <table class="data-table" id="lab-results-table">
                         <thead>
                             <tr>
                                 <th>Report ID</th>
                                 <th>Patient</th>
                                 <th>Test</th>
+                                <th>Cost</th>
                                 <th>Status</th>
                                 <th>Report</th>
                                 <th>Actions</th>
@@ -565,16 +575,19 @@ require_once 'api.php';
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-dob">Date of Birth</label>
-                                    <input type="date" id="profile-dob" name="date_of_birth"
-                                        value="<?php echo $date_of_birth; ?>">
+                                    <input type="date" id="profile-dob" name="date_of_birth" 
+                                        value="<?php echo $date_of_birth; ?>" max="<?php echo date('Y-m-d'); ?>">
+                                    <small class="validation-error" id="profile-dob-error"></small>
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-email">Email Address</label>
                                     <input type="email" id="profile-email" name="email" value="<?php echo $email; ?>" required>
+                                    <small class="validation-error" id="profile-email-error"></small>
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-phone">Phone Number</label>
-                                    <input type="tel" id="profile-phone" name="phone" value="<?php echo $phone; ?>">
+                                    <input type="tel" id="profile-phone" name="phone" value="<?php echo $phone; ?>" pattern="\+91[0-9]{10}" minlength="13" maxlength="13">
+                                    <small class="validation-error" id="profile-phone-error"></small>
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-department">Department</label>
@@ -685,13 +698,15 @@ require_once 'api.php';
                         <label for="user-email">Email</label>
                         <input type="email" id="user-email" name="email" required>
                     </div>
-                       <div class="form-group">
+                    <div class="form-group">
                         <label for="user-phone">Phone Number</label>
-                        <input type="tel" id="user-phone" name="phone">
+                        <input type="tel" id="user-phone" name="phone" placeholder="+919876543210" maxlength="13">
+                        <small class="validation-error" id="user-phone-error"></small>
                     </div>
                     <div class="form-group">
                         <label for="user-dob">Date of Birth</label>
-                        <input type="date" id="user-dob" name="date_of_birth">
+                        <input type="date" id="user-dob" name="date_of_birth" max="<?php echo date('Y-m-d'); ?>">
+                        <small class="validation-error" id="user-dob-error"></small>
                     </div>
                     <div class="form-group" id="active-group" style="display: none;">
                         <label for="user-active">Account Status</label>
@@ -913,6 +928,14 @@ require_once 'api.php';
                         <select id="lab-doctor-id" name="doctor_id">
                             </select>
                     </div>
+                    <div class="form-group">
+                        <label for="lab-status">Status</label>
+                        <select id="lab-status" name="status" required>
+                            <option value="pending">Pending</option>
+                            <option value="processing">Processing</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </div>
                     <div class="form-grid">
                         <div class="form-group">
                             <label for="lab-test-name">Test Name</label>
@@ -924,10 +947,23 @@ require_once 'api.php';
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="lab-result-details">Result Details / Notes</label>
-                        <textarea id="lab-result-details" name="result_details" rows="4"></textarea>
-                        <small>Leaving this empty will mark the result as 'Pending'.</small>
+                        <label for="lab-cost">Cost (₹)</label>
+                        <input type="number" id="lab-cost" name="cost" min="0" step="0.01" value="0.00" required>
                     </div>
+                    
+                    <div class="form-group">
+                        <label>Findings</label>
+                        <div id="lab-findings-container">
+                            </div>
+                        <button type="button" id="add-finding-btn" class="btn btn-secondary btn-sm" style="margin-top: 10px;"><i class="fas fa-plus"></i> Add Finding</button>
+                    </div>
+                    <div class="form-group">
+                        <label for="lab-summary">Summary</label>
+                        <textarea id="lab-summary" name="summary" rows="3"></textarea>
+                    </div>
+
+                    <input type="hidden" id="lab-result-details" name="result_details">
+
                     <div class="form-group">
                         <label for="lab-attachment">Upload Report (PDF only)</label>
                         <input type="file" id="lab-attachment" name="attachment" accept="application/pdf">

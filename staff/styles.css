@@ -176,6 +176,7 @@ input:checked + .theme-slider:before { transform: translateX(20px); }
 .status.low-stock { background-color: var(--warning-color); }
 .status.out-of-stock, .status.unpaid { background-color: var(--danger-color); }
 .status.pending { background-color: var(--text-muted); }
+.status.processing { background-color: #3498db; } /* Blue for processing lab results */
 
 
 /* --- Tabs --- */
@@ -345,7 +346,7 @@ input:checked + .theme-slider:before { transform: translateX(20px); }
 .conversation-item.active .conversation-meta .message-time {
     color: rgba(255, 255, 255, 0.8);
 }
-.conversation-item .user-avatar {
+.conversation-item .user-avatar, .search-result-item .user-avatar {
     width: 48px;
     height: 48px;
     border-radius: 50%;
@@ -585,6 +586,31 @@ body.dark-theme .send-btn:disabled {
 .form-description { color: var(--text-muted); margin-bottom: 1.5rem; }
 .log-action-update { color: var(--warning-color); }
 
+/* --- Lab Result Modal Finding Rows (NEW) --- */
+.finding-row {
+    grid-template-columns: 3fr 3fr auto;
+    gap: 1rem;
+    align-items: center;
+}
+.finding-row input {
+    margin-bottom: 0;
+}
+
+
+/* --- Form Validation Styles (NEW) --- */
+.validation-error {
+    color: var(--danger-color);
+    font-size: 0.8rem;
+    margin-top: 5px;
+    font-weight: 500;
+}
+
+.form-group input.is-invalid,
+.form-group select.is-invalid {
+    border-color: var(--danger-color);
+    box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.2);
+}
+
 /* --- Modal Styles (Updated for Scrolling & Button Sizing) --- */
 .modal-overlay { 
     position: fixed; 
@@ -689,6 +715,10 @@ body.dark-theme .send-btn:disabled {
 /* --- Patient Search Component --- */
 .patient-search-container {
     position: relative;
+}
+
+.patient-search-container input {
+    width: 100%;
 }
 
 .search-results-list {

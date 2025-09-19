@@ -521,12 +521,16 @@ document.addEventListener("DOMContentLoaded", function() {
     
     function renderSearchResultItem(user) {
         const avatarUrl = user.avatar_url;
+        // Check for an existing conversation and last message, otherwise show the user's role
+        const conversationData = user.conversation_id ? `data-conversation-id="${user.conversation_id}"` : '';
+        const displayMessage = user.last_message || `${user.role} - ${user.display_user_id}`;
+
         return `
-            <div class="search-result-item" data-user-id="${user.id}" data-user-name="${user.name}" data-user-avatar="${avatarUrl}" data-user-display-id="${user.role}">
+            <div class="search-result-item" data-user-id="${user.id}" data-user-name="${user.name}" data-user-avatar="${avatarUrl}" data-user-display-id="${user.role}" ${conversationData}>
                 <img src="${avatarUrl}" alt="${user.name}" class="user-avatar">
                 <div class="conversation-details">
                     <span class="user-name">${user.name}</span>
-                    <span class="last-message">${user.role} - ${user.display_user_id}</span>
+                    <span class="last-message">${displayMessage}</span>
                 </div>
             </div>
         `;
@@ -797,6 +801,61 @@ document.addEventListener("DOMContentLoaded", function() {
         const personalInfoForm = document.getElementById('personal-info-form');
         personalInfoForm.addEventListener('submit', async function(e) {
             e.preventDefault();
+            
+            // --- 1. Select form elements and error placeholders ---
+            const nameInput = document.getElementById('profile-name');
+            const emailInput = document.getElementById('profile-email');
+            const phoneInput = document.getElementById('profile-phone');
+            const dobInput = document.getElementById('profile-dob');
+            
+            const emailError = document.getElementById('profile-email-error');
+            const phoneError = document.getElementById('profile-phone-error');
+            const dobError = document.getElementById('profile-dob-error');
+            
+            let isValid = true;
+
+            // --- 2. Reset all previous errors ---
+            [emailError, phoneError, dobError].forEach(el => el.textContent = '');
+            [emailInput, phoneInput, dobInput, nameInput].forEach(el => el.classList.remove('is-invalid'));
+
+            // --- 3. Perform Validation ---
+            
+            // a. Email Validation
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(emailInput.value)) {
+                emailError.textContent = 'Please enter a valid email address.';
+                emailInput.classList.add('is-invalid');
+                isValid = false;
+            }
+            
+            // b. Phone Number Validation (+91 format)
+            const phoneRegex = /^\+91\d{10}$/;
+            if (phoneInput.value && !phoneRegex.test(phoneInput.value)) {
+                phoneError.textContent = 'Format must be +91 followed by 10 digits (e.g., +919876543210).';
+                phoneInput.classList.add('is-invalid');
+                isValid = false;
+            }
+            
+            // c. Date of Birth Year Validation
+            if (dobInput.value) {
+                const year = new Date(dobInput.value).getFullYear();
+                if (isNaN(year) || String(year).length > 4) {
+                    dobError.textContent = 'The year in the date of birth is invalid.';
+                    dobInput.classList.add('is-invalid');
+                    isValid = false;
+                } else if (year > new Date().getFullYear() || year < 1900) {
+                    dobError.textContent = 'Please enter a realistic year.';
+                    dobInput.classList.add('is-invalid');
+                    isValid = false;
+                }
+            }
+
+            // --- 4. Stop if form is invalid ---
+            if (!isValid) {
+                return; // Halt the function if any validation failed
+            }
+
+            // --- 5. If valid, proceed with the original submission logic ---
             const formData = new FormData(this);
             formData.append('action', 'updatePersonalInfo');
             formData.append('csrf_token', csrfToken);
@@ -1021,6 +1080,43 @@ document.addEventListener("DOMContentLoaded", function() {
         
         userForm.addEventListener('submit', (e) => {
             e.preventDefault();
+
+            // --- START: New Validation Logic ---
+            const phoneInput = document.getElementById('user-phone');
+            const dobInput = document.getElementById('user-dob');
+            const phoneError = document.getElementById('user-phone-error');
+            const dobError = document.getElementById('user-dob-error');
+            let isValid = true;
+
+            // Reset previous errors
+            phoneInput.classList.remove('is-invalid');
+            dobInput.classList.remove('is-invalid');
+            phoneError.textContent = '';
+            dobError.textContent = '';
+
+            // Phone number validation: must be +91 followed by 10 digits
+            const phoneRegex = /^\+91\d{10}$/;
+            if (phoneInput.value && !phoneRegex.test(phoneInput.value)) {
+                phoneError.textContent = 'Format must be +91 followed by 10 digits.';
+                phoneInput.classList.add('is-invalid');
+                isValid = false;
+            }
+
+            // Date of birth year validation: year must not exceed 4 digits
+            if (dobInput.value) {
+                const year = dobInput.value.split('-')[0];
+                if (year.length > 4) {
+                    dobError.textContent = 'The year in the date of birth is invalid.';
+                    dobInput.classList.add('is-invalid');
+                    isValid = false;
+                }
+            }
+
+            if (!isValid) {
+                return; // Stop the form submission if validation fails
+            }
+            // --- END: New Validation Logic ---
+
             const formData = new FormData(userForm);
             formData.append('csrf_token', csrfToken);
             handleUserFormSubmit(formData);
@@ -1591,38 +1687,42 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-    async function handleDischarge(e) {
-        const modal = e.target.closest('.modal-overlay');
-        const id = document.getElementById('bed-assign-id').value;
-        const type = document.getElementById('bed-assign-type').value;
+// Corrected Code for staff/script.js
 
-        const confirmed = await showConfirmation(
-            'Confirm Discharge', 
-            `Are you sure you want to discharge the patient from this ${type}? The status will be set to 'Cleaning'.`
-        );
-        if (!confirmed) return;
+async function handleDischarge(e) {
+    const modal = e.target.closest('.modal-overlay');
+    const id = document.getElementById('bed-assign-id').value;
+    const type = document.getElementById('bed-assign-type').value;
+
+    modal.classList.remove('show'); // <-- MOVE THE LINE HERE to close the first popup immediately.
+
+    const confirmed = await showConfirmation(
+        'Confirm Discharge', 
+        `Are you sure you want to discharge the patient from this ${type}? The status will be set to 'Cleaning'.`
+    );
+    if (!confirmed) return;
+    
+    const formData = new FormData();
+    formData.append('csrf_token', csrfToken);
+    formData.append('action', 'updateBedOrRoom');
+    formData.append('id', id);
+    formData.append('type', type);
+    formData.append('patient_id', ''); // Empty patient ID signifies discharge
+    formData.append('doctor_id', ''); // Clear doctor as well
+    formData.append('status', 'cleaning');
+
+    try {
+        const response = await fetch('api.php', { method: 'POST', body: formData });
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message);
         
-        const formData = new FormData();
-        formData.append('csrf_token', csrfToken);
-        formData.append('action', 'updateBedOrRoom');
-        formData.append('id', id);
-        formData.append('type', type);
-        formData.append('patient_id', ''); // Empty patient ID signifies discharge
-        formData.append('doctor_id', ''); // Clear doctor as well
-        formData.append('status', 'cleaning');
-
-        try {
-            const response = await fetch('api.php', { method: 'POST', body: formData });
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-            
-            modal.classList.remove('show');
-            alert(result.message);
-            await fetchAndRenderBedData();
-        } catch (error) {
-            alert('Error: ' + error.message);
-        }
+        // The line that was here is now at the top.
+        alert(result.message);
+        await fetchAndRenderBedData();
+    } catch (error) {
+        alert('Error: ' + error.message);
     }
+}
     
     // --- ADMISSIONS MANAGEMENT LOGIC ---
     const admissionsPage = document.getElementById('admissions-page');
@@ -1703,16 +1803,34 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function initializeLabs() {
         if (labsInitialized || !labsPage) return;
-
-        fetchAndRenderLabs();
+        
+        const createFindingRow = (finding = { parameter: '', result: '', range: '' }) => {
+            const row = document.createElement('div');
+            row.className = 'form-grid finding-row';
+            row.style.marginBottom = '10px';
+            row.innerHTML = `
+                <input type="text" class="finding-parameter" placeholder="Parameter" value="${finding.parameter || ''}">
+                <input type="text" class="finding-result" placeholder="Result" value="${finding.result || ''}">
+                <div style="display: flex; align-items: center;">
+                    <input type="text" class="finding-range" placeholder="Reference Range" value="${finding.range || ''}" style="flex-grow:1;">
+                    <button type="button" class="action-btn danger" onclick="this.closest('.finding-row').remove()" style="margin-left: 5px; padding: 0.5rem;">&times;</button>
+                </div>
+            `;
+            document.getElementById('lab-findings-container').appendChild(row);
+        };
 
         const searchInput = document.getElementById('lab-search');
-        searchInput.addEventListener('input', () => {
+        const statusFilter = document.getElementById('lab-status-filter');
+
+        const triggerLabSearch = () => {
             clearTimeout(labSearchDebounce);
             labSearchDebounce = setTimeout(() => {
-                fetchAndRenderLabs(searchInput.value);
+                fetchAndRenderLabs(searchInput.value, statusFilter.value);
             }, 300);
-        });
+        };
+
+        searchInput.addEventListener('input', triggerLabSearch);
+        statusFilter.addEventListener('change', () => fetchAndRenderLabs(searchInput.value, statusFilter.value));
         
         document.getElementById('add-lab-result-btn').addEventListener('click', () => openLabModal('add'));
         
@@ -1738,7 +1856,6 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
         
-        // Event listeners for the new patient search in modal
         const patientSearchInput = document.getElementById('lab-patient-search');
         const patientSearchResults = document.getElementById('patient-search-results');
         patientSearchInput.addEventListener('input', () => {
@@ -1755,21 +1872,26 @@ document.addEventListener("DOMContentLoaded", function() {
 
         document.getElementById('clear-selected-patient-btn').addEventListener('click', clearSelectedPatient);
 
+        document.getElementById('add-finding-btn').addEventListener('click', () => {
+            createFindingRow();
+        });
+
+        fetchAndRenderLabs(searchInput.value, statusFilter.value);
         labsInitialized = true;
     }
 
-    async function fetchAndRenderLabs(search = '') {
+    async function fetchAndRenderLabs(search = '', status = 'all') {
         const tableBody = document.getElementById('lab-results-table')?.querySelector('tbody');
         if (!tableBody) return;
-        tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">Loading lab results...</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Loading lab results...</td></tr>`;
 
         try {
-            const response = await fetch(`api.php?fetch=lab_results&search=${encodeURIComponent(search)}`);
+            const response = await fetch(`api.php?fetch=lab_results&search=${encodeURIComponent(search)}&status=${status}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             renderLabs(result.data);
         } catch (error) {
-            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
         }
     }
 
@@ -1778,14 +1900,15 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!tableBody) return;
 
         if (data.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No lab results found.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">No lab results found.</td></tr>`;
             return;
         }
 
         tableBody.innerHTML = data.map(result => {
-            const status = result.result_details 
-                ? '<span class="status completed">Completed</span>' 
-                : '<span class="status pending">Pending</span>';
+            let statusClass = result.status; // e.g., 'completed'
+            if (result.status === 'processing') statusClass = 'pending-billing'; // Use an existing color
+            const statusText = result.status.charAt(0).toUpperCase() + result.status.slice(1);
+            const status = `<span class="status ${statusClass}">${statusText}</span>`;
             
             const reportLink = result.attachment_path
                 ? `<a href="report/${result.attachment_path}" target="_blank" class="action-btn" download><i class="fas fa-download"></i> Download</a>`
@@ -1796,6 +1919,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     <td data-label="Report ID">REP-${String(result.id).padStart(5, '0')}</td>
                     <td data-label="Patient">${result.patient_name} (${result.patient_display_id})</td>
                     <td data-label="Test">${result.test_name}</td>
+                    <td data-label="Cost">₹${parseFloat(result.cost || 0).toFixed(2)}</td>
                     <td data-label="Status">${status}</td>
                     <td data-label="Report">${reportLink}</td>
                     <td data-label="Actions">
@@ -1815,8 +1939,21 @@ document.addEventListener("DOMContentLoaded", function() {
         clearSelectedPatient();
         document.getElementById('current-attachment-info').innerHTML = '';
 
+        const createFindingRow = (finding = { parameter: '', result: '', range: '' }) => {
+            const row = document.createElement('div');
+            row.className = 'form-grid finding-row';
+            row.style.marginBottom = '10px';
+            row.innerHTML = `
+                <input type="text" class="finding-parameter" placeholder="Parameter" value="${finding.parameter || ''}">
+                <input type="text" class="finding-result" placeholder="Result" value="${finding.result || ''}">
+                <div style="display: flex; align-items: center;">
+                    <input type="text" class="finding-range" placeholder="Reference Range" value="${finding.range || ''}" style="flex-grow:1;">
+                    <button type="button" class="action-btn danger" onclick="this.closest('.finding-row').remove()" style="margin-left: 5px; padding: 0.5rem;">&times;</button>
+                </div>
+            `;
+            document.getElementById('lab-findings-container').appendChild(row);
+        };
 
-        // Fetch doctor data if not already cached
         if (!labFormData || !labFormData.doctors) {
             try {
                 const response = await fetch('api.php?fetch=lab_form_data');
@@ -1849,9 +1986,27 @@ document.addEventListener("DOMContentLoaded", function() {
             }
 
             doctorSelect.value = data.doctor_id || '';
+            document.getElementById('lab-status').value = data.status || 'pending';
             document.getElementById('lab-test-name').value = data.test_name;
             document.getElementById('lab-test-date').value = data.test_date;
-            document.getElementById('lab-result-details').value = data.result_details || '';
+            document.getElementById('lab-cost').value = parseFloat(data.cost || 0).toFixed(2);
+            
+            document.getElementById('lab-findings-container').innerHTML = '';
+            document.getElementById('lab-summary').value = '';
+
+            try {
+                const details = JSON.parse(data.result_details);
+                if (details && typeof details === 'object') {
+                    document.getElementById('lab-summary').value = details.summary || '';
+                    if (Array.isArray(details.findings)) {
+                        details.findings.forEach(finding => createFindingRow(finding));
+                    }
+                } else {
+                    document.getElementById('lab-summary').value = data.result_details || '';
+                }
+            } catch (e) {
+                document.getElementById('lab-summary').value = data.result_details || '';
+            }
 
             if (data.attachment_path) {
                 document.getElementById('current-attachment-info').innerHTML = 
@@ -1917,6 +2072,25 @@ document.addEventListener("DOMContentLoaded", function() {
         e.preventDefault();
         const form = e.target;
         const modal = form.closest('.modal-overlay');
+        
+        const findings = [];
+        document.querySelectorAll('#lab-findings-container .finding-row').forEach(row => {
+            const parameter = row.querySelector('.finding-parameter').value.trim();
+            const result = row.querySelector('.finding-result').value.trim();
+            const range = row.querySelector('.finding-range').value.trim();
+            if (parameter || result || range) {
+                findings.push({ parameter, result, range });
+            }
+        });
+        const summary = document.getElementById('lab-summary').value.trim();
+
+        if (findings.length > 0 || summary) {
+            const resultDetails = JSON.stringify({ findings, summary });
+            document.getElementById('lab-result-details').value = resultDetails;
+        } else {
+            document.getElementById('lab-result-details').value = '';
+        }
+
         const formData = new FormData(form);
         formData.append('csrf_token', csrfToken);
 
@@ -1927,7 +2101,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
             modal.classList.remove('show');
             alert(result.message);
-            fetchAndRenderLabs();
+            fetchAndRenderLabs(document.getElementById('lab-search').value, document.getElementById('lab-status-filter').value);
         } catch (error) {
             alert('Error: ' + error.message);
         }
@@ -1945,7 +2119,7 @@ document.addEventListener("DOMContentLoaded", function() {
             if (!result.success) throw new Error(result.message);
             
             alert(result.message);
-            fetchAndRenderLabs();
+            fetchAndRenderLabs(document.getElementById('lab-search').value, document.getElementById('lab-status-filter').value);
         } catch (error) {
             alert('Error: ' + error.message);
         }
@@ -2486,29 +2660,74 @@ document.addEventListener("DOMContentLoaded", function() {
     function initializeLiveTokens() {
         if (liveTokensInitialized || !liveTokensPage) return;
 
-        const doctorFilter = document.getElementById('token-doctor-filter');
-        
-        // Fetch doctors for the filter dropdown
-        fetch('api.php?fetch=active_doctors')
-            .then(res => res.json())
-            .then(result => {
-                if (result.success) {
-                    doctorFilter.innerHTML = '<option value="">-- Select a Doctor --</option>';
-                    result.data.forEach(doc => {
-                        doctorFilter.innerHTML += `<option value="${doc.id}">${doc.name}</option>`;
-                    });
-                }
-            });
+        const searchInput = document.getElementById('token-doctor-search');
+        const searchResults = document.getElementById('token-doctor-search-results');
+        const hiddenInput = document.getElementById('token-doctor-id-hidden');
+        const tokenContainer = document.getElementById('token-display-container');
+        let searchDebounce;
 
-        doctorFilter.addEventListener('change', () => {
-            const doctorId = doctorFilter.value;
-            clearInterval(tokenRefreshInterval); // Stop previous interval
-            if (doctorId) {
+        // 1. Handle typing in the search box
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchDebounce);
+            const query = searchInput.value.trim();
+            hiddenInput.value = ''; // Clear selected ID when user types
+
+            // If user clears the input, reset the token view
+            if (query.length === 0) {
+                clearInterval(tokenRefreshInterval);
+                tokenContainer.innerHTML = '<p class="no-items-message">Please select a doctor to see their live token queue for today.</p>';
+                searchResults.style.display = 'none';
+                return;
+            }
+
+            // Fetch new results if query is long enough
+            if (query.length < 2) {
+                searchResults.style.display = 'none';
+                return;
+            }
+            
+            searchDebounce = setTimeout(async () => {
+                try {
+                    const response = await fetch(`api.php?fetch=active_doctors&search=${encodeURIComponent(query)}`);
+                    const result = await response.json();
+                    if (result.success && result.data.length > 0) {
+                        searchResults.innerHTML = result.data.map(doc =>
+                            `<div class="search-result-item" data-id="${doc.id}" data-name="${doc.name}">${doc.name}</div>`
+                        ).join('');
+                        searchResults.style.display = 'block';
+                    } else {
+                        searchResults.innerHTML = `<div class="search-result-item">No doctors found.</div>`;
+                        searchResults.style.display = 'block';
+                    }
+                } catch (error) {
+                    console.error("Doctor search failed:", error);
+                }
+            }, 300);
+        });
+
+        // 2. Handle clicking a doctor from the results list
+        searchResults.addEventListener('click', (e) => {
+            const item = e.target.closest('.search-result-item');
+            if (item && item.dataset.id) {
+                const doctorId = item.dataset.id;
+                const doctorName = item.dataset.name;
+                
+                // UPDATE the search bar instead of hiding it
+                searchInput.value = doctorName; 
+                hiddenInput.value = doctorId;
+                searchResults.style.display = 'none';
+                
+                // Fetch the tokens for the selected doctor
+                clearInterval(tokenRefreshInterval);
                 fetchAndRenderTokens(doctorId);
-                // Auto-refresh the token view every 20 seconds
-                tokenRefreshInterval = setInterval(() => fetchAndRenderTokens(doctorId), 20000); 
-            } else {
-                document.getElementById('token-display-container').innerHTML = '<p class="no-items-message">Please select a doctor to see their live token queue for today.</p>';
+                tokenRefreshInterval = setInterval(() => fetchAndRenderTokens(doctorId), 20000);
+            }
+        });
+        
+        // Hide search results if clicking elsewhere
+        document.addEventListener('click', (e) => {
+            if (!searchInput.contains(e.target)) {
+                searchResults.style.display = 'none';
             }
         });
 
