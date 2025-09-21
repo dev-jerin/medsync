@@ -290,8 +290,32 @@ body.dark-mode .nav-dropdown a {
     background-color: var(--bg-grey);
 }
 
-.stat-card.blue { border-left-color: #3B82F6; }
-.stat-card.blue .icon { color: #3B82F6; }
+/* In admin/styles.css */
+.stat-card.blue { 
+    border-left-color: #3e90f5; /* Lighter blue for the border */
+}
+.stat-card.blue .icon { 
+    color: #2070f1; /* Original blue for the icon itself */
+    background-color: #668dbc; /* A very light blue for the icon background */
+}
+
+/* Improve icon color in dark mode for better contrast */
+body.dark-mode .stat-card.blue .icon {
+    color: #6098d8;
+    background-color: #141a24;
+}
+
+/* Add this new rule to the end of your admin/styles.css file */
+.user-count-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+body.dark-mode .user-count-link {
+    color: #93C5FD; /* A lighter, more readable blue for dark mode */
+}
+
 .stat-card.green { border-left-color: var(--success-color); }
 .stat-card.green .icon { color: var(--success-color); }
 .stat-card.orange { border-left-color: var(--warning-color); }
@@ -1242,4 +1266,9 @@ body.dark-mode .send-btn:disabled {
     transform: translateY(0);
     font-size: 0.75rem;
     color: var(--primary-color);
+}
+
+/* --- Make username input lowercase --- */
+#username {
+    text-transform: lowercase;
 }

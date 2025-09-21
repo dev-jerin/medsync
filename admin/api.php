@@ -125,7 +125,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                             throw new Exception('Please fill all required fields.');
                         }
                         $name = $_POST['name'];
-                        $username = $_POST['username'];
+                        $username = strtolower($_POST['username']);
                         $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
 
                         if (!$email)
@@ -251,7 +251,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         }
                         $id = (int) $_POST['id'];
                         $name = $_POST['name'];
-                        $username = $_POST['username'];
+                        $username = strtolower($_POST['username']);
                         $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
                         if (!$email)
                             throw new Exception('Invalid email format.');
@@ -536,28 +536,35 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     break;
 
-                case 'addDepartment':
-                    if (empty($_POST['name'])) {
-                        throw new Exception('Department name is required.');
-                    }
-                    $name = $_POST['name'];
-                    $stmt = $conn->prepare("INSERT INTO departments (name) VALUES (?)");
-                    $stmt->bind_param("s", $name);
-                    if ($stmt->execute()) {
-                        log_activity($conn, $admin_user_id_for_log, 'create_department', null, "Created new department '{$name}'.");
-                        $response = ['success' => true, 'message' => 'Department added successfully.'];
-                    } else {
-                        throw new Exception('Failed to add department. It might already exist.');
-                    }
-                    break;
+                    // In admin/api.php, find case 'addDepartment' and modify it
 
-                case 'updateDepartment':
-                    if (empty($_POST['id']) || empty($_POST['name'])) {
-                        throw new Exception('Department ID and name are required.');
-                    }
-                    $id = (int) $_POST['id'];
-                    $name = $_POST['name'];
-                    $is_active = isset($_POST['is_active']) ? (int) $_POST['is_active'] : 1;
+                    case 'addDepartment':
+                        if (empty($_POST['name'])) {
+                            throw new Exception('Department name is required.');
+                        }
+                        $name = $_POST['name'];
+                        // Handle the optional Head of Department ID
+                        $head_id = !empty($_POST['head_of_department_id']) ? (int)$_POST['head_of_department_id'] : null;
+
+                        $stmt = $conn->prepare("INSERT INTO departments (name, head_of_department_id) VALUES (?, ?)");
+                        $stmt->bind_param("si", $name, $head_id);
+                        if ($stmt->execute()) {
+                            log_activity($conn, $admin_user_id_for_log, 'create_department', null, "Created new department '{$name}'.");
+                            $response = ['success' => true, 'message' => 'Department added successfully.'];
+                        } else {
+                            throw new Exception('Failed to add department. It might already exist.');
+                        }
+                        break;
+
+                        case 'updateDepartment':
+                            if (empty($_POST['id']) || empty($_POST['name'])) {
+                                throw new Exception('Department ID and name are required.');
+                            }
+                            $id = (int) $_POST['id'];
+                            $name = $_POST['name'];
+                            $is_active = isset($_POST['is_active']) ? (int)$_POST['is_active'] : 1;
+                            // Handle the optional Head of Department ID
+                            $head_id = !empty($_POST['head_of_department_id']) ? (int)$_POST['head_of_department_id'] : null;
 
                     // --- Audit Log: Fetch department name before update ---
                     $stmt_dept = $conn->prepare("SELECT name FROM departments WHERE id = ?");
@@ -567,11 +574,14 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $old_dept_name = $dept_data ? $dept_data['name'] : 'Unknown';
                     // --- End Fetch ---
 
-                    $stmt = $conn->prepare("UPDATE departments SET name = ?, is_active = ? WHERE id = ?");
-                    $stmt->bind_param("sii", $name, $is_active, $id);
+                    $stmt = $conn->prepare("UPDATE departments SET name = ?, is_active = ?, head_of_department_id = ? WHERE id = ?");
+                    $stmt->bind_param("siii", $name, $is_active, $head_id, $id);
                     if ($stmt->execute()) {
-                        $log_details = "Updated department '{$old_dept_name}' (ID: {$id}) to name '{$name}' and status " . ($is_active ? 'Active' : 'Inactive') . ".";
-                        log_activity($conn, $admin_user_id_for_log, 'update_department', null, $log_details);
+                            // --- Audit Log ---
+                            $status_text = $is_active ? 'Active' : 'Inactive';
+                            $log_details = "Updated department '{$old_dept_name}' (ID: {$id}). New name: '{$name}', Status: '{$status_text}'.";
+                            log_activity($conn, $admin_user_id_for_log, 'update_department', null, $log_details);
+                            // --- End Audit Log ---
                         $response = ['success' => true, 'message' => 'Department updated successfully.'];
                     } else {
                         throw new Exception('Failed to update department.');
@@ -634,6 +644,10 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt = $conn->prepare("INSERT INTO wards (name, capacity, description, is_active) VALUES (?, ?, ?, ?)");
                     $stmt->bind_param("sisi", $name, $capacity, $description, $is_active);
                     if ($stmt->execute()) {
+                            // --- Audit Log ---
+                        $log_details = "Created new ward '{$name}' with capacity {$capacity}.";
+                        log_activity($conn, $admin_user_id_for_log, 'create_ward', null, $log_details);
+                        // --- End Audit Log ---
                         $response = ['success' => true, 'message' => 'Ward added successfully.'];
                     } else {
                         throw new Exception('Failed to add ward. It might already exist.');
@@ -653,6 +667,10 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt = $conn->prepare("UPDATE wards SET name = ?, capacity = ?, description = ?, is_active = ? WHERE id = ?");
                     $stmt->bind_param("sisii", $name, $capacity, $description, $is_active, $id);
                     if ($stmt->execute()) {
+                            // --- Audit Log ---
+                            $log_details = "Updated ward '{$name}' (ID: {$id}).";
+                            log_activity($conn, $admin_user_id_for_log, 'update_ward', null, $log_details);
+                            // --- End Audit Log ---
                         $response = ['success' => true, 'message' => 'Ward updated successfully.'];
                     } else {
                         throw new Exception('Failed to update ward.');
@@ -668,6 +686,10 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt = $conn->prepare("DELETE FROM wards WHERE id = ?"); // Or UPDATE wards SET is_active = 0
                     $stmt->bind_param("i", $id);
                     if ($stmt->execute()) {
+                            // --- Audit Log ---
+                            $log_details = "Deleted ward '{$ward_name}' (ID: {$id}).";
+                            log_activity($conn, $admin_user_id_for_log, 'delete_ward', null, $log_details);
+                            // --- End Audit Log ---
                         $response = ['success' => true, 'message' => 'Ward deleted successfully.'];
                     } else {
                         throw new Exception('Failed to delete ward. Ensure no accommodations are assigned to it.');
@@ -686,6 +708,10 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt = $conn->prepare("INSERT INTO accommodations (type, number, ward_id, price_per_day) VALUES (?, ?, ?, ?)");
                     $stmt->bind_param("ssid", $type, $number, $ward_id, $price_per_day);
                     if ($stmt->execute()) {
+                            // --- Audit Log ---
+                            $log_details = "Added new accommodation {$type} with number '{$number}'.";
+                            log_activity($conn, $admin_user_id_for_log, 'create_accommodation', null, $log_details);
+                            // --- End Audit Log ---
                         $response = ['success' => true, 'message' => ucfirst($type) . ' added successfully.'];
                     } else {
                         throw new Exception('Failed to add ' . $type . '. It might already exist in the selected ward.');
@@ -738,6 +764,14 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $stmt = $conn->prepare("UPDATE accommodations SET number = ?, ward_id = ?, status = ?, patient_id = ?, doctor_id = ?, occupied_since = ?, reserved_since = ?, price_per_day = ? WHERE id = ?");
                         $stmt->bind_param("sisissdsi", $number, $ward_id, $new_status, $patient_id_to_set, $doctor_id_to_set, $occupied_since, $reserved_since, $price_per_day, $id);
                         $stmt->execute();
+
+                        // --- Audit Log ---
+                        $log_details = "Updated accommodation {$current_acc['type']} '{$number}' (ID: {$id}) to status '{$new_status}'.";
+                        if ($new_status === 'occupied' && $new_patient_id) {
+                            $log_details .= " Assigned patient ID {$new_patient_id}.";
+                        }
+                        log_activity($conn, $admin_user_id_for_log, 'update_accommodation', $new_patient_id, $log_details);
+                        // --- End Audit Log ---
                         
                         $conn->commit();
                         $response = ['success' => true, 'message' => 'Accommodation updated successfully.'];
@@ -755,6 +789,10 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $stmt = $conn->prepare("DELETE FROM accommodations WHERE id = ?");
                     $stmt->bind_param("i", $id);
                     if ($stmt->execute()) {
+                            // --- Audit Log ---
+                            $log_details = "Deleted accommodation {$acc_type} '{$acc_number}' (ID: {$id}).";
+                            log_activity($conn, $admin_user_id_for_log, 'delete_accommodation', null, $log_details);
+                            // --- End Audit Log ---
                         $response = ['success' => true, 'message' => 'Accommodation deleted successfully.'];
                     } else {
                         throw new Exception('Failed to delete accommodation.');
@@ -1039,6 +1077,8 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     }
                     $response = ['success' => true, 'data' => $settings];
                     break;
+
+
 
                         case 'active_doctors':
                             $sql = "SELECT u.id, u.name, d.specialty 
@@ -1348,11 +1388,25 @@ case 'staff_for_shifting':
                     $response = ['success' => true, 'data' => $data];
                     break;
 
-                case 'departments_management':
-                    $result = $conn->query("SELECT * FROM departments ORDER BY name ASC");
-                    $data = $result->fetch_all(MYSQLI_ASSOC);
-                    $response = ['success' => true, 'data' => $data];
-                    break;
+                    // In admin/api.php
+
+                    case 'departments_management':
+                        $sql = "
+                            SELECT
+                                d.id,
+                                d.name,
+                                d.is_active,
+                                u.name AS head_of_department,
+                                (SELECT COUNT(*) FROM doctors doc WHERE doc.department_id = d.id) AS doctor_count,
+                                (SELECT COUNT(*) FROM staff s WHERE s.assigned_department_id = d.id) AS staff_count
+                            FROM departments d
+                            LEFT JOIN users u ON d.head_of_department_id = u.id
+                            ORDER BY d.name ASC
+                        ";
+                        $result = $conn->query($sql);
+                        $data = $result->fetch_all(MYSQLI_ASSOC);
+                        $response = ['success' => true, 'data' => $data];
+                        break;
 
                 // --- INVENTORY FETCH ENDPOINTS ---
                 case 'medicines':

@@ -176,7 +176,8 @@ input:checked + .theme-slider:before { transform: translateX(20px); }
 .status.low-stock { background-color: var(--warning-color); }
 .status.out-of-stock, .status.unpaid { background-color: var(--danger-color); }
 .status.pending { background-color: var(--text-muted); }
-.status.processing { background-color: #3498db; } /* Blue for processing lab results */
+.status.processing { background-color: #3498db; }
+.status.ordered { background-color: var(--info-color); } /* <-- NEW: Style for ordered status */
 
 
 /* --- Tabs --- */

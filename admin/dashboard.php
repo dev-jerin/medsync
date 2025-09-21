@@ -12,11 +12,11 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 
 // --- BIND SESSION TO USER AGENT (PREVENTS SESSION HIJACKING) ---
 if (isset($_SESSION['user_agent']) && $_SESSION['user_agent'] !== $_SERVER['HTTP_USER_AGENT']) {
-    // If the user agent does not match, destroy the session.
     session_destroy();
     header("Location: ../login/index.php?error=hijacking_detected");
     exit();
 }
+
 // Set the user agent if it's not already set
 if (!isset($_SESSION['user_agent'])) {
     $_SESSION['user_agent'] = $_SERVER['HTTP_USER_AGENT'];
@@ -29,7 +29,6 @@ if (!isset($_SESSION['last_regen'])) {
     session_regenerate_id(true);
     $_SESSION['last_regen'] = time();
 }
-
 
 // --- SESSION TIMEOUT ---
 $session_timeout = 1800; // 30 minutes
@@ -69,7 +68,9 @@ $active_doctors_stmt = $conn->prepare("SELECT COUNT(*) as c FROM users u JOIN ro
 $active_doctors_stmt->execute();
 $active_doctors = $active_doctors_stmt->get_result()->fetch_assoc()['c'];
 
-$pending_appointments = 0; 
+$pending_appointments_stmt = $conn->prepare("SELECT COUNT(*) as c FROM appointments WHERE status = 'pending'");
+$pending_appointments_stmt->execute();
+$pending_appointments = $pending_appointments_stmt->get_result()->fetch_assoc()['c']; 
 $conn->close();
 
 ?>
@@ -409,12 +410,15 @@ $conn->close();
                         <thead>
                             <tr>
                                 <th>Department Name</th>
+                                <th>Head of Department</th>
+                                <th>Doctor Count</th>
+                                <th>Staff Count</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="department-table-body">
-                        </tbody>
+                            </tbody>
                     </table>
                 </div>
             </div>
@@ -906,6 +910,13 @@ $conn->close();
                 <div class="form-group">
                     <label for="department-name">Department Name</label>
                     <input type="text" id="department-name" name="name" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="head_of_department_id">Head of Department (Optional)</label>
+                    <select id="head_of_department_id" name="head_of_department_id">
+                        <option value="">-- None --</option>
+                        </select>
                 </div>
                 <div class="form-group" id="department-active-group" style="display: none;">
                     <label for="department-is-active">Status</label>

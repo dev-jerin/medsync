@@ -68,60 +68,139 @@ document.addEventListener("DOMContentLoaded", function() {
         renderPatientsTable(filteredPatients);
     }
 
-    // ===================================================================
-    // --- Lab Results Page Logic ---
-    // ===================================================================
-    async function loadLabResults() {
-        const tableBody = document.querySelector('#lab-results-table tbody');
-        if (!tableBody) return;
-        tableBody.innerHTML = `<tr><td colspan="6" class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading lab results...</td></tr>`;
+// ===================================================================
+// --- Lab Orders Page Logic ---
+// ===================================================================
+async function loadLabOrders() {
+    const tableBody = document.querySelector('#lab-orders-table tbody');
+    if (!tableBody) return;
+    tableBody.innerHTML = `<tr><td colspan="6" class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading lab orders...</td></tr>`;
 
-        try {
-            const response = await fetch('api.php?action=get_lab_results');
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const result = await response.json();
+    try {
+        const response = await fetch('api.php?action=get_lab_orders');
+        const result = await response.json();
 
-            tableBody.innerHTML = ''; // Clear loading state
-            if (result.success && result.data.length > 0) {
-                result.data.forEach(report => {
-                   const tr = document.createElement('tr');
-                   tr.className = `lab-row`;
-                   tr.dataset.status = report.status.toLowerCase();
-                   
-                   let actionButtonHtml = '';
-                   switch(report.status.toLowerCase()) {
-                       case 'completed':
-                           actionButtonHtml = `<button class="action-btn view-lab-report" data-id="${report.id}"><i class="fas fa-file-alt"></i> View Report</button>`;
-                           break;
-                       case 'processing':
-                           actionButtonHtml = `<button class="action-btn" disabled><i class="fas fa-spinner"></i> In Progress</button>`;
-                           break;
-                       case 'pending':
-                           actionButtonHtml = `<button class="action-btn add-result-entry" data-id="${report.id}"><i class="fas fa-plus-circle"></i> Add Result</button>`;
-                           break;
-                       default:
-                           actionButtonHtml = 'N/A';
-                   }
+        tableBody.innerHTML = '';
+        if (result.success && result.data.length > 0) {
+            result.data.forEach(order => {
+               const tr = document.createElement('tr');
 
-                   tr.innerHTML = `
-                       <td data-label="Report ID">LR${report.id}</td>
-                       <td data-label="Patient">${report.patient_name}</td>
-                       <td data-label="Test Name">${report.test_name}</td>
-                       <td data-label="Date">${report.test_date}</td>
-                       <td data-label="Status"><span class="status ${report.status.toLowerCase()}">${report.status}</span></td>
-                       <td data-label="Actions">${actionButtonHtml}</td>
-                   `;
-                   tableBody.appendChild(tr);
-                });
-            } else {
-                tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem;">No lab results found.</td></tr>`;
-            }
+               // Show a "View" button only if the order is completed
+               let actionButtonHtml = `<button class="action-btn" disabled><i class="fas fa-spinner"></i> In Progress</button>`;
+               if (order.status.toLowerCase() === 'completed') {
+                   actionButtonHtml = `<button class="action-btn view-lab-report" data-id="${order.id}"><i class="fas fa-file-alt"></i> View Report</button>`;
+               }
 
-        } catch (error) {
-            console.error("Error loading lab results:", error);
-            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--danger-color);">Failed to load lab results.</td></tr>`;
+               tr.innerHTML = `
+                   <td data-label="Order ID">ORD-${order.id}</td>
+                   <td data-label="Patient">${order.patient_name}</td>
+                   <td data-label="Test Name">${order.test_name}</td>
+                   <td data-label="Order Date">${new Date(order.ordered_at).toLocaleDateString()}</td>
+                   <td data-label="Status"><span class="status ${order.status.toLowerCase()}">${order.status}</span></td>
+                   <td data-label="Actions">${actionButtonHtml}</td>
+               `;
+               tableBody.appendChild(tr);
+            });
+        } else {
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No lab orders found.</td></tr>`;
         }
+
+    } catch (error) {
+        tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger-color);">Failed to load lab orders.</td></tr>`;
     }
+}
+
+// --- Create Lab Order Modal Logic ---
+const placeLabOrderBtn = document.getElementById('place-lab-order-btn');
+const labOrderModal = document.getElementById('lab-order-modal-overlay');
+
+if (placeLabOrderBtn && labOrderModal) {
+    const testRowsContainer = document.getElementById('test-rows-container');
+    const addTestRowBtn = document.getElementById('add-test-row-btn');
+
+    // Function to add a new input row for a test
+    function addTestRow() {
+        const row = document.createElement('div');
+        row.className = 'medication-row'; // Re-use style from prescription modal
+        row.innerHTML = `
+            <div class="form-group" style="flex-grow: 1;">
+                <label>Test Name</label>
+                <input type="text" class="test-name-input" placeholder="e.g., Complete Blood Count" required>
+            </div>
+            <button type="button" class="remove-med-row-btn">&times;</button>
+        `;
+        testRowsContainer.appendChild(row);
+    }
+
+    // Open the modal and prepare it
+    placeLabOrderBtn.addEventListener('click', async () => {
+        const form = document.getElementById('lab-order-form');
+        form.reset();
+        testRowsContainer.innerHTML = '';
+        addTestRow(); // Add the first row
+
+        // Populate patient dropdown
+        const patientSelect = document.getElementById('lab-order-patient-select');
+        patientSelect.innerHTML = '<option value="">Loading...</option>';
+        if (!patientListCache) { // Use cache to avoid re-fetching
+            const response = await fetch('api.php?action=get_patients_for_dropdown');
+            const result = await response.json();
+            if (result.success) patientListCache = result.data;
+        }
+        patientSelect.innerHTML = '<option value="">-- Choose a patient --</option>';
+        patientListCache.forEach(p => {
+            patientSelect.innerHTML += `<option value="${p.id}">${p.display_user_id} - ${p.name}</option>`;
+        });
+
+        openModalById('lab-order-modal-overlay');
+    });
+
+    // Add more test rows when the "Add" button is clicked
+    addTestRowBtn.addEventListener('click', addTestRow);
+
+    // Remove a test row when the 'x' is clicked
+    testRowsContainer.addEventListener('click', (e) => {
+        if (e.target.classList.contains('remove-med-row-btn')) {
+            e.target.closest('.medication-row').remove();
+            if (testRowsContainer.children.length === 0) {
+                addTestRow();
+            }
+        }
+    });
+
+    // Handle form submission
+    document.getElementById('lab-order-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const patientId = document.getElementById('lab-order-patient-select').value;
+        const testNameInputs = document.querySelectorAll('.test-name-input');
+        const testNames = Array.from(testNameInputs).map(input => input.value.trim()).filter(name => name);
+
+        if (!patientId || testNames.length === 0) {
+            alert('Please select a patient and enter at least one test name.');
+            return;
+        }
+
+        // Send the data to the server
+        const response = await fetch('api.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'create_lab_order',
+                patient_id: patientId,
+                test_names: testNames
+            })
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            alert(result.message);
+            labOrderModal.classList.remove('active');
+            loadLabOrders(); // Refresh the table with the new order
+        } else {
+            alert(`Error: ${result.message}`);
+        }
+    });
+}
     
     // ===================================================================
     // --- Admissions Page Logic ---
@@ -508,7 +587,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 loadPrescriptions();
             }
             if (pageId === 'labs') {
-                loadLabResults();
+                loadLabOrders();
             }
             if (pageId === 'messenger') {
                 initializeMessenger();

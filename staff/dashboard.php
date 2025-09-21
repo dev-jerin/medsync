@@ -48,7 +48,8 @@ require_once 'api.php';
                             <span>Admissions</span></a></li>
                     <li><a href="#" class="nav-link" data-page="discharge"><i class="fas fa-hospital-user"></i>
                             <span>Discharges</span></a></li>
-                    <li><a href="#" class="nav-link" data-page="labs"><i class="fas fa-vials"></i> <span>Lab Results</span></a></li>
+                    
+                    <li><a href="#" class="nav-link" data-page="labs"><i class="fas fa-vials"></i> <span>Lab Orders</span></a></li>
                     <li><a href="#" class="nav-link" data-page="user-management"><i class="fas fa-users-cog"></i> <span>User
                             Management</span></a></li>
                     <li><a href="#" class="nav-link" data-page="messenger"><i class="fas fa-paper-plane"></i>
@@ -108,7 +109,7 @@ require_once 'api.php';
                     </div>
                 </div>
             </header>
-
+            
             <div id="dashboard-page" class="page active">
                 <div class="content-panel">
                     <div class="welcome-message">
@@ -309,10 +310,17 @@ require_once 'api.php';
             <div id="pharmacy-page" class="page">
                 <div class="content-panel">
                     <div class="page-header">
-                        <h3><i class="fas fa-pills"></i> Pharmacy - Pending Prescriptions</h3>
+                        <h3><i class="fas fa-pills"></i> Pharmacy Prescriptions</h3>
                     </div>
                     <div class="filters">
                         <input type="text" id="pharmacy-search" class="search-bar" placeholder="Search by patient name or ID...">
+                        <select id="pharmacy-status-filter">
+                            <option value="all">All Statuses</option>
+                            <option value="pending">Pending</option>
+                            <option value="partial">Partial</option>
+                            <option value="dispensed">Dispensed</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
                     </div>
                     <table class="data-table" id="pharmacy-prescriptions-table">
                         <thead>
@@ -415,25 +423,27 @@ require_once 'api.php';
                     </table>
                 </div>
             </div>
+
             <div id="labs-page" class="page">
                 <div class="content-panel">
                     <div class="page-header">
-                        <h3><i class="fas fa-vials"></i> Lab Results</h3><button class="btn btn-primary"
-                            id="add-lab-result-btn"><i class="fas fa-plus"></i> Add Lab Result</button>
+                        <h3><i class="fas fa-vials"></i> Lab Order Queue</h3>
+                        <button class="btn btn-primary" id="add-walkin-lab-order-btn"><i class="fas fa-plus"></i> Add Walk-in Order</button>
                     </div>
                     <div class="filters">
                         <input type="text" id="lab-search" class="search-bar" placeholder="Search by patient name or ID...">
                         <select id="lab-status-filter">
                             <option value="all">All Statuses</option>
+                            <option value="ordered">Ordered</option>
                             <option value="pending">Pending</option>
                             <option value="processing">Processing</option>
                             <option value="completed">Completed</option>
                         </select>
                     </div>
-                    <table class="data-table" id="lab-results-table">
+                    <table class="data-table" id="lab-orders-table">
                         <thead>
                             <tr>
-                                <th>Report ID</th>
+                                <th>Order ID</th>
                                 <th>Patient</th>
                                 <th>Test</th>
                                 <th>Cost</th>
@@ -442,8 +452,7 @@ require_once 'api.php';
                                 <th>Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            </tbody>
+                        <tbody></tbody>
                     </table>
                 </div>
             </div>
@@ -674,7 +683,7 @@ require_once 'api.php';
 
     <input type="hidden" id="csrf-token" value="<?php echo $_SESSION['csrf_token']; ?>">
     <input type="hidden" id="current-user-id" value="<?php echo $_SESSION['user_id']; ?>">
-
+    
     <div class="modal-overlay" id="user-management-modal">
         <div class="modal-container">
             <div class="modal-header">
@@ -898,15 +907,15 @@ require_once 'api.php';
         </div>
     </div>
     
-    <div class="modal-overlay" id="lab-result-modal">
+    <div class="modal-overlay" id="lab-order-modal">
         <div class="modal-container">
             <div class="modal-header">
-                <h4 id="lab-modal-title">Add Lab Result</h4>
+                <h4 id="lab-modal-title">Manage Lab Order</h4>
                 <button class="modal-close-btn">&times;</button>
             </div>
             <div class="modal-body">
-                <form id="lab-result-form" novalidate>
-                    <input type="hidden" name="id" id="lab-result-id">
+                <form id="lab-order-form" novalidate>
+                    <input type="hidden" name="id" id="lab-order-id">
                     <input type="hidden" name="action" id="lab-form-action">
                     
                     <div class="form-group">
@@ -931,6 +940,7 @@ require_once 'api.php';
                     <div class="form-group">
                         <label for="lab-status">Status</label>
                         <select id="lab-status" name="status" required>
+                            <option value="ordered">Ordered</option>
                             <option value="pending">Pending</option>
                             <option value="processing">Processing</option>
                             <option value="completed">Completed</option>
@@ -943,7 +953,7 @@ require_once 'api.php';
                         </div>
                         <div class="form-group">
                             <label for="lab-test-date">Test Date</label>
-                            <input type="date" id="lab-test-date" name="test_date" required>
+                            <input type="date" id="lab-test-date" name="test_date">
                         </div>
                     </div>
                     <div class="form-group">
@@ -962,7 +972,7 @@ require_once 'api.php';
                         <textarea id="lab-summary" name="summary" rows="3"></textarea>
                     </div>
 
-                    <input type="hidden" id="lab-result-details" name="result_details">
+                    <input type="hidden" id="lab-order-details" name="result_details">
 
                     <div class="form-group">
                         <label for="lab-attachment">Upload Report (PDF only)</label>
@@ -974,11 +984,10 @@ require_once 'api.php';
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary modal-close-btn">Cancel</button>
-                <button type="submit" form="lab-result-form" class="btn btn-primary">Save Result</button>
+                <button type="submit" form="lab-order-form" class="btn btn-primary">Save Order</button>
             </div>
         </div>
     </div>
-
     <div class="modal-overlay" id="discharge-clearance-modal">
         <div class="modal-container">
             <div class="modal-header">
@@ -1031,6 +1040,37 @@ require_once 'api.php';
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary modal-close-btn">Cancel</button>
                 <button type="submit" form="create-invoice-form" class="btn btn-primary">Generate Invoice</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="view-prescription-modal">
+        <div class="modal-container" style="max-width: 700px;">
+            <div class="modal-header">
+                <h4>Prescription Details</h4>
+                <button class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="billing-patient-info">
+                    <p><strong>Patient:</strong> <span id="view-patient-name"></span></p>
+                    <p><strong>Doctor:</strong> <span id="view-doctor-name"></span></p>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Medicine</th>
+                            <th>Dosage</th>
+                            <th>Frequency</th>
+                            <th>Qty Prescribed</th>
+                            <th>Qty Dispensed</th>
+                        </tr>
+                    </thead>
+                    <tbody id="view-items-tbody">
+                        </tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary modal-close-btn">Close</button>
             </div>
         </div>
     </div>
@@ -1121,5 +1161,4 @@ require_once 'api.php';
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="script.js"></script>
 </body>
-
 </html>

@@ -945,19 +945,43 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // --- INVENTORY MANAGEMENT (DEPARTMENTS) ---
+// In admin/script.js, find the `openDepartmentModal` function and replace it
+
     const openDepartmentModal = setupModal({
         modalId: 'department-modal',
         openBtnId: 'add-department-btn',
         formId: 'department-form',
-        onOpen: (mode, dept) => {
-            document.getElementById('department-modal-title').textContent = mode === 'add' ? 'Add New Department' : `Edit ${dept.name}`;
-            document.getElementById('department-form-action').value = mode === 'add' ? 'addDepartment' : 'updateDepartment';
+        onOpen: async (mode, dept = {}) => { // Added async here
+            const modalTitle = document.getElementById('department-modal-title');
+            const actionInput = document.getElementById('department-form-action');
             const activeGroup = document.getElementById('department-active-group');
+            const hodSelect = document.getElementById('head_of_department_id');
+
+            // Fetch and populate the doctors dropdown
+            hodSelect.innerHTML = '<option value="">-- Loading Doctors --</option>';
+            try {
+                const doctors = await fetchAndRender({ endpoint: 'api.php?fetch=active_doctors' });
+                hodSelect.innerHTML = '<option value="">-- None --</option>'; // Reset after loading
+                if (doctors) {
+                    doctors.forEach(doctor => {
+                        hodSelect.innerHTML += `<option value="${doctor.id}">${doctor.name}</option>`;
+                    });
+                }
+            } catch (error) {
+                hodSelect.innerHTML = '<option value="">Could not load doctors</option>';
+            }
+
+            modalTitle.textContent = mode === 'add' ? 'Add New Department' : `Edit ${dept.name}`;
+            actionInput.value = mode === 'add' ? 'addDepartment' : 'updateDepartment';
+            
             activeGroup.style.display = mode === 'edit' ? 'block' : 'none';
+
             if (mode === 'edit') {
                 document.getElementById('department-id').value = dept.id;
                 document.getElementById('department-name').value = dept.name;
                 document.getElementById('department-is-active').value = dept.is_active;
+                // Set the selected Head of Department
+                hodSelect.value = dept.head_of_department_id || '';
             }
         }
     });
@@ -967,26 +991,39 @@ document.addEventListener("DOMContentLoaded", function () {
         handleFormSubmit(new FormData(e.target), 'departments_management');
     });
 
-    const renderDepartmentRow = (dept) => `
-        <tr data-department='${JSON.stringify(dept)}'>
-            <td>${dept.name}</td>
-            <td><span class="status-badge ${dept.is_active == 1 ? 'active' : 'inactive'}">${dept.is_active == 1 ? 'Active' : 'Inactive'}</span></td>
-            <td class="action-buttons">
-                <button class="btn-edit-department btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
-                <button class="btn-delete-department btn-delete" title="Disable"><i class="fas fa-trash-alt"></i></button>
-            </td>
-        </tr>
-    `;
+// In admin/script.js
+
+const renderDepartmentRow = (dept) => `
+    <tr data-department='${JSON.stringify(dept)}'>
+        <td>${dept.name}</td>
+        <td>${dept.head_of_department || 'N/A'}</td>
+        <td>
+            <a href="#" class="user-count-link" data-role="doctor" data-department-id="${dept.id}">
+                ${dept.doctor_count} Doctors
+            </a>
+        </td>
+        <td>
+            <a href="#" class="user-count-link" data-role="staff" data-department-id="${dept.id}">
+                ${dept.staff_count} Staff
+            </a>
+        </td>
+        <td><span class="status-badge ${dept.is_active == 1 ? 'active' : 'inactive'}">${dept.is_active == 1 ? 'Active' : 'Inactive'}</span></td>
+        <td class="action-buttons">
+            <button class="btn-edit-department btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
+            <button class="btn-delete-department btn-delete" title="Disable"><i class="fas fa-trash-alt"></i></button>
+        </td>
+    </tr>
+`;
 
     const fetchDepartmentsManagement = () => fetchAndRender({
         endpoint: 'api.php?fetch=departments_management',
         target: document.getElementById('department-table-body'),
         renderRow: renderDepartmentRow,
-        columns: 3,
+        columns: 6,
         emptyMessage: 'No departments found.'
     });
 
-    document.getElementById('department-table-body').addEventListener('click', async (e) => {
+    document.getElementById('department-table-body').addEventListener('click', async (e) => {    
         const row = e.target.closest('tr');
         if (!row) return;
         const department = JSON.parse(row.dataset.department);

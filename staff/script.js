@@ -170,7 +170,7 @@ document.addEventListener("DOMContentLoaded", function() {
             if (pageId === 'user-management') fetchUsers();
             if (pageId === 'bed-management') initializeBedManagement();
             if (pageId === 'admissions') initializeAdmissions();
-            if (pageId === 'labs') initializeLabs();
+            if (pageId === 'labs') initializeLabOrders(); // UPDATED
             if (pageId === 'notifications') fetchAndRenderNotifications(document.querySelector('#notifications-page .notification-list-container'));
             if (pageId === 'discharge') initializeDischarge();
             if (pageId === 'billing') initializeBilling();
@@ -802,7 +802,6 @@ document.addEventListener("DOMContentLoaded", function() {
         personalInfoForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            // --- 1. Select form elements and error placeholders ---
             const nameInput = document.getElementById('profile-name');
             const emailInput = document.getElementById('profile-email');
             const phoneInput = document.getElementById('profile-phone');
@@ -814,13 +813,9 @@ document.addEventListener("DOMContentLoaded", function() {
             
             let isValid = true;
 
-            // --- 2. Reset all previous errors ---
             [emailError, phoneError, dobError].forEach(el => el.textContent = '');
             [emailInput, phoneInput, dobInput, nameInput].forEach(el => el.classList.remove('is-invalid'));
 
-            // --- 3. Perform Validation ---
-            
-            // a. Email Validation
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailRegex.test(emailInput.value)) {
                 emailError.textContent = 'Please enter a valid email address.';
@@ -828,7 +823,6 @@ document.addEventListener("DOMContentLoaded", function() {
                 isValid = false;
             }
             
-            // b. Phone Number Validation (+91 format)
             const phoneRegex = /^\+91\d{10}$/;
             if (phoneInput.value && !phoneRegex.test(phoneInput.value)) {
                 phoneError.textContent = 'Format must be +91 followed by 10 digits (e.g., +919876543210).';
@@ -836,7 +830,6 @@ document.addEventListener("DOMContentLoaded", function() {
                 isValid = false;
             }
             
-            // c. Date of Birth Year Validation
             if (dobInput.value) {
                 const year = new Date(dobInput.value).getFullYear();
                 if (isNaN(year) || String(year).length > 4) {
@@ -850,12 +843,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
             }
 
-            // --- 4. Stop if form is invalid ---
-            if (!isValid) {
-                return; // Halt the function if any validation failed
-            }
+            if (!isValid) return;
 
-            // --- 5. If valid, proceed with the original submission logic ---
             const formData = new FormData(this);
             formData.append('action', 'updatePersonalInfo');
             formData.append('csrf_token', csrfToken);
@@ -1080,29 +1069,21 @@ document.addEventListener("DOMContentLoaded", function() {
         
         userForm.addEventListener('submit', (e) => {
             e.preventDefault();
-
-            // --- START: New Validation Logic ---
             const phoneInput = document.getElementById('user-phone');
             const dobInput = document.getElementById('user-dob');
             const phoneError = document.getElementById('user-phone-error');
             const dobError = document.getElementById('user-dob-error');
             let isValid = true;
-
-            // Reset previous errors
             phoneInput.classList.remove('is-invalid');
             dobInput.classList.remove('is-invalid');
             phoneError.textContent = '';
             dobError.textContent = '';
-
-            // Phone number validation: must be +91 followed by 10 digits
             const phoneRegex = /^\+91\d{10}$/;
             if (phoneInput.value && !phoneRegex.test(phoneInput.value)) {
                 phoneError.textContent = 'Format must be +91 followed by 10 digits.';
                 phoneInput.classList.add('is-invalid');
                 isValid = false;
             }
-
-            // Date of birth year validation: year must not exceed 4 digits
             if (dobInput.value) {
                 const year = dobInput.value.split('-')[0];
                 if (year.length > 4) {
@@ -1111,12 +1092,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     isValid = false;
                 }
             }
-
-            if (!isValid) {
-                return; // Stop the form submission if validation fails
-            }
-            // --- END: New Validation Logic ---
-
+            if (!isValid) return;
             const formData = new FormData(userForm);
             formData.append('csrf_token', csrfToken);
             handleUserFormSubmit(formData);
@@ -1379,7 +1355,6 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
 
-        // Bulk update logic
         const bulkUpdateButton = document.getElementById('bulk-update-beds-btn');
         bedGridContainer.addEventListener('change', (e) => {
             if (e.target.classList.contains('bed-selection-checkbox')) {
@@ -1660,7 +1635,7 @@ document.addEventListener("DOMContentLoaded", function() {
             const response = await fetch('api.php', { method: 'POST', body: formData });
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
-            await fetchAndRenderBedData(); // Just refresh on success
+            await fetchAndRenderBedData();
         } catch (error) {
             alert('Error: ' + error.message);
         }
@@ -1687,42 +1662,36 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-// Corrected Code for staff/script.js
-
-async function handleDischarge(e) {
-    const modal = e.target.closest('.modal-overlay');
-    const id = document.getElementById('bed-assign-id').value;
-    const type = document.getElementById('bed-assign-type').value;
-
-    modal.classList.remove('show'); // <-- MOVE THE LINE HERE to close the first popup immediately.
-
-    const confirmed = await showConfirmation(
-        'Confirm Discharge', 
-        `Are you sure you want to discharge the patient from this ${type}? The status will be set to 'Cleaning'.`
-    );
-    if (!confirmed) return;
-    
-    const formData = new FormData();
-    formData.append('csrf_token', csrfToken);
-    formData.append('action', 'updateBedOrRoom');
-    formData.append('id', id);
-    formData.append('type', type);
-    formData.append('patient_id', ''); // Empty patient ID signifies discharge
-    formData.append('doctor_id', ''); // Clear doctor as well
-    formData.append('status', 'cleaning');
-
-    try {
-        const response = await fetch('api.php', { method: 'POST', body: formData });
-        const result = await response.json();
-        if (!result.success) throw new Error(result.message);
+    async function handleDischarge(e) {
+        const modal = e.target.closest('.modal-overlay');
+        const id = document.getElementById('bed-assign-id').value;
+        const type = document.getElementById('bed-assign-type').value;
+        modal.classList.remove('show');
+        const confirmed = await showConfirmation(
+            'Confirm Discharge', 
+            `Are you sure you want to discharge the patient from this ${type}? The status will be set to 'Cleaning'.`
+        );
+        if (!confirmed) return;
         
-        // The line that was here is now at the top.
-        alert(result.message);
-        await fetchAndRenderBedData();
-    } catch (error) {
-        alert('Error: ' + error.message);
+        const formData = new FormData();
+        formData.append('csrf_token', csrfToken);
+        formData.append('action', 'updateBedOrRoom');
+        formData.append('id', id);
+        formData.append('type', type);
+        formData.append('patient_id', '');
+        formData.append('doctor_id', '');
+        formData.append('status', 'cleaning');
+
+        try {
+            const response = await fetch('api.php', { method: 'POST', body: formData });
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            alert(result.message);
+            await fetchAndRenderBedData();
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
     }
-}
     
     // --- ADMISSIONS MANAGEMENT LOGIC ---
     const admissionsPage = document.getElementById('admissions-page');
@@ -1794,15 +1763,15 @@ async function handleDischarge(e) {
         }).join('');
     }
 
-    // --- LAB RESULTS LOGIC ---
+    // --- START: LAB WORKFLOW UPDATE ---
     const labsPage = document.getElementById('labs-page');
-    let labsInitialized = false;
-    let labSearchDebounce;
+    let labOrdersInitialized = false;
+    let labOrderSearchDebounce;
     let labPatientSearchDebounce;
     let labFormData = null; // Cache for doctors
 
-    function initializeLabs() {
-        if (labsInitialized || !labsPage) return;
+    function initializeLabOrders() {
+        if (labOrdersInitialized || !labsPage) return;
         
         const createFindingRow = (finding = { parameter: '', result: '', range: '' }) => {
             const row = document.createElement('div');
@@ -1823,35 +1792,35 @@ async function handleDischarge(e) {
         const statusFilter = document.getElementById('lab-status-filter');
 
         const triggerLabSearch = () => {
-            clearTimeout(labSearchDebounce);
-            labSearchDebounce = setTimeout(() => {
-                fetchAndRenderLabs(searchInput.value, statusFilter.value);
+            clearTimeout(labOrderSearchDebounce);
+            labOrderSearchDebounce = setTimeout(() => {
+                fetchAndRenderLabOrders(searchInput.value, statusFilter.value);
             }, 300);
         };
 
         searchInput.addEventListener('input', triggerLabSearch);
-        statusFilter.addEventListener('change', () => fetchAndRenderLabs(searchInput.value, statusFilter.value));
+        statusFilter.addEventListener('change', () => fetchAndRenderLabOrders(searchInput.value, statusFilter.value));
         
-        document.getElementById('add-lab-result-btn').addEventListener('click', () => openLabModal('add'));
+        document.getElementById('add-walkin-lab-order-btn').addEventListener('click', () => openLabOrderModal('add'));
         
-        const modal = document.getElementById('lab-result-modal');
+        const modal = document.getElementById('lab-order-modal');
         modal.querySelectorAll('.modal-close-btn').forEach(btn => btn.addEventListener('click', () => modal.classList.remove('show')));
-        document.getElementById('lab-result-form').addEventListener('submit', handleLabFormSubmit);
+        document.getElementById('lab-order-form').addEventListener('submit', handleLabOrderFormSubmit);
         
-        const tableBody = document.getElementById('lab-results-table')?.querySelector('tbody');
+        const tableBody = document.getElementById('lab-orders-table')?.querySelector('tbody');
         tableBody.addEventListener('click', e => {
             const row = e.target.closest('tr');
             if (!row) return;
 
-            const labData = JSON.parse(row.dataset.labResult);
+            const labData = JSON.parse(row.dataset.labOrder);
 
-            if (e.target.closest('.edit-lab-btn')) {
-                openLabModal('edit', labData);
+            if (e.target.closest('.edit-lab-order-btn')) {
+                openLabOrderModal('edit', labData);
             }
-            if (e.target.closest('.remove-lab-btn')) {
-                showConfirmation('Delete Lab Result', `Are you sure you want to delete the lab result for ${labData.patient_name} (Test: ${labData.test_name})? This action is permanent and will delete the associated report file.`)
+            if (e.target.closest('.remove-lab-order-btn')) {
+                showConfirmation('Delete Lab Order', `Are you sure you want to delete the lab order for ${labData.patient_name} (Test: ${labData.test_name})? This is permanent.`)
                     .then(confirmed => {
-                        if (confirmed) handleRemoveLabResult(labData.id);
+                        if (confirmed) handleRemoveLabOrder(labData.id);
                     });
             }
         });
@@ -1871,73 +1840,70 @@ async function handleDischarge(e) {
         });
 
         document.getElementById('clear-selected-patient-btn').addEventListener('click', clearSelectedPatient);
+        document.getElementById('add-finding-btn').addEventListener('click', () => createFindingRow());
 
-        document.getElementById('add-finding-btn').addEventListener('click', () => {
-            createFindingRow();
-        });
-
-        fetchAndRenderLabs(searchInput.value, statusFilter.value);
-        labsInitialized = true;
+        fetchAndRenderLabOrders(searchInput.value, statusFilter.value);
+        labOrdersInitialized = true;
     }
 
-    async function fetchAndRenderLabs(search = '', status = 'all') {
-        const tableBody = document.getElementById('lab-results-table')?.querySelector('tbody');
+    async function fetchAndRenderLabOrders(search = '', status = 'all') {
+        const tableBody = document.getElementById('lab-orders-table')?.querySelector('tbody');
         if (!tableBody) return;
-        tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Loading lab results...</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Loading lab orders...</td></tr>`;
 
         try {
-            const response = await fetch(`api.php?fetch=lab_results&search=${encodeURIComponent(search)}&status=${status}`);
+            const response = await fetch(`api.php?fetch=lab_orders&search=${encodeURIComponent(search)}&status=${status}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
-            renderLabs(result.data);
+            renderLabOrders(result.data);
         } catch (error) {
             tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
         }
     }
 
-    function renderLabs(data) {
-        const tableBody = document.getElementById('lab-results-table')?.querySelector('tbody');
+    function renderLabOrders(data) {
+        const tableBody = document.getElementById('lab-orders-table')?.querySelector('tbody');
         if (!tableBody) return;
 
         if (data.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">No lab results found.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">No lab orders found.</td></tr>`;
             return;
         }
 
-        tableBody.innerHTML = data.map(result => {
-            let statusClass = result.status; // e.g., 'completed'
-            if (result.status === 'processing') statusClass = 'pending-billing'; // Use an existing color
-            const statusText = result.status.charAt(0).toUpperCase() + result.status.slice(1);
+        tableBody.innerHTML = data.map(order => {
+            let statusClass = order.status;
+            const statusText = order.status.charAt(0).toUpperCase() + order.status.slice(1);
             const status = `<span class="status ${statusClass}">${statusText}</span>`;
             
-            const reportLink = result.attachment_path
-                ? `<a href="report/${result.attachment_path}" target="_blank" class="action-btn" download><i class="fas fa-download"></i> Download</a>`
+            const reportLink = order.attachment_path
+                ? `<a href="report/${order.attachment_path}" target="_blank" class="action-btn" download><i class="fas fa-download"></i> Download</a>`
                 : '<span>N/A</span>';
             
             return `
-                <tr data-lab-result='${JSON.stringify(result)}'>
-                    <td data-label="Report ID">REP-${String(result.id).padStart(5, '0')}</td>
-                    <td data-label="Patient">${result.patient_name} (${result.patient_display_id})</td>
-                    <td data-label="Test">${result.test_name}</td>
-                    <td data-label="Cost">₹${parseFloat(result.cost || 0).toFixed(2)}</td>
+                <tr data-lab-order='${JSON.stringify(order)}'>
+                    <td data-label="Order ID">ORD-${String(order.id).padStart(5, '0')}</td>
+                    <td data-label="Patient">${order.patient_name} (${order.patient_display_id})</td>
+                    <td data-label="Test">${order.test_name}</td>
+                    <td data-label="Cost">₹${parseFloat(order.cost || 0).toFixed(2)}</td>
                     <td data-label="Status">${status}</td>
                     <td data-label="Report">${reportLink}</td>
                     <td data-label="Actions">
-                        <button class="action-btn edit-lab-btn"><i class="fas fa-edit"></i> Edit</button>
-                        <button class="action-btn danger remove-lab-btn"><i class="fas fa-trash-alt"></i></button>
+                        <button class="action-btn edit-lab-order-btn"><i class="fas fa-edit"></i> Edit</button>
+                        <button class="action-btn danger remove-lab-order-btn"><i class="fas fa-trash-alt"></i></button>
                     </td>
                 </tr>
             `;
         }).join('');
     }
 
-    async function openLabModal(mode, data = {}) {
-        const modal = document.getElementById('lab-result-modal');
-        const form = document.getElementById('lab-result-form');
+    async function openLabOrderModal(mode, data = {}) {
+        const modal = document.getElementById('lab-order-modal');
+        const form = document.getElementById('lab-order-form');
         const title = document.getElementById('lab-modal-title');
         form.reset();
         clearSelectedPatient();
         document.getElementById('current-attachment-info').innerHTML = '';
+        document.getElementById('lab-findings-container').innerHTML = '';
 
         const createFindingRow = (finding = { parameter: '', result: '', range: '' }) => {
             const row = document.createElement('div');
@@ -1973,13 +1939,13 @@ async function handleDischarge(e) {
         });
         
         if (mode === 'add') {
-            title.textContent = 'Add Lab Result';
-            document.getElementById('lab-form-action').value = 'addLabResult';
-            document.getElementById('lab-result-id').value = '';
+            title.textContent = 'Add Walk-in Lab Order';
+            document.getElementById('lab-form-action').value = 'addLabOrder';
+            document.getElementById('lab-order-id').value = '';
         } else { // 'edit'
-            title.textContent = `Edit Lab Result for ${data.patient_name}`;
-            document.getElementById('lab-form-action').value = 'updateLabResult';
-            document.getElementById('lab-result-id').value = data.id;
+            title.textContent = `Manage Lab Order for ${data.patient_name}`;
+            document.getElementById('lab-form-action').value = 'updateLabOrder';
+            document.getElementById('lab-order-id').value = data.id;
             
             if(data.patient_id && data.patient_name) {
                 selectPatient(data.patient_id, data.patient_name);
@@ -1991,7 +1957,6 @@ async function handleDischarge(e) {
             document.getElementById('lab-test-date').value = data.test_date;
             document.getElementById('lab-cost').value = parseFloat(data.cost || 0).toFixed(2);
             
-            document.getElementById('lab-findings-container').innerHTML = '';
             document.getElementById('lab-summary').value = '';
 
             try {
@@ -2042,7 +2007,6 @@ async function handleDischarge(e) {
                     </div>
                 `).join('');
             }
-
         } catch (error) {
              resultsContainer.innerHTML = `<div class="search-result-item" style="color:red">Search failed.</div>`;
         }
@@ -2051,7 +2015,6 @@ async function handleDischarge(e) {
     function selectPatient(id, name) {
         document.getElementById('lab-patient-id').value = id;
         document.getElementById('selected-patient-name').textContent = name;
-        
         document.getElementById('patient-search-results').style.display = 'none';
         document.getElementById('lab-patient-search').style.display = 'none';
         document.getElementById('selected-patient-display').style.display = 'flex';
@@ -2061,14 +2024,12 @@ async function handleDischarge(e) {
         document.getElementById('lab-patient-id').value = '';
         document.getElementById('selected-patient-name').textContent = '';
         document.getElementById('lab-patient-search').value = '';
-        
         document.getElementById('patient-search-results').style.display = 'none';
         document.getElementById('lab-patient-search').style.display = 'block';
         document.getElementById('selected-patient-display').style.display = 'none';
     }
 
-
-    async function handleLabFormSubmit(e) {
+    async function handleLabOrderFormSubmit(e) {
         e.preventDefault();
         const form = e.target;
         const modal = form.closest('.modal-overlay');
@@ -2084,11 +2045,11 @@ async function handleDischarge(e) {
         });
         const summary = document.getElementById('lab-summary').value.trim();
 
+        const resultDetailsInput = document.getElementById('lab-order-details');
         if (findings.length > 0 || summary) {
-            const resultDetails = JSON.stringify({ findings, summary });
-            document.getElementById('lab-result-details').value = resultDetails;
+            resultDetailsInput.value = JSON.stringify({ findings, summary });
         } else {
-            document.getElementById('lab-result-details').value = '';
+            resultDetailsInput.value = '';
         }
 
         const formData = new FormData(form);
@@ -2101,15 +2062,15 @@ async function handleDischarge(e) {
 
             modal.classList.remove('show');
             alert(result.message);
-            fetchAndRenderLabs(document.getElementById('lab-search').value, document.getElementById('lab-status-filter').value);
+            fetchAndRenderLabOrders(document.getElementById('lab-search').value, document.getElementById('lab-status-filter').value);
         } catch (error) {
             alert('Error: ' + error.message);
         }
     }
     
-    async function handleRemoveLabResult(id) {
+    async function handleRemoveLabOrder(id) {
         const formData = new FormData();
-        formData.append('action', 'removeLabResult');
+        formData.append('action', 'removeLabOrder');
         formData.append('id', id);
         formData.append('csrf_token', csrfToken);
 
@@ -2119,11 +2080,12 @@ async function handleDischarge(e) {
             if (!result.success) throw new Error(result.message);
             
             alert(result.message);
-            fetchAndRenderLabs(document.getElementById('lab-search').value, document.getElementById('lab-status-filter').value);
+            fetchAndRenderLabOrders(document.getElementById('lab-search').value, document.getElementById('lab-status-filter').value);
         } catch (error) {
             alert('Error: ' + error.message);
         }
     }
+    // --- END: LAB WORKFLOW UPDATE ---
 
     // --- DISCHARGE MANAGEMENT LOGIC ---
     const dischargePage = document.getElementById('discharge-page');
@@ -2190,18 +2152,9 @@ async function handleDischarge(e) {
             let statusText = '';
             let statusClass = '';
             switch(req.clearance_step) {
-                case 'nursing':
-                    statusText = 'Pending Nursing';
-                    statusClass = 'pending-nursing';
-                    break;
-                case 'pharmacy':
-                    statusText = 'Pending Pharmacy';
-                    statusClass = 'pending-pharmacy';
-                    break;
-                case 'billing':
-                    statusText = 'Pending Billing';
-                    statusClass = 'pending-billing';
-                    break;
+                case 'nursing': statusText = 'Pending Nursing'; statusClass = 'pending-nursing'; break;
+                case 'pharmacy': statusText = 'Pending Pharmacy'; statusClass = 'pending-pharmacy'; break;
+                case 'billing': statusText = 'Pending Billing'; statusClass = 'pending-billing'; break;
             }
             if (req.is_cleared == 1) {
                 statusText = `Cleared by ${req.cleared_by_name || 'Staff'}`;
@@ -2487,17 +2440,30 @@ async function handleDischarge(e) {
         if (pharmacyInitialized || !pharmacyPage) return;
 
         const searchInput = document.getElementById('pharmacy-search');
+        const statusFilter = document.getElementById('pharmacy-status-filter');
+
         searchInput.addEventListener('input', () => {
             clearTimeout(pharmacySearchDebounce);
-            pharmacySearchDebounce = setTimeout(() => fetchAndRenderPendingPrescriptions(searchInput.value), 300);
+            pharmacySearchDebounce = setTimeout(() => fetchAndRenderPendingPrescriptions(searchInput.value, statusFilter.value), 300);
+        });
+
+        statusFilter.addEventListener('change', () => {
+            fetchAndRenderPendingPrescriptions(searchInput.value, statusFilter.value);
         });
 
         const prescriptionsTable = document.getElementById('pharmacy-prescriptions-table');
         prescriptionsTable.addEventListener('click', e => {
             const createBillBtn = e.target.closest('.create-bill-btn');
+            const viewBtn = e.target.closest('.view-prescription-btn');
+            
             if (createBillBtn) {
                 const row = createBillBtn.closest('tr');
                 openBillingModal(row.dataset.prescriptionId, row.dataset.patientName, row.dataset.doctorName);
+            }
+            
+            if (viewBtn) {
+                const row = viewBtn.closest('tr');
+                openViewPrescriptionModal(row.dataset.prescriptionId, row.dataset.patientName, row.dataset.doctorName);
             }
         });
         
@@ -2508,36 +2474,86 @@ async function handleDischarge(e) {
         pharmacyInitialized = true;
     }
 
-    async function fetchAndRenderPendingPrescriptions(search = '') {
+    async function fetchAndRenderPendingPrescriptions(search = '', status = 'all') {
         const tableBody = document.getElementById('pharmacy-prescriptions-table')?.querySelector('tbody');
         if (!tableBody) return;
         tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">Loading...</td></tr>`;
 
         try {
-            const response = await fetch(`api.php?fetch=pending_prescriptions&search=${encodeURIComponent(search)}`);
+            const response = await fetch(`api.php?fetch=pending_prescriptions&search=${encodeURIComponent(search)}&status=${status}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             
             if (result.data.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No pending prescriptions found.</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No prescriptions found.</td></tr>`;
                 return;
             }
 
-            tableBody.innerHTML = result.data.map(p => `
-                <tr data-prescription-id="${p.id}" data-patient-name="${p.patient_name}" data-doctor-name="${p.doctor_name}">
-                    <td data-label="Presc. ID">PRES-${String(p.id).padStart(4, '0')}</td>
-                    <td data-label="Patient Name">${p.patient_name}</td>
-                    <td data-label="Doctor Name">${p.doctor_name}</td>
-                    <td data-label="Date">${p.prescription_date}</td>
-                    <td data-label="Status"><span class="status pending">${p.status}</span></td>
-                    <td data-label="Actions"><button class="action-btn create-bill-btn"><i class="fas fa-file-invoice"></i> Create Bill</button></td>
-                </tr>
-            `).join('');
+            tableBody.innerHTML = result.data.map(p => {
+                let statusClass = 'pending';
+                if (p.status === 'dispensed') {
+                    statusClass = 'completed';
+                } else if (p.status === 'cancelled') {
+                    statusClass = 'unpaid';
+                }
+
+                const actions = (p.status === 'pending' || p.status === 'partial')
+                    ? `<button class="action-btn view-prescription-btn"><i class="fas fa-eye"></i> View</button>
+                       <button class="action-btn create-bill-btn"><i class="fas fa-file-invoice"></i> Create Bill</button>`
+                    : `<button class="action-btn view-prescription-btn"><i class="fas fa-eye"></i> View</button>`;
+
+                return `
+                    <tr data-prescription-id="${p.id}" data-patient-name="${p.patient_name} (${p.patient_display_id})" data-doctor-name="${p.doctor_name}">
+                        <td data-label="Presc. ID">PRES-${String(p.id).padStart(4, '0')}</td>
+                        <td data-label="Patient Name">${p.patient_name} (${p.patient_display_id})</td>
+                        <td data-label="Doctor Name">${p.doctor_name}</td>
+                        <td data-label="Date">${p.prescription_date}</td>
+                        <td data-label="Status"><span class="status ${statusClass}">${p.status}</span></td>
+                        <td data-label="Actions">${actions}</td>
+                    </tr>
+                `;
+            }).join('');
 
         } catch (error) {
             tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
         }
     }
+    
+    async function openViewPrescriptionModal(prescriptionId, patientName, doctorName) {
+        const modal = document.getElementById('view-prescription-modal');
+        const itemsTbody = document.getElementById('view-items-tbody');
+        itemsTbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Loading...</td></tr>';
+        
+        document.getElementById('view-patient-name').textContent = patientName;
+        document.getElementById('view-doctor-name').textContent = doctorName;
+        
+        modal.classList.add('show');
+        modal.querySelectorAll('.modal-close-btn').forEach(btn => btn.addEventListener('click', () => modal.classList.remove('show'), { once: true }));
+
+        try {
+            const response = await fetch(`api.php?fetch=prescription_details&id=${prescriptionId}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            
+            if (result.data.length > 0) {
+                 itemsTbody.innerHTML = result.data.map(item => `
+                    <tr>
+                        <td data-label="Medicine">${item.medicine_name}</td>
+                        <td data-label="Dosage">${item.dosage || 'N/A'}</td>
+                        <td data-label="Frequency">${item.frequency || 'N/A'}</td>
+                        <td data-label="Qty Prescribed">${item.quantity_prescribed}</td>
+                        <td data-label="Qty Dispensed">${item.quantity_dispensed}</td>
+                    </tr>
+                `).join('');
+            } else {
+                 itemsTbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No items found in this prescription.</td></tr>';
+            }
+
+        } catch (error) {
+            itemsTbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
+        }
+    }
+
 
     async function openBillingModal(prescriptionId, patientName, doctorName) {
         const modal = document.getElementById('pharmacy-billing-modal');
@@ -2642,7 +2658,9 @@ async function handleDischarge(e) {
                 window.open(`api.php?action=download_pharmacy_bill&id=${result.bill_id}`, '_blank');
             }
 
-            fetchAndRenderPendingPrescriptions();
+            const searchInput = document.getElementById('pharmacy-search');
+            const statusFilter = document.getElementById('pharmacy-status-filter');
+            fetchAndRenderPendingPrescriptions(searchInput.value, statusFilter.value);
 
         } catch (error) {
             alert('Error: ' + error.message);
@@ -2666,21 +2684,16 @@ async function handleDischarge(e) {
         const tokenContainer = document.getElementById('token-display-container');
         let searchDebounce;
 
-        // 1. Handle typing in the search box
         searchInput.addEventListener('input', () => {
             clearTimeout(searchDebounce);
             const query = searchInput.value.trim();
-            hiddenInput.value = ''; // Clear selected ID when user types
-
-            // If user clears the input, reset the token view
+            hiddenInput.value = '';
             if (query.length === 0) {
                 clearInterval(tokenRefreshInterval);
                 tokenContainer.innerHTML = '<p class="no-items-message">Please select a doctor to see their live token queue for today.</p>';
                 searchResults.style.display = 'none';
                 return;
             }
-
-            // Fetch new results if query is long enough
             if (query.length < 2) {
                 searchResults.style.display = 'none';
                 return;
@@ -2705,26 +2718,20 @@ async function handleDischarge(e) {
             }, 300);
         });
 
-        // 2. Handle clicking a doctor from the results list
         searchResults.addEventListener('click', (e) => {
             const item = e.target.closest('.search-result-item');
             if (item && item.dataset.id) {
                 const doctorId = item.dataset.id;
                 const doctorName = item.dataset.name;
-                
-                // UPDATE the search bar instead of hiding it
                 searchInput.value = doctorName; 
                 hiddenInput.value = doctorId;
                 searchResults.style.display = 'none';
-                
-                // Fetch the tokens for the selected doctor
                 clearInterval(tokenRefreshInterval);
                 fetchAndRenderTokens(doctorId);
                 tokenRefreshInterval = setInterval(() => fetchAndRenderTokens(doctorId), 20000);
             }
         });
         
-        // Hide search results if clicking elsewhere
         document.addEventListener('click', (e) => {
             if (!searchInput.contains(e.target)) {
                 searchResults.style.display = 'none';

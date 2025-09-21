@@ -1,21 +1,16 @@
 -- This is the complete and updated database schema for MedSync.
--- Version 2.1
--- This version includes improvements for data integrity, performance, and clarity.
+-- Version 2.2
+-- This version includes the updated Lab Order workflow.
 -- Key changes include:
--- 1. Merged 'beds' and 'rooms' into a single 'accommodations' table.
--- 2. Replaced ENUM for user roles with a dedicated 'roles' table.
--- 3. Enforced foreign key for 'staff.assigned_department'.
--- 4. Added performance-enhancing indexes on frequently queried columns.
--- 5. Improved naming conventions for clarity (e.g., 'is_active', 'is_available').
--- 6. Integrated admission_id into prescriptions and transactions for better billing linkage.
--- 7. Added a cost column to lab_results.
+-- 1. Renamed 'lab_results' to 'lab_orders' to better reflect its function.
+-- 2. Added an 'ordered' status to the lab orders table.
+-- 3. Added an 'ordered_at' timestamp to track when a doctor places an order.
 
 CREATE DATABASE IF NOT EXISTS `medsync` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE `medsync`;
 
 --
 -- Table structure for table `roles`
--- Description: Replaces the ENUM in the users table for better scalability.
 --
 CREATE TABLE `roles` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -55,7 +50,7 @@ CREATE TABLE `users` (
   UNIQUE KEY `username` (`username`),
   UNIQUE KEY `email` (`email`),
   UNIQUE KEY `display_user_id` (`display_user_id`),
-  KEY `name` (`name`), -- Index for faster name searches
+  KEY `name` (`name`),
   KEY `fk_users_role` (`role_id`),
   CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`) ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -80,12 +75,18 @@ CREATE TABLE `activity_logs` (
 --
 -- Table structure for table `departments`
 --
+--
+-- Table structure for table `departments`
+--
 CREATE TABLE `departments` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
+  `head_of_department_id` int(11) NULL DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `name` (`name`)
+  UNIQUE KEY `name` (`name`),
+  KEY `fk_dept_head` (`head_of_department_id`),
+  CONSTRAINT `fk_dept_head` FOREIGN KEY (`head_of_department_id`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -186,7 +187,6 @@ CREATE TABLE `wards` (
 
 --
 -- Table structure for table `accommodations`
--- Description: Merged table for 'beds' and 'rooms' to reduce redundancy.
 --
 CREATE TABLE `accommodations` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
@@ -253,7 +253,7 @@ CREATE TABLE `appointments` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Table structure for table `transactions` (UPDATED)
+-- Table structure for table `transactions`
 --
 CREATE TABLE `transactions` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -303,27 +303,28 @@ CREATE TABLE `system_settings` (
 INSERT INTO `system_settings` (`setting_key`, `setting_value`) VALUES ('gmail_app_password', 'sswyqzegdpyixbyw');
 
 --
--- Table structure for table `lab_results` (UPDATED)
+-- Table structure for table `lab_orders` (Previously lab_results)
 --
-CREATE TABLE `lab_results` (
+CREATE TABLE `lab_orders` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `patient_id` int(11) NOT NULL,
   `doctor_id` int(11) DEFAULT NULL,
-  `staff_id` int(11) NOT NULL COMMENT 'Staff member who entered the result',
+  `staff_id` int(11) DEFAULT NULL COMMENT 'Staff member who processed the result',
+  `ordered_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `test_name` varchar(255) NOT NULL,
-  `test_date` date NOT NULL,
-  `status` ENUM('pending', 'processing', 'completed') NOT NULL DEFAULT 'pending',
+  `test_date` date DEFAULT NULL,
+  `status` enum('ordered','pending','processing','completed') NOT NULL DEFAULT 'ordered',
   `result_details` text DEFAULT NULL,
-  `cost` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  `cost` decimal(10,2) NOT NULL DEFAULT 0.00,
   `attachment_path` varchar(255) DEFAULT NULL COMMENT 'Path to an uploaded file (e.g., PDF)',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `patient_id` (`patient_id`),
   KEY `doctor_id` (`doctor_id`),
   KEY `staff_id` (`staff_id`),
-  CONSTRAINT `fk_lab_results_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `fk_lab_results_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `fk_lab_results_staff` FOREIGN KEY (`staff_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+  CONSTRAINT `fk_lab_orders_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_lab_orders_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_lab_orders_staff` FOREIGN KEY (`staff_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -363,7 +364,7 @@ CREATE TABLE `messages` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Table structure for table `prescriptions` (UPDATED)
+-- Table structure for table `prescriptions`
 --
 CREATE TABLE `prescriptions` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -377,7 +378,7 @@ CREATE TABLE `prescriptions` (
   PRIMARY KEY (`id`),
   KEY `patient_id` (`patient_id`),
   KEY `doctor_id` (`doctor_id`),
-  KEY `prescription_date` (`prescription_date`), -- Index for faster date-based searches
+  KEY `prescription_date` (`prescription_date`),
   KEY `fk_prescription_admission` (`admission_id`),
   CONSTRAINT `fk_prescriptions_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_prescriptions_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
