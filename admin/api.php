@@ -175,14 +175,13 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
 
                         if ($role_name === 'doctor') {
                             $is_available = isset($_POST['is_available']) ? (int)$_POST['is_available'] : 1;
-                            // Check if department_id is empty. If so, use NULL, otherwise use the provided ID.
                             $department_id = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
-                            
-                            $stmt_doctor = $conn->prepare("INSERT INTO doctors (user_id, specialty, qualifications, department_id, is_available) VALUES (?, ?, ?, ?, ?)");
-                            // Use the new sanitized $department_id variable here
-                            $stmt_doctor->bind_param("issii", $user_id, $_POST['specialty'], $_POST['qualifications'], $department_id, $is_available);
+                            $specialty_id = !empty($_POST['specialty_id']) ? (int)$_POST['specialty_id'] : null; // Get specialty_id
+
+                            $stmt_doctor = $conn->prepare("INSERT INTO doctors (user_id, specialty_id, qualifications, department_id, is_available) VALUES (?, ?, ?, ?, ?)");
+                            $stmt_doctor->bind_param("iisii", $user_id, $specialty_id, $_POST['qualifications'], $department_id, $is_available);
                             $stmt_doctor->execute();
-                        } elseif ($role_name === 'staff') {
+                        }elseif ($role_name === 'staff') {
                             $stmt_staff = $conn->prepare("INSERT INTO staff (user_id, shift, assigned_department_id) VALUES (?, ?, ?)");
                             $stmt_staff->bind_param("isi", $user_id, $_POST['shift'], $_POST['assigned_department_id']);
                             $stmt_staff->execute();
@@ -203,6 +202,12 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $conn->rollback();
                         $response = ['success' => false, 'message' => $e->getMessage()];
                     }
+                    break;
+                
+                case 'specialities':
+                    $result = $conn->query("SELECT id, name FROM specialities ORDER BY name ASC");
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
                     break;
 
                 case 'updateSystemSettings':
@@ -318,21 +323,20 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         // In api.php, inside case 'updateUser':
 
                         if ($old_user_data['role_name'] === 'doctor') {
-                            // Sanitize the department_id input, converting an empty value to NULL
                             $department_id = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
                             $is_available = isset($_POST['is_available']) ? (int)$_POST['is_available'] : 1;
-                            
+                            $specialty_id = !empty($_POST['specialty_id']) ? (int)$_POST['specialty_id'] : null; // Get specialty_id
+
                             $stmt_doctor = $conn->prepare("
-                                INSERT INTO doctors (user_id, specialty, qualifications, department_id, is_available) 
+                                INSERT INTO doctors (user_id, specialty_id, qualifications, department_id, is_available) 
                                 VALUES (?, ?, ?, ?, ?)
                                 ON DUPLICATE KEY UPDATE 
-                                specialty = VALUES(specialty), 
+                                specialty_id = VALUES(specialty_id), 
                                 qualifications = VALUES(qualifications), 
                                 department_id = VALUES(department_id), 
                                 is_available = VALUES(is_available)
                             ");
-                            // **THE FIX**: Use the sanitized $department_id variable instead of the raw $_POST value.
-                            $stmt_doctor->bind_param("issii", $id, $_POST['specialty'], $_POST['qualifications'], $department_id, $is_available);
+                            $stmt_doctor->bind_param("iisii", $id, $specialty_id, $_POST['qualifications'], $department_id, $is_available);
                             $stmt_doctor->execute();
                         } elseif ($old_user_data['role_name'] === 'staff') {
                             $stmt_staff = $conn->prepare("
@@ -1159,14 +1163,18 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $role_name = $_GET['role'];
                     $search = $_GET['search'] ?? '';
 
-                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, u.email, u.phone, r.role_name as role, u.is_active as active, u.created_at, u.date_of_birth, u.gender, u.profile_picture";
+                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, u.email, u.phone, r.role_name as role, u.is_active as active, u.created_at, u.date_of_birth, u.gender, u.profile_picture, sp.name as specialty, d.specialty_id";
                     $params = [];
                     $types = "";
 
-                    $base_from = " FROM users u JOIN roles r ON u.role_id = r.id ";
+                    // MODIFIED: Moved the JOINs out of the 'if' statement so they always apply
+                    $base_from = " FROM users u 
+                                 JOIN roles r ON u.role_id = r.id 
+                                 LEFT JOIN doctors d ON u.id = d.user_id 
+                                 LEFT JOIN specialities sp ON d.specialty_id = sp.id ";
+
                     if ($role_name === 'doctor') {
-                        $sql .= ", d.specialty, d.qualifications, d.department_id, d.is_available as availability";
-                        $base_from .= " LEFT JOIN doctors d ON u.id = d.user_id ";
+                        $sql .= ", d.qualifications, d.department_id, d.is_available as availability";
                     } elseif ($role_name === 'staff') {
                         $sql .= ", s.shift, s.assigned_department_id, dep.name as assigned_department";
                         $base_from .= " LEFT JOIN staff s ON u.id = s.user_id LEFT JOIN departments dep ON s.assigned_department_id = dep.id ";
@@ -1355,9 +1363,15 @@ case 'staff_for_shifting':
                     $response = ['success' => true, 'data' => $data];
                     break;
 
+                    case 'specialities':
+                    $result = $conn->query("SELECT id, name FROM specialities ORDER BY name ASC");
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+                    $response = ['success' => true, 'data' => $data];
+                    break;
+
                 case 'dashboard_stats':
                     $stats = [];
-                    $stats['total_users'] = $conn->query("SELECT COUNT(*) as c FROM users")->fetch_assoc()['c'];
+                    $stats['total_users'] = $conn->query("SELECT COUNT(*) as c FROM users WHERE role_id = 1 AND is_active = 1")->fetch_assoc()['c'];
                     $stats['active_doctors'] = $conn->query("SELECT COUNT(*) as c FROM users u JOIN roles r ON u.role_id = r.id WHERE r.role_name='doctor' AND u.is_active=1")->fetch_assoc()['c'];
                     $stats['pending_appointments'] = $conn->query("SELECT COUNT(*) as c FROM appointments WHERE status='scheduled'")->fetch_assoc()['c'];
 

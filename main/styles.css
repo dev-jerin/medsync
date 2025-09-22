@@ -533,9 +533,14 @@ section {
 .faq-question { width: 100%; background: none; border: none; text-align: left; padding: 1.5rem; font-size: 1.1rem; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; align-items: center; color: var(--text-dark); transition: background-color 0.3s ease; }
 .faq-question:hover { background-color: #e6f0ff; }
 .faq-question .icon { transition: transform 0.3s ease; }
-.faq-question.active .icon { transform: rotate(-180deg); }
+/* Corrected selector to target the icon when the PARENT is active */
+.faq-item.active .faq-question .icon { transform: rotate(-180deg); }
 .faq-answer { max-height: 0; overflow: hidden; transition: max-height 0.4s ease-out, padding 0.4s ease-out; background-color: var(--background-light); }
 .faq-answer p { padding: 0 1.5rem 1.5rem; color: var(--text-muted); }
+/* This is the missing rule that makes the accordion open */
+.faq-item.active .faq-answer {
+    max-height: 20rem; /* A value large enough to show the content */
+}
 
 /* --- Policy & Terms Page Styles --- */
 .policy-page {

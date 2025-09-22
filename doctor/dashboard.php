@@ -40,7 +40,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     <li><a href="#" class="nav-link" data-page="messenger"><i class="fas fa-paper-plane"></i> Messenger</a></li>
                     <li><a href="#" class="nav-link" data-page="notifications"><i class="fas fa-bell"></i> Notifications</a></li>
                     <li><a href="#" class="nav-link" data-page="discharge"><i class="fas fa-sign-out-alt"></i> Discharge Requests</a></li>
-                    <li><a href="#" class="nav-link" data-page="labs"><i class="fas fa-vials"></i> Lab Results</a></li>
+                    <li><a href="#" class="nav-link" data-page="labs"><i class="fas fa-vials"></i> Lab Orders</a></li>
                     <li><a href="#" class="nav-link" data-page="profile"><i class="fas fa-user-cog"></i> Profile Settings</a></li>
                 </ul>
             </nav>
@@ -117,7 +117,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                              <div class="quick-actions-container">
                                  <a href="#" class="action-card" id="quick-action-admit"><i class="fas fa-notes-medical"></i><span>Admit Patient</span></a>
                                  <a href="#" class="action-card" id="quick-action-prescribe"><i class="fas fa-file-medical"></i><span>New Prescription</span></a>
-                                 <a href="#" class="action-card" id="quick-action-lab"><i class="fas fa-vial"></i><span>Add Lab Result</span></a>
+                                 <a href="#" class="action-card" id="quick-action-lab"><i class="fas fa-vial"></i><span>Place Lab Order</span></a>
                                  <a href="#" class="action-card"><i class="fas fa-sign-out-alt"></i><span>Initiate Discharge</span></a>
                              </div>
                         </div>
@@ -150,9 +150,16 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
             <div id="patients-page" class="page">
                 <div class="content-panel">
                     <div class="page-header">
-    <h3><i class="fas fa-users"></i> My Patients</h3>
-</div>
-                    <div class="filters"><input type="text" id="patient-search" class="search-bar" placeholder="Search by patient name or ID..."><select id="patient-status-filter"><option value="all">All Patients</option><option value="in-patient">In-Patients</option><option value="out-patient">Out-Patients</option></select></div>
+                        <h3><i class="fas fa-users"></i> My Patients</h3>
+                    </div>
+                    <div class="filters">
+                        <input type="text" id="patient-search" class="search-bar" placeholder="Search by patient name or ID...">
+                        <select id="patient-status-filter">
+                            <option value="all">All Patients</option>
+                            <option value="in-patient">In-Patients</option>
+                            <option value="out-patient">Out-Patients</option>
+                        </select>
+                    </div>
                     <div class="table-container">
                         <table class="data-table" id="patients-table">
                             <thead><tr><th>Patient ID</th><th>Name</th><th>Status</th><th>Room/Bed</th><th>Actions</th></tr></thead>
@@ -287,26 +294,27 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
             <div id="labs-page" class="page">
                 <div class="content-panel">
                     <div class="page-header">
-                        <h3><i class="fas fa-vials"></i> Lab Results</h3>
-                        <button class="btn btn-primary" id="add-lab-result-btn"><i class="fas fa-plus"></i> Add Lab Result</button>
+                        <h3><i class="fas fa-vials"></i> Lab Orders</h3>
+                        <button class="btn btn-primary" id="place-lab-order-btn"><i class="fas fa-plus"></i> Place New Order</button>
                     </div>
                     <div class="filters">
                         <input type="text" id="lab-search" class="search-bar" placeholder="Search by Patient or Test...">
                         <select id="lab-status-filter">
                             <option value="all">All Statuses</option>
+                            <option value="ordered">Ordered</option>
                             <option value="pending">Pending</option>
                             <option value="processing">Processing</option>
                             <option value="completed">Completed</option>
                         </select>
                     </div>
                     <div class="table-container">
-                        <table class="data-table" id="lab-results-table">
+                        <table class="data-table" id="lab-orders-table">
                             <thead>
                                 <tr>
-                                    <th>Report ID</th>
+                                    <th>Order ID</th>
                                     <th>Patient</th>
                                     <th>Test Name</th>
-                                    <th>Date</th>
+                                    <th>Order Date</th>
                                     <th>Status</th>
                                     <th>Actions</th>
                                 </tr>
@@ -370,9 +378,9 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                                         <option value="Other" <?php if($gender == 'Other') echo 'selected'; ?>>Other</option>
                                     </select>
                                 </div>
-                                 <div class="form-group">
+                                <div class="form-group">
                                     <label for="profile-specialty">Specialty</label>
-                                    <input type="text" id="profile-specialty" name="specialty" value="<?php echo htmlspecialchars($specialty, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="text" id="profile-specialty" name="specialty" value="<?php echo htmlspecialchars($specialty, ENT_QUOTES, 'UTF-8'); ?>" readonly>
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-id">Doctor ID</label>
@@ -530,8 +538,8 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
         <div class="modal-overlay" id="admit-patient-modal-overlay">
             <div class="modal-container">
                 <div class="modal-header"><h4>Admit New Patient</h4><button class="modal-close-btn" data-modal-id="admit-patient-modal-overlay">&times;</button></div>
-                <div class="modal-body"><form id="admit-patient-form"><div class="form-grid"><div class="form-group full-width"><label for="patient-select-admit">Select Patient</label><select id="patient-select-admit" name="patient_id" required><option value="">-- Choose an existing patient --</option></select></div><div class="form-group full-width"><label for="bed-select-admit">Assign Bed</label><select id="bed-select-admit" name="bed_id" required><option value="">-- Select an available bed --</option></select></div><div class="form-group full-width"><label for="admission-notes">Admission Notes</label><textarea id="admission-notes" name="notes" placeholder="Reason for admission, initial observations, etc."></textarea></div></div></form></div>
-                <div class="modal-footer"><button class="btn btn-secondary" data-modal-id="admit-patient-modal-overlay">Cancel</button><button class="btn btn-primary" id="modal-save-btn-admit">Confirm Admission</button></div>
+                <div class="modal-body"><form id="admit-patient-form"><div class="form-grid"><div class="form-group full-width"><label for="patient-select-admit">Select Patient</label><select id="patient-select-admit" name="patient_id" required><option value="">-- Choose an existing patient --</option></select></div><div class="form-group full-width"><label for="bed-select-admit">Assign Bed</label><select id="bed-select-admit" name="accommodation_id" required><option value="">-- Select an available bed --</option></select></div><div class="form-group full-width"><label for="admission-notes">Admission Notes</label><textarea id="admission-notes" name="notes" placeholder="Reason for admission, initial observations, etc."></textarea></div></div></form></div>
+                <div class="modal-footer"><button class="btn btn-secondary" data-modal-id="admit-patient-modal-overlay">Cancel</button><button class="btn btn-primary" id="modal-save-btn-admit" type="submit" form="admit-patient-form">Confirm Admission</button></div>
             </div>
         </div>
 
@@ -543,39 +551,35 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
             </div>
         </div>
 
-        <div class="modal-overlay" id="lab-result-modal-overlay">
+        <div class="modal-overlay" id="lab-order-modal-overlay">
             <div class="modal-container">
-                <div class="modal-header"><h4 id="lab-modal-title">Add New Lab Result</h4><button class="modal-close-btn" data-modal-id="lab-result-modal-overlay">&times;</button></div>
+                <div class="modal-header">
+                    <h4>Place New Lab Order</h4>
+                    <button class="modal-close-btn" data-modal-id="lab-order-modal-overlay">&times;</button>
+                </div>
                 <div class="modal-body">
-                    <form id="lab-result-form">
+                    <form id="lab-order-form">
                         <div class="form-grid">
-                            <div class="form-group">
-                                <label for="lab-patient-select">Patient</label>
-                                <select id="lab-patient-select" name="patient_id" required>
+                            <div class="form-group full-width">
+                                <label for="lab-order-patient-select">Select Patient</label>
+                                <select id="lab-order-patient-select" name="patient_id" required>
                                     <option value="">-- Choose a patient --</option>
                                 </select>
                             </div>
-                            <div class="form-group">
-                                <label for="lab-test-name">Test Name</label>
-                                <input type="text" id="lab-test-name" name="test_name" placeholder="e.g., Complete Blood Count" required>
-                            </div>
-                            <div class="form-group full-width">
-                                <label>Key Findings</label>
-                                <div id="key-findings-container"></div>
-                                <button type="button" class="action-btn" id="add-finding-btn" style="margin-top: 0.5rem;"><i class="fas fa-plus"></i> Add Finding</button>
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="lab-summary">Result Summary</label>
-                                <textarea id="lab-summary" name="summary" placeholder="Enter overall summary of the results..."></textarea>
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="lab-file-upload">Upload Full Report (PDF)</label>
-                                <input type="file" id="lab-file-upload" name="report_file" accept=".pdf">
-                            </div>
                         </div>
+
+                        <div id="test-rows-container" style="margin-top: 1rem;">
+                            </div>
+
+                        <button type="button" class="btn" id="add-test-row-btn" style="margin-top: 1rem;">
+                            <i class="fas fa-plus"></i> Add Another Test
+                        </button>
                     </form>
                 </div>
-                        <div class="modal-footer"><button class="btn btn-secondary" data-modal-id="lab-result-modal-overlay">Cancel</button><button type="submit" form="lab-result-form" class="btn btn-primary" id="modal-save-btn-lab">Save Result</button></div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" data-modal-id="lab-order-modal-overlay">Cancel</button>
+                    <button type="submit" form="lab-order-form" class="btn btn-primary">Submit Order</button>
+                </div>
             </div>
         </div>
         
@@ -592,9 +596,9 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                 <div class="modal-body" id="lab-report-content">
                     <div class="report-view-header">
                         <div><strong>Patient:</strong> <span id="report-patient-name"></span></div>
-                        <div><strong>Test:</strong> <span id="report-test-name"></span></div>
-                        <div><strong>Report ID:</strong> <span id="report-id"></span></div>
-                        <div><strong>Date:</strong> <span id="report-date"></span></div>
+                        <div><strong>Test:</strong> <span></span></div>
+                        <div><strong>Report ID:</strong> <span></span></div>
+                        <div><strong>Date:</strong> <span></span></div>
                     </div>
                     <div class="report-view-body">
                         <h5>Findings:</h5>

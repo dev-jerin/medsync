@@ -929,6 +929,22 @@ document.addEventListener("DOMContentLoaded", function() {
     const userManagementPage = document.getElementById('user-management-page');
     let userFetchDebounce;
     
+    const fetchSpecialities = async () => {
+        try {
+            const response = await fetch('api.php?fetch=specialities');
+            const result = await response.json();
+            if (result.success) {
+                const specialtySelect = document.getElementById('doctor-specialty');
+                specialtySelect.innerHTML = '<option value="">-- Select a Specialty --</option>';
+                result.data.forEach(spec => {
+                    specialtySelect.innerHTML += `<option value="${spec.id}">${spec.name}</option>`;
+                });
+            }
+        } catch (error) {
+            console.error('Failed to fetch specialties:', error);
+        }
+    };
+    
     // Moved renderUsers function to the outer scope
     const renderUsers = (users) => {
         const userTableBody = document.getElementById('users-table')?.querySelector('tbody');
@@ -1001,13 +1017,13 @@ document.addEventListener("DOMContentLoaded", function() {
             });
         }
         
-        const openUserModal = (mode, userData = {}) => {
+        const openUserModal = async (mode, userData = {}) => {
             userForm.reset();
             userForm.querySelector('#user-username').disabled = false;
             userForm.querySelector('#user-role').disabled = false;
             doctorFields.style.display = 'none';
             activeGroup.style.display = 'none';
-
+        
             if (mode === 'add') {
                 userModalTitle.textContent = 'Add New User';
                 userForm.querySelector('#user-form-action').value = 'addUser';
@@ -1027,10 +1043,11 @@ document.addEventListener("DOMContentLoaded", function() {
                 userForm.querySelector('#user-role').disabled = true;
                 passwordGroup.style.display = 'none';
                 userForm.querySelector('#user-password').required = false;
-
-                if(userData.role === 'doctor') {
+        
+                if (userData.role === 'doctor') {
                     doctorFields.style.display = 'block';
-                    userForm.querySelector('#doctor-specialty').value = userData.specialty || '';
+                    await fetchSpecialities(); // Wait for specialties to load
+                    userForm.querySelector('#doctor-specialty').value = userData.specialty_id || '';
                 }
                 activeGroup.style.display = 'block';
                 userForm.querySelector('#user-active').value = userData.active;
@@ -1039,7 +1056,12 @@ document.addEventListener("DOMContentLoaded", function() {
         };
 
         userForm.querySelector('#user-role').addEventListener('change', (e) => {
-            doctorFields.style.display = e.target.value === 'doctor' ? 'block' : 'none';
+            if (e.target.value === 'doctor') {
+                doctorFields.style.display = 'block';
+                fetchSpecialities();
+            } else {
+                doctorFields.style.display = 'none';
+            }
         });
 
         addUserBtn.addEventListener('click', () => openUserModal('add'));

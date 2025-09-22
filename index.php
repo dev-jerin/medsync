@@ -158,7 +158,7 @@ $conn->close();
             <div class="container">
                 <div class="about-content">
                     <div class="about-image anim-fade-up">
-                        <img src="https://images.unsplash.com/photo-1538108149393-fbbd81895907?q=80&w=2128&auto=format&fit=crop" 
+                        <img src="images/hospital-img.png" 
                              alt="The dedicated medical team at Calysta Health Institute"
                              onerror="this.onerror=null;this.src='https://placehold.co/600x400/e2e8f0/333?text=Our+Team';">
                     </div>

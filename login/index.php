@@ -51,7 +51,7 @@ if (isset($_SESSION['user_id'])) {
         <div class="auth-container">
             <!-- Left Panel: Branding & Illustration (visible only to desktop or supported device) -->
             <div class="auth-panel">
-                <img src="https://images.unsplash.com/photo-1579684385127-1ef15d508118?q=80&w=1780&auto=format&fit=crop" alt="Medical professionals collaborating" class="auth-image">
+                <img src="../images/doctor.png" alt="Medical professionals collaborating" class="auth-image">
                 <div class="auth-panel-overlay">
                     <h2>Welcome Back to MedSync</h2>
                     <p>Log in to access your dashboard and manage your healthcare seamlessly.</p>

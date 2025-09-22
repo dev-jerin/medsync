@@ -1,10 +1,12 @@
 -- This is the complete and updated database schema for MedSync.
--- Version 2.2
--- This version includes the updated Lab Order workflow.
+-- Version 2.3
+-- This version includes a new 'specialities' table for better data integrity.
 -- Key changes include:
--- 1. Renamed 'lab_results' to 'lab_orders' to better reflect its function.
--- 2. Added an 'ordered' status to the lab orders table.
--- 3. Added an 'ordered_at' timestamp to track when a doctor places an order.
+-- 1. Added a 'specialities' table to store a normalized list of doctor specialities.
+-- 2. Modified the 'doctors' table to use a 'specialty_id' foreign key.
+-- 3. Renamed 'lab_results' to 'lab_orders' to better reflect its function.
+-- 4. Added an 'ordered' status to the lab orders table.
+-- 5. Added an 'ordered_at' timestamp to track when a doctor places an order.
 
 CREATE DATABASE IF NOT EXISTS `medsync` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE `medsync`;
@@ -75,9 +77,6 @@ CREATE TABLE `activity_logs` (
 --
 -- Table structure for table `departments`
 --
---
--- Table structure for table `departments`
---
 CREATE TABLE `departments` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
@@ -99,12 +98,33 @@ CREATE TABLE `role_counters` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
+-- Table structure for table `specialities`
+--
+CREATE TABLE `specialities` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL,
+  `description` text DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Initialize specialities
+--
+INSERT INTO `specialities` (`id`, `name`) VALUES
+(1, 'Cardiology'),
+(2, 'Dermatology'),
+(3, 'Neurology'),
+(4, 'Orthopedics'),
+(5, 'Pediatrics');
+
+--
 -- Table structure for table `doctors`
 --
 CREATE TABLE `doctors` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `user_id` int(11) NOT NULL,
-  `specialty` varchar(100) DEFAULT NULL,
+  `specialty_id` int(11) DEFAULT NULL,
   `qualifications` varchar(255) DEFAULT NULL COMMENT 'e.g., MBBS, MD',
   `department_id` int(11) DEFAULT NULL,
   `is_available` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1 = Available, 0 = On Leave',
@@ -112,8 +132,10 @@ CREATE TABLE `doctors` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `user_id` (`user_id`),
   KEY `fk_doctors_department` (`department_id`),
+  KEY `fk_doctors_specialty` (`specialty_id`),
   CONSTRAINT `doctors_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `fk_doctors_department` FOREIGN KEY (`department_id`) REFERENCES `departments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `fk_doctors_department` FOREIGN KEY (`department_id`) REFERENCES `departments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_doctors_specialty` FOREIGN KEY (`specialty_id`) REFERENCES `specialities` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --

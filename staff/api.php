@@ -113,6 +113,15 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
     try {
         if (isset($_GET['fetch'])) {
             switch ($_GET['fetch']) {
+
+                case 'specialities': // This is the new case
+                    $stmt = $conn->prepare("SELECT id, name FROM specialities ORDER BY name ASC");
+                    $stmt->execute();
+                    $specialities = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+                    $response = ['success' => true, 'data' => $specialities];
+                    break;
+                    
                 case 'dashboard_stats':
                     $stats = [];
                     $stmt_beds = $conn->prepare("SELECT COUNT(id) as count FROM accommodations WHERE status = 'available'");
@@ -331,7 +340,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $search_query = $_GET['search'] ?? '';
                     $allowed_roles = ['user', 'doctor'];
 
-                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, r.role_name as role, u.email, u.phone, u.date_of_birth, u.is_active as active, u.created_at, d.specialty 
+                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, r.role_name as role, u.email, u.phone, u.date_of_birth, u.is_active as active, u.created_at, d.specialty_id
                             FROM users u
                             JOIN roles r ON u.role_id = r.id
                             LEFT JOIN doctors d ON u.id = d.user_id
@@ -1101,9 +1110,9 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $stmt->close();
 
                         if ($role_name === 'doctor') {
-                            $specialty = trim($_POST['specialty']);
-                            $stmt_doctor = $conn->prepare("INSERT INTO doctors (user_id, specialty) VALUES (?, ?)");
-                            $stmt_doctor->bind_param("is", $new_user_id, $specialty);
+                            $specialty_id = !empty($_POST['specialty_id']) ? (int)$_POST['specialty_id'] : null;
+                            $stmt_doctor = $conn->prepare("INSERT INTO doctors (user_id, specialty_id) VALUES (?, ?)");
+                            $stmt_doctor->bind_param("ii", $new_user_id, $specialty_id);
                             $stmt_doctor->execute();
                             $stmt_doctor->close();
                         }
@@ -1160,10 +1169,10 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $stmt_update->execute();
                         $stmt_update->close();
 
-                        if ($target_role === 'doctor' && isset($_POST['specialty'])) {
-                            $specialty = trim($_POST['specialty']);
-                            $stmt_doctor = $conn->prepare("INSERT INTO doctors (user_id, specialty) VALUES (?, ?) ON DUPLICATE KEY UPDATE specialty = VALUES(specialty)");
-                            $stmt_doctor->bind_param("is", $target_user_id, $specialty);
+                        if ($target_role === 'doctor' && isset($_POST['specialty_id'])) {
+                            $specialty_id = !empty($_POST['specialty_id']) ? (int)$_POST['specialty_id'] : null;
+                            $stmt_doctor = $conn->prepare("INSERT INTO doctors (user_id, specialty_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE specialty_id = VALUES(specialty_id)");
+                            $stmt_doctor->bind_param("ii", $target_user_id, $specialty_id);
                             $stmt_doctor->execute();
                             $stmt_doctor->close();
                         }

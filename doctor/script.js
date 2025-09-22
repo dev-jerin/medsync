@@ -72,6 +72,7 @@ document.addEventListener("DOMContentLoaded", function() {
 // --- Lab Orders Page Logic ---
 // ===================================================================
 async function loadLabOrders() {
+    // Note the updated table ID
     const tableBody = document.querySelector('#lab-orders-table tbody');
     if (!tableBody) return;
     tableBody.innerHTML = `<tr><td colspan="6" class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading lab orders...</td></tr>`;
@@ -106,6 +107,7 @@ async function loadLabOrders() {
         }
 
     } catch (error) {
+        console.error("Error loading lab orders: ", error);
         tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger-color);">Failed to load lab orders.</td></tr>`;
     }
 }
@@ -139,10 +141,10 @@ if (placeLabOrderBtn && labOrderModal) {
         testRowsContainer.innerHTML = '';
         addTestRow(); // Add the first row
 
-        // Populate patient dropdown
+        // Populate patient dropdown (uses the global patientListCache)
         const patientSelect = document.getElementById('lab-order-patient-select');
         patientSelect.innerHTML = '<option value="">Loading...</option>';
-        if (!patientListCache) { // Use cache to avoid re-fetching
+        if (!patientListCache) { 
             const response = await fetch('api.php?action=get_patients_for_dropdown');
             const result = await response.json();
             if (result.success) patientListCache = result.data;
@@ -163,7 +165,7 @@ if (placeLabOrderBtn && labOrderModal) {
         if (e.target.classList.contains('remove-med-row-btn')) {
             e.target.closest('.medication-row').remove();
             if (testRowsContainer.children.length === 0) {
-                addTestRow();
+                addTestRow(); // Ensure at least one row is always present
             }
         }
     });
@@ -711,154 +713,58 @@ if (placeLabOrderBtn && labOrderModal) {
     });
 
     // ===================================================================
-    // --- Lab Results Page Logic (Existing) ---
+    // --- View Lab Report Modal Logic ---
     // ===================================================================
     const labsPage = document.getElementById('labs-page');
     if (labsPage) {
-        document.getElementById('lab-results-table').addEventListener('click', function(e) {
-            if (e.target.closest('.view-lab-report')) {
-                const button = e.target.closest('.view-lab-report');
-                const reportId = button.dataset.id;
-                openViewLabReportModal(reportId);
-            }
-             if (e.target.closest('.add-result-entry')) {
-                alert('Functionality to update a pending test is in development.');
-            }
-        });
-
-        document.getElementById('add-lab-result-btn').addEventListener('click', openAddLabResultModal);
-
-        async function openAddLabResultModal() {
-            const form = document.getElementById('lab-result-form');
-            form.reset();
-            document.getElementById('key-findings-container').innerHTML = '';
-
-            const patientSelect = document.getElementById('lab-patient-select');
-            patientSelect.innerHTML = '<option value="">Loading patients...</option>';
-            
-            try {
-                if (!patientListCache) {
-                    const response = await fetch('api.php?action=get_patients_for_dropdown');
-                    const result = await response.json();
-                    if (result.success) {
-                        patientListCache = result.data;
-                    } else {
-                        throw new Error(result.message);
-                    }
-                }
-                patientSelect.innerHTML = '<option value="">-- Choose a patient --</option>';
-                patientListCache.forEach(patient => {
-                    patientSelect.innerHTML += `<option value="${patient.id}">${patient.display_user_id} - ${patient.name}</option>`;
-                });
-            } catch (error) {
-                console.error('Failed to load patients:', error);
-                patientSelect.innerHTML = '<option value="">Could not load patients</option>';
-            }
-            openModalById('lab-result-modal-overlay');
-        }
-
-        async function openViewLabReportModal(reportId) {
-            try {
-                const response = await fetch(`api.php?action=get_lab_report_details&id=${reportId}`);
-                if (!response.ok) throw new Error('Network error');
-                const result = await response.json();
-
-                if (result.success) {
-                    const report = result.data;
-                    document.getElementById('report-patient-name').textContent = report.patient_name;
-                    document.querySelector('#lab-report-view-title').textContent = `Lab Report for ${report.patient_name}`;
-                    document.querySelector('.report-view-header div:nth-child(2)').innerHTML = `<strong>Test:</strong> ${report.test_name}`;
-                    document.querySelector('.report-view-header div:nth-child(3)').innerHTML = `<strong>Report ID:</strong> LR${report.id}`;
-                    document.querySelector('.report-view-header div:nth-child(4)').innerHTML = `<strong>Date:</strong> ${report.test_date}`;
-
-                    const findingsBody = document.querySelector('.findings-table tbody');
-                    findingsBody.innerHTML = '';
-                    if (report.result_details && Array.isArray(report.result_details.findings) && report.result_details.findings.length > 0) {
-                         report.result_details.findings.forEach(finding => {
-                            findingsBody.innerHTML += `<tr><td>${finding.parameter}</td><td>${finding.result}</td><td>${finding.range}</td></tr>`;
-                         });
-                    } else {
-                         findingsBody.innerHTML = `<tr><td colspan="3">No detailed findings were entered.</td></tr>`;
-                    }
-                    
-                    document.querySelector('.report-view-body p').textContent = report.result_details.summary || 'No summary provided.';
-                    
-                    openModalById('lab-report-view-modal-overlay');
-                } else {
-                    alert(`Error: ${result.message}`);
-                }
-            } catch (error) {
-                console.error('Error fetching report details:', error);
-                alert('Could not fetch report details.');
-            }
-        }
-        
-        const findingsContainer = document.getElementById('key-findings-container');
-        document.getElementById('add-finding-btn').addEventListener('click', () => {
-             const findingRow = document.createElement('div');
-             findingRow.className = 'finding-row';
-             findingRow.innerHTML = `
-                <input type="text" class="finding-parameter" placeholder="Parameter (e.g., Hemoglobin)">
-                <input type="text" class="finding-result" placeholder="Result (e.g., 14.5 g/dL)">
-                <input type="text" class="finding-range" placeholder="Reference Range">
-                <button type="button" class="btn-remove-finding">&times;</button>
-             `;
-             findingsContainer.appendChild(findingRow);
-        });
-
-        findingsContainer.addEventListener('click', (e) => {
-            if (e.target.classList.contains('btn-remove-finding')) {
-                e.target.parentElement.remove();
-            }
-        });
-        
-        document.getElementById('lab-result-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            const saveButton = document.getElementById('modal-save-btn-lab');
-            const originalButtonText = saveButton.innerHTML;
-            saveButton.disabled = true;
-            saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
-
-            const findings = [];
-            document.querySelectorAll('.finding-row').forEach(row => {
-                const parameter = row.querySelector('.finding-parameter').value.trim();
-                const result = row.querySelector('.finding-result').value.trim();
-                const range = row.querySelector('.finding-range').value.trim();
-                if (parameter && result) {
-                    findings.push({ parameter, result, range });
+        const table = document.getElementById('lab-orders-table');
+        if (table) {
+            table.addEventListener('click', function(e) {
+                if (e.target.closest('.view-lab-report')) {
+                    const button = e.target.closest('.view-lab-report');
+                    const reportId = button.dataset.id;
+                    openViewLabReportModal(reportId);
                 }
             });
-            
-            const summary = document.getElementById('lab-summary').value;
-            const resultDetails = JSON.stringify({ findings, summary });
-
-            const formData = new FormData(this); 
-            formData.append('action', 'add_lab_result');
-            formData.append('result_details', resultDetails);
-            formData.append('test_date', new Date().toISOString().slice(0, 10)); 
-            
-            try {
-                const response = await fetch('api.php', { method: 'POST', body: formData });
-                const result = await response.json();
-                
-                if (result.success) {
-                    alert(result.message);
-                    document.getElementById('lab-result-modal-overlay').classList.remove('active');
-                    loadLabResults();
-                } else {
-                    alert(`Error: ${result.message || 'An unknown error occurred.'}`);
-                }
-
-            } catch (error) {
-                console.error('Error submitting lab result:', error);
-                alert('A network or server error occurred. Please try again.');
-            } finally {
-                 saveButton.disabled = false;
-                 saveButton.innerHTML = originalButtonText;
-            }
-        });
+        }
     }
 
+    async function openViewLabReportModal(reportId) {
+        try {
+            const response = await fetch(`api.php?action=get_lab_report_details&id=${reportId}`);
+            if (!response.ok) throw new Error('Network error');
+            const result = await response.json();
+
+            if (result.success) {
+                const report = result.data;
+                document.getElementById('report-patient-name').textContent = report.patient_name;
+                document.querySelector('#lab-report-view-title').textContent = `Lab Report for ${report.patient_name}`;
+                document.querySelector('.report-view-header div:nth-child(2)').innerHTML = `<strong>Test:</strong> ${report.test_name}`;
+                document.querySelector('.report-view-header div:nth-child(3)').innerHTML = `<strong>Report ID:</strong> ORD-${report.id}`;
+                document.querySelector('.report-view-header div:nth-child(4)').innerHTML = `<strong>Date:</strong> ${new Date(report.ordered_at).toLocaleDateString()}`;
+
+                const findingsBody = document.querySelector('.findings-table tbody');
+                findingsBody.innerHTML = '';
+                if (report.result_details && Array.isArray(report.result_details.findings) && report.result_details.findings.length > 0) {
+                     report.result_details.findings.forEach(finding => {
+                        findingsBody.innerHTML += `<tr><td>${finding.parameter}</td><td>${finding.result}</td><td>${finding.range}</td></tr>`;
+                     });
+                } else {
+                     findingsBody.innerHTML = `<tr><td colspan="3">No detailed findings were entered.</td></tr>`;
+                }
+                
+                document.querySelector('.report-view-body p').textContent = (report.result_details && report.result_details.summary) ? report.result_details.summary : 'No summary provided.';
+                
+                openModalById('lab-report-view-modal-overlay');
+            } else {
+                alert(`Error: ${result.message}`);
+            }
+        } catch (error) {
+            console.error('Error fetching report details:', error);
+            alert('Could not fetch report details.');
+        }
+    }
+    
     // ===================================================================
     // --- Messenger Page Logic (Existing) ---
     // ===================================================================
@@ -1457,7 +1363,7 @@ if (placeLabOrderBtn && labOrderModal) {
                 alert('A network or server error occurred.');
             } finally {
                 saveButton.disabled = false;
-                saveButton.innerHTML = originalButtonText;
+                saveButton.innerHTML = "Confirm Admission";
             }
         });
 

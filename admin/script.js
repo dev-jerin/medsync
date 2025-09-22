@@ -73,7 +73,6 @@ document.addEventListener("DOMContentLoaded", function () {
     
     userSearchInput.addEventListener('keyup', () => {
         setTimeout(() => {
-            // *** THIS IS THE CORRECTED LINE ***
             fetchUsers(currentRole, userSearchInput.value.trim());
         }, 300);
     });
@@ -116,7 +115,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (!modal) return null;
 
-            // NEW: Variable to track if the form has been changed
             let isFormDirty = false;
 
             const open = (mode, data = {}) => {
@@ -125,7 +123,6 @@ document.addEventListener("DOMContentLoaded", function () {
                     form.querySelectorAll('.invalid').forEach(el => el.classList.remove('invalid'));
                     form.querySelectorAll('.error-message').forEach(el => el.textContent = '');
                     
-                    // NEW: Reset dirty state and add listeners when the modal opens
                     isFormDirty = false;
                     form.addEventListener('input', () => { isFormDirty = true; });
                     form.addEventListener('change', () => { isFormDirty = true; });
@@ -134,26 +131,22 @@ document.addEventListener("DOMContentLoaded", function () {
                 modal.classList.add('show');
             };
 
-            // NEW: Reusable close function with confirmation check
             const closeModal = async () => {
                 if (isFormDirty) {
                     const confirmed = await showConfirmation(
                         'Discard Changes?',
                         'You have unsaved changes in the form. Are you sure you want to close it?'
                     );
-                    // If the user clicks "Cancel" in the confirmation, do nothing.
                     if (!confirmed) {
                         return; 
                     }
                 }
-                // If the form is not dirty, or if the user confirmed, close the modal.
                 modal.classList.remove('show');
-                isFormDirty = false; // Reset for the next time it's opened.
+                isFormDirty = false;
             };
 
             if (openBtn) openBtn.addEventListener('click', () => open('add'));
             
-            // UPDATED: Use the new closeModal function
             modal.querySelector('.modal-close-btn')?.addEventListener('click', closeModal);
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) {
@@ -184,13 +177,13 @@ document.addEventListener("DOMContentLoaded", function () {
                     target.innerHTML = `<tr><td colspan="${columns}" style="text-align:center;">${emptyMessage}</td></tr>`;
                 }
             }
-            return result.data; // Return data for non-rendering fetches
+            return result.data;
         } catch (error) {
             console.error('Fetch error:', error);
             if (target) {
                 target.innerHTML = `<tr><td colspan="${columns}" style="text-align:center;">Failed to load data: ${error.message}</td></tr>`;
             }
-            return null; // Return null on error
+            return null;
         }
     };
     
@@ -322,6 +315,22 @@ document.addEventListener("DOMContentLoaded", function () {
         userRolesChart.options.plugins.legend.labels.color = textColor;
         userRolesChart.data.datasets[0].borderColor = borderColor;
         userRolesChart.update();
+    };
+
+    const fetchSpecialities = async () => {
+        try {
+            const response = await fetch('api.php?fetch=specialities');
+            const result = await response.json();
+            if (result.success) {
+                const specialtySelect = document.getElementById('specialty_id');
+                specialtySelect.innerHTML = '<option value="">Select Specialty</option>'; // Reset
+                result.data.forEach(spec => {
+                    specialtySelect.innerHTML += `<option value="${spec.id}">${spec.name}</option>`;
+                });
+            }
+        } catch (error) {
+            console.error('Failed to fetch specialities:', error);
+        }
     };
 
     const updateDashboardStats = async () => {
@@ -565,11 +574,24 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     };
 
-    const toggleRoleFields = () => {
-        const selectedRole = roleSelect.value;
-        doctorFields.style.display = selectedRole === 'doctor' ? 'block' : 'none';
-        staffFields.style.display = selectedRole === 'staff' ? 'block' : 'none';
-    };
+const toggleRoleFields = () => {
+    const selectedRole = roleSelect.value;
+    const specialtySelect = document.getElementById('specialty_id');
+
+    // Check if the selected role is 'doctor'
+    if (selectedRole === 'doctor') {
+        doctorFields.style.display = 'block';
+        // Only fetch specialities if the dropdown is not already populated
+        // (it has 1 option by default: "Select Specialty")
+        if (specialtySelect.options.length <= 1) {
+            fetchSpecialities();
+        }
+    } else {
+        doctorFields.style.display = 'none';
+    }
+
+    staffFields.style.display = selectedRole === 'staff' ? 'block' : 'none';
+};
 
     roleSelect.addEventListener('change', toggleRoleFields);
 
@@ -596,7 +618,7 @@ document.addEventListener("DOMContentLoaded", function () {
         modalId: 'user-modal',
         openBtnId: 'add-user-btn',
         formId: 'user-form',
-        onOpen: (mode, user) => {
+        onOpen: async (mode, user) => {
             const modalTitle = document.getElementById('modal-title');
             const passwordGroup = document.getElementById('password-group');
             const activeGroup = document.getElementById('is_active-group');
@@ -639,7 +661,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 document.getElementById('is_active').value = user.active;
     
                 if (user.role === 'doctor') {
-                    document.getElementById('specialty').value = user.specialty || '';
+                    await fetchSpecialities();
+                    document.getElementById('specialty_id').value = user.specialty_id || '';
                     document.getElementById('qualifications').value = user.qualifications || '';
                     document.getElementById('department_id').value = user.department_id || '';
                     document.getElementById('is_available').value = user.availability !== null ? user.availability : 1;
@@ -730,10 +753,8 @@ document.addEventListener("DOMContentLoaded", function () {
         e.preventDefault();
         
         let isFormValid = true;
-        // UPDATED: Query for both inputs and selects to validate all required fields
         userForm.querySelectorAll('input, select').forEach(field => {
             if(field.required || field.minLength > -1 || field.pattern) {
-                // Keep special handling for optional password on update
                 if (field.id === 'password' && document.getElementById('form-action').value === 'updateUser' && field.value.trim() === '') {
                     if (!validateField(field, true)) isFormValid = false;
                 } else {
@@ -831,7 +852,6 @@ document.addEventListener("DOMContentLoaded", function () {
         handleFormSubmit(new FormData(e.target), 'medicine');
     });
 
-    // START: Add search functionality for medicine
     const medicineSearchInput = document.getElementById('medicine-search-input');
     let medicineSearchDebounce;
 
@@ -839,9 +859,8 @@ document.addEventListener("DOMContentLoaded", function () {
         clearTimeout(medicineSearchDebounce);
         medicineSearchDebounce = setTimeout(() => {
             fetchMedicineInventory(medicineSearchInput.value.trim());
-        }, 300); // Wait 300ms after user stops typing
+        }, 300);
     });
-    // END: Add search functionality for medicine
 
     const renderMedicineRow = (med) => {
         const isLowStock = parseInt(med.quantity) <= parseInt(med.low_stock_threshold);
@@ -945,23 +964,20 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // --- INVENTORY MANAGEMENT (DEPARTMENTS) ---
-// In admin/script.js, find the `openDepartmentModal` function and replace it
-
     const openDepartmentModal = setupModal({
         modalId: 'department-modal',
         openBtnId: 'add-department-btn',
         formId: 'department-form',
-        onOpen: async (mode, dept = {}) => { // Added async here
+        onOpen: async (mode, dept = {}) => {
             const modalTitle = document.getElementById('department-modal-title');
             const actionInput = document.getElementById('department-form-action');
             const activeGroup = document.getElementById('department-active-group');
             const hodSelect = document.getElementById('head_of_department_id');
 
-            // Fetch and populate the doctors dropdown
             hodSelect.innerHTML = '<option value="">-- Loading Doctors --</option>';
             try {
                 const doctors = await fetchAndRender({ endpoint: 'api.php?fetch=active_doctors' });
-                hodSelect.innerHTML = '<option value="">-- None --</option>'; // Reset after loading
+                hodSelect.innerHTML = '<option value="">-- None --</option>';
                 if (doctors) {
                     doctors.forEach(doctor => {
                         hodSelect.innerHTML += `<option value="${doctor.id}">${doctor.name}</option>`;
@@ -980,7 +996,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 document.getElementById('department-id').value = dept.id;
                 document.getElementById('department-name').value = dept.name;
                 document.getElementById('department-is-active').value = dept.is_active;
-                // Set the selected Head of Department
                 hodSelect.value = dept.head_of_department_id || '';
             }
         }
@@ -991,29 +1006,27 @@ document.addEventListener("DOMContentLoaded", function () {
         handleFormSubmit(new FormData(e.target), 'departments_management');
     });
 
-// In admin/script.js
-
-const renderDepartmentRow = (dept) => `
-    <tr data-department='${JSON.stringify(dept)}'>
-        <td>${dept.name}</td>
-        <td>${dept.head_of_department || 'N/A'}</td>
-        <td>
-            <a href="#" class="user-count-link" data-role="doctor" data-department-id="${dept.id}">
-                ${dept.doctor_count} Doctors
-            </a>
-        </td>
-        <td>
-            <a href="#" class="user-count-link" data-role="staff" data-department-id="${dept.id}">
-                ${dept.staff_count} Staff
-            </a>
-        </td>
-        <td><span class="status-badge ${dept.is_active == 1 ? 'active' : 'inactive'}">${dept.is_active == 1 ? 'Active' : 'Inactive'}</span></td>
-        <td class="action-buttons">
-            <button class="btn-edit-department btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
-            <button class="btn-delete-department btn-delete" title="Disable"><i class="fas fa-trash-alt"></i></button>
-        </td>
-    </tr>
-`;
+    const renderDepartmentRow = (dept) => `
+        <tr data-department='${JSON.stringify(dept)}'>
+            <td>${dept.name}</td>
+            <td>${dept.head_of_department || 'N/A'}</td>
+            <td>
+                <a href="#" class="user-count-link" data-role="doctor" data-department-id="${dept.id}">
+                    ${dept.doctor_count} Doctors
+                </a>
+            </td>
+            <td>
+                <a href="#" class="user-count-link" data-role="staff" data-department-id="${dept.id}">
+                    ${dept.staff_count} Staff
+                </a>
+            </td>
+            <td><span class="status-badge ${dept.is_active == 1 ? 'active' : 'inactive'}">${dept.is_active == 1 ? 'Active' : 'Inactive'}</span></td>
+            <td class="action-buttons">
+                <button class="btn-edit-department btn-edit" title="Edit"><i class="fas fa-edit"></i></button>
+                <button class="btn-delete-department btn-delete" title="Disable"><i class="fas fa-trash-alt"></i></button>
+            </td>
+        </tr>
+    `;
 
     const fetchDepartmentsManagement = () => fetchAndRender({
         endpoint: 'api.php?fetch=departments_management',
@@ -1396,7 +1409,6 @@ const renderDepartmentRow = (dept) => `
     const scheduleEditorContainer = document.getElementById('doctor-schedule-editor');
     const saveScheduleBtn = document.getElementById('save-schedule-btn');
 
-    // --- New Doctor Search Logic for Schedules ---
     const doctorSearchInput = document.getElementById('doctor-search-input');
     const doctorSearchResults = document.getElementById('doctor-search-results');
     const selectedDoctorId = document.getElementById('selected-doctor-id');
@@ -1406,7 +1418,6 @@ const renderDepartmentRow = (dept) => `
         clearTimeout(doctorSearchTimeout);
         const searchTerm = doctorSearchInput.value.trim();
 
-        // Clear schedule if search is cleared
         if (searchTerm.length === 0) {
             selectedDoctorId.value = '';
             scheduleEditorContainer.innerHTML = '<p class="placeholder-text">Please select a doctor to view or edit their schedule.</p>';
@@ -1448,12 +1459,10 @@ const renderDepartmentRow = (dept) => `
             doctorSearchInput.value = item.dataset.name;
             doctorSearchResults.style.display = 'none';
 
-            // Trigger schedule fetch for the selected doctor
             fetchDoctorSchedule(item.dataset.id);
         }
     });
     
-    // Hide search results when clicking elsewhere
     document.addEventListener('click', (e) => {
         if (!doctorSearchInput.contains(e.target) && !doctorSearchResults.contains(e.target)) {
             doctorSearchResults.style.display = 'none';
@@ -1505,7 +1514,6 @@ const renderDepartmentRow = (dept) => `
 
     const fetchDoctorSchedule = async (doctorId) => {
         if (!doctorId) {
-            // This is now handled by the keyup event, but we keep it as a safeguard.
             scheduleEditorContainer.innerHTML = '<p class="placeholder-text">Please search for and select a doctor to view their schedule.</p>';
             document.querySelector('.schedule-actions').style.display = 'none';
             return;

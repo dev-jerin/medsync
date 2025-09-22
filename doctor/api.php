@@ -80,7 +80,13 @@ if (!isset($_REQUEST['action'])) {
     $display_user_id = htmlspecialchars($_SESSION['display_user_id']);
 
     // Updated query to fetch profile_picture
-    $stmt = $conn->prepare("SELECT u.username, u.name, u.email, u.phone, u.gender, u.date_of_birth, u.profile_picture, d.specialty FROM users u LEFT JOIN doctors d ON u.id = d.user_id WHERE u.id = ?");
+    $stmt = $conn->prepare("
+    SELECT u.username, u.name, u.email, u.phone, u.gender, u.date_of_birth, u.profile_picture, s.name as specialty 
+    FROM users u 
+    LEFT JOIN doctors d ON u.id = d.user_id 
+    LEFT JOIN specialities s ON d.specialty_id = s.id 
+    WHERE u.id = ?
+");
     $stmt->bind_param("i", $user_id);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -554,10 +560,13 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         $data = $result->fetch_assoc();
         
         if ($data) {
-            $data['result_details'] = json_decode($data['result_details'], true);
+            // Assuming result_details is stored as JSON
+            if (!empty($data['result_details'])) {
+                $data['result_details'] = json_decode($data['result_details'], true);
+            }
             echo json_encode(['success' => true, 'data' => $data]);
         } else {
-            echo json_encode(['success' => false, 'message' => 'Report not found or you are not authorized to view it.']);
+            echo json_encode(['success' => false, 'message' => 'Report not found or unauthorized.']);
         }
         $stmt->close();
         exit();
@@ -574,6 +583,9 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
 
     // NEW Action: Create new lab order(s)
     if ($action == 'create_lab_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        // Note: We get data from json_decode because the JS will send a JSON string
+        $input = json_decode(file_get_contents('php://input'), true);
+        
         $patient_id = (int)($input['patient_id'] ?? 0);
         $test_names = $input['test_names'] ?? [];
 

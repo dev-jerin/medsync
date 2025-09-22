@@ -834,8 +834,10 @@ $conn->close();
                 <div id="doctor-fields" class="role-specific-fields" style="display: none;">
                     <h4>Doctor Details</h4>
                     <div class="form-group">
-                        <label for="specialty">Specialty</label>
-                        <input type="text" id="specialty" name="specialty">
+                        <label for="specialty_id">Specialty</label>
+                        <select id="specialty_id" name="specialty_id">
+                            <option value="">Select Specialty</option>
+                            </select>
                     </div>
                     <div class="form-group">
                         <label for="qualifications">Qualifications (e.g., MBBS, MD)</label>

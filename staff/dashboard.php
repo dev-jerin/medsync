@@ -740,7 +740,8 @@ require_once 'api.php';
                     <div id="doctor-fields" style="display:none; border-top: 1px solid var(--border-color); margin-top: 1rem; padding-top: 1rem;">
                         <div class="form-group">
                             <label for="doctor-specialty">Specialty</label>
-                            <input type="text" id="doctor-specialty" name="specialty">
+                            <select id="doctor-specialty" name="specialty_id">
+                                </select>
                         </div>
                     </div>
                 </form>
