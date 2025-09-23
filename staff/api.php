@@ -196,10 +196,11 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $response = ['success' => true, 'data' => $stats];
                     break;
                 
+                // This is the NEW code
                 case 'active_doctors':
                     $search_query = $_GET['search'] ?? '';
                     $sql = "
-                        SELECT u.id, u.name 
+                        SELECT u.id, u.name, u.display_user_id
                         FROM users u 
                         JOIN doctors d ON u.id = d.user_id 
                         WHERE u.is_active = 1
@@ -208,10 +209,11 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $types = "";
 
                     if (!empty($search_query)) {
-                        $sql .= " AND u.name LIKE ?";
+                        $sql .= " AND (u.name LIKE ? OR u.display_user_id LIKE ?)"; // Search by name OR ID
                         $search_term = "%{$search_query}%";
                         $params[] = $search_term;
-                        $types .= "s";
+                        $params[] = $search_term;
+                        $types .= "ss";
                     }
                     $sql .= " ORDER BY u.name ASC LIMIT 10";
                     
@@ -740,7 +742,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $sql = "
                         SELECT 
                             p.id, patient.name AS patient_name, patient.display_user_id AS patient_display_id,
-                            doctor.name AS doctor_name, p.prescription_date, p.status
+                            doctor.name AS doctor_name, doctor.display_user_id AS doctor_display_id, p.prescription_date, p.status
                         FROM prescriptions p
                         JOIN users patient ON p.patient_id = patient.id
                         JOIN users doctor ON p.doctor_id = doctor.id
@@ -1241,6 +1243,33 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     log_activity($conn, $user_id, 'deactivate_user', $target_user_id, "Deactivated user '{$target_user['username']}' ({$target_user['display_user_id']}).");
 
                     $response = ['success' => true, 'message' => 'User has been deactivated.'];
+                    break;
+
+                case 'reactivateUser':
+                    if (empty($_POST['id'])) {
+                        throw new Exception('User ID is required.');
+                    }
+                    $target_user_id = (int)$_POST['id'];
+                    
+                    // Security check: ensure only patients and doctors can be reactivated by staff
+                    $stmt_role_check = $conn->prepare("SELECT r.role_name, u.username, u.display_user_id FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?");
+                    $stmt_role_check->bind_param("i", $target_user_id);
+                    $stmt_role_check->execute();
+                    $target_user = $stmt_role_check->get_result()->fetch_assoc();
+                    $stmt_role_check->close();
+                    
+                    if (!$target_user || !in_array($target_user['role_name'], ['user', 'doctor'])) {
+                        throw new Exception("You are not authorized to reactivate this user.");
+                    }
+
+                    // Set the user's status back to active
+                    $stmt = $conn->prepare("UPDATE users SET is_active = 1 WHERE id = ?");
+                    $stmt->bind_param("i", $target_user_id);
+                    $stmt->execute();
+
+                    log_activity($conn, $user_id, 'reactivate_user', $target_user_id, "Reactivated user '{$target_user['username']}' ({$target_user['display_user_id']}).");
+
+                    $response = ['success' => true, 'message' => 'User has been reactivated successfully.'];
                     break;
 
                 case 'updateMedicineStock':
