@@ -783,19 +783,27 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
 
+        // UPDATED: This function now handles the richer data from the API
         function renderAuditLog(data, tableBody) {
             if (data.length === 0) {
                 tableBody.innerHTML = `<tr><td colspan="3" style="text-align: center;">No recent activity found.</td></tr>`;
                 return;
             }
 
-            tableBody.innerHTML = data.map(log => `
-                <tr>
-                    <td data-label="Date & Time">${new Date(log.created_at).toLocaleString()}</td>
-                    <td data-label="Action"><span class="log-action-update">${log.action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span></td>
-                    <td data-label="Details">${log.details}</td>
-                </tr>
-            `).join('');
+            tableBody.innerHTML = data.map(log => {
+                // Prepend target user info to the details if it exists
+                const details = log.target_user_display_id
+                    ? `Target: <strong>${log.target_user_name} (${log.target_user_display_id})</strong>. ${log.details}`
+                    : log.details;
+
+                return `
+                    <tr>
+                        <td data-label="Date & Time">${new Date(log.created_at).toLocaleString()}</td>
+                        <td data-label="Action"><span class="log-action-update">${log.action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span></td>
+                        <td data-label="Details">${details}</td>
+                    </tr>
+                `;
+            }).join('');
         }
 
         const personalInfoForm = document.getElementById('personal-info-form');
