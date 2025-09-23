@@ -1139,3 +1139,251 @@ body.dark-mode {
     width: 100%;
     margin-top: 1rem;
 }
+
+/* ============================================== */
+/* ===       MEDICAL RECORDS TIMELINE STYLES  === */
+/* ============================================== */
+.timeline-container {
+    position: relative;
+    padding: 1rem 0;
+    margin-top: 2rem;
+}
+
+.timeline-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 24px;
+    height: 100%;
+    width: 2px;
+    background: var(--border-color);
+}
+
+.timeline-item {
+    position: relative;
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.timeline-icon {
+    flex-shrink: 0;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 1.5rem;
+    z-index: 2;
+    border: 3px solid var(--bg-light);
+    box-shadow: 0 0 0 2px var(--border-color);
+}
+
+.timeline-icon.admission { background-color: var(--primary-color); }
+.timeline-icon.lab { background-color: var(--status-blue); }
+.timeline-icon.prescription { background-color: var(--status-green); }
+
+.timeline-content {
+    background: var(--bg-light);
+    padding: 1rem 1.5rem;
+    border-radius: var(--border-radius);
+    flex-grow: 1;
+    border: 1px solid var(--border-color);
+}
+
+.timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.timeline-title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.timeline-date {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.timeline-details {
+    margin: 0 0 1rem 0;
+    color: var(--text-secondary);
+}
+
+/* Ensure status styles from prescriptions page also apply here */
+.status.completed, .status.discharged, .status.dispensed { background-color: var(--status-green); }
+.status.admitted, .status.processing { background-color: var(--status-blue); }
+.status.pending { background-color: var(--status-orange); }
+
+@media (max-width: 768px) {
+    .timeline-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+/* ============================================== */
+/* ===    NEW: DETAILED LIVE TOKEN PAGE STYLES  === */
+/* ============================================== */
+
+.live-token-card {
+    background-color: var(--card-bg);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    max-width: 500px;
+    margin: 1rem auto;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+}
+
+.token-card-header-new {
+    background-color: var(--bg-light);
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.doctor-details h3 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1.3rem;
+    color: var(--text-primary);
+}
+
+.doctor-details p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.location-details {
+    text-align: right;
+    color: var(--text-secondary);
+}
+.location-details span {
+    display: block;
+    font-weight: 500;
+}
+.location-details i {
+    margin-right: 8px;
+    color: var(--primary-color);
+}
+
+.token-main-display {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    padding: 2rem 1.5rem;
+}
+
+.token-progress-circle {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    flex-shrink: 0;
+}
+
+.token-progress-circle svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+.token-progress-circle .circle-bg {
+    fill: none;
+    stroke: var(--border-color);
+    stroke-width: 3.8;
+}
+.token-progress-circle .circle {
+    fill: none;
+    stroke: var(--primary-color);
+    stroke-width: 4;
+    stroke-linecap: round;
+    transition: stroke-dasharray 0.5s ease;
+}
+
+.token-number-large {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+}
+.token-number-large small {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+.token-number-large span {
+    font-size: 2.5rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-primary);
+}
+
+.your-token-display {
+    text-align: center;
+    flex-grow: 1;
+}
+.your-token-display small {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+.your-token-display span {
+    display: block;
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin: 0.5rem 0;
+}
+.your-token-display .status-message {
+    margin: 0;
+    font-weight: 500;
+    color: var(--status-blue);
+}
+
+.token-stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    border-top: 1px solid var(--border-color);
+}
+.stat-item {
+    padding: 1rem;
+    text-align: center;
+}
+.stat-item:not(:last-child) {
+    border-right: 1px solid var(--border-color);
+}
+.stat-item i {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+    margin-bottom: 0.5rem;
+}
+.stat-item p {
+    margin: 0;
+    font-size: 1.4rem;
+    font-weight: 600;
+}
+.stat-item small {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.token-card-footer-new {
+    background-color: var(--bg-light);
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 500;
+}   

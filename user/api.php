@@ -10,8 +10,7 @@
  */
 
 require_once '../config.php'; // Includes session_start() and database connection ($conn)
-require_once '../vendor/autoload.php'; // Added for Dompdf integration
-
+require_once '../vendor/autoload.php'; // Assuming Composer autoload for Dompdf
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
@@ -49,6 +48,106 @@ $conn = getDbConnection();
 
 // --- AJAX API Endpoint Logic ---
 if (isset($_GET['action']) || isset($_POST['action'])) {
+
+    // --- Special Case for PDF Download ---
+    if (isset($_GET['action']) && $_GET['action'] == 'download_discharge_summary' && isset($_GET['id'])) {
+        $summary_id = (int)$_GET['id'];
+        
+        // UPDATED QUERY: Fetch more details for the PDF template
+        $stmt = $conn->prepare("
+            SELECT 
+                dc.*, 
+                p.name as patient_name,
+                p.display_user_id,
+                a.admission_date,
+                COALESCE(a.discharge_date, dc.discharge_date) as discharge_date,
+                doc.name as doctor_name
+            FROM discharge_clearance dc
+            JOIN admissions a ON dc.admission_id = a.id
+            JOIN users p ON a.patient_id = p.id
+            LEFT JOIN users doc ON dc.doctor_id = doc.id
+            WHERE dc.id = ? AND p.id = ?
+        ");
+        $stmt->bind_param("ii", $summary_id, $user_id);
+        $stmt->execute();
+        $summary_data = $stmt->get_result()->fetch_assoc();
+        
+        if ($summary_data) {
+            // Check if summary_template.php exists before including
+            if (file_exists('summary_template.php')) {
+                ob_start();
+                include 'summary_template.php';
+                $html = ob_get_clean();
+
+                $options = new Options();
+                $options->set('isHtml5ParserEnabled', true);
+                $options->set('isRemoteEnabled', true); // Good for images if you add them later
+                $dompdf = new Dompdf($options);
+                $dompdf->loadHtml($html);
+                $dompdf->setPaper('A4', 'portrait');
+                $dompdf->render();
+                // Use a more descriptive filename
+                $filename = "Discharge_Summary_" . htmlspecialchars($summary_data['patient_name']) . "_" . $summary_data['id'] . ".pdf";
+                $dompdf->stream($filename, array("Attachment" => 1)); // 1 = force download
+                exit();
+            } else {
+                 die('Error: PDF template file is missing.');
+            }
+        } else {
+            die('Summary not found or you do not have permission to access it.');
+        }
+    }
+
+    // --- Special Case for Lab Report PDF Download ---
+    if (isset($_GET['action']) && $_GET['action'] == 'download_lab_report' && isset($_GET['id'])) {
+        $lab_result_id = (int)$_GET['id'];
+
+        // Prepare a query to get lab data, including patient and doctor names.
+        $stmt = $conn->prepare("
+            SELECT 
+                lr.*,
+                p.name AS patient_name,
+                p.display_user_id,
+                doc.name AS doctor_name
+            FROM lab_results lr
+            JOIN users p ON lr.patient_id = p.id
+            LEFT JOIN users doc ON lr.doctor_id = doc.id
+            WHERE lr.id = ? AND p.id = ?
+        ");
+        $stmt->bind_param("ii", $lab_result_id, $user_id);
+        $stmt->execute();
+        $lab_data = $stmt->get_result()->fetch_assoc();
+
+        if ($lab_data) {
+            // Ensure the template file exists
+            if (file_exists('lab_result_template.php')) {
+                // Capture the template output into a variable
+                ob_start();
+                include 'lab_result_template.php';
+                $html = ob_get_clean();
+
+                // Setup Dompdf
+                $options = new Options();
+                $options->set('isHtml5ParserEnabled', true);
+                $options->set('isRemoteEnabled', true); 
+                $dompdf = new Dompdf($options);
+                $dompdf->loadHtml($html);
+                $dompdf->setPaper('A4', 'portrait');
+                $dompdf->render();
+                
+                // Generate a filename and stream the PDF to the browser
+                $filename = "Lab_Report_" . str_replace(' ', '_', $lab_data['test_name']) . "_" . $lab_data['id'] . ".pdf";
+                $dompdf->stream($filename, array("Attachment" => 1)); // 1 = force download
+                exit();
+            } else {
+                 die('Error: Lab report PDF template file is missing.');
+            }
+        } else {
+            die('Lab result not found or you do not have permission to access it.');
+        }
+    }
+
+
     header('Content-Type: application/json');
     $response = ['success' => false, 'message' => 'An unknown error occurred.'];
 
@@ -56,6 +155,30 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
         // Handle GET requests for fetching data
         if (isset($_GET['action'])) {
             switch ($_GET['action']) {
+                
+                case 'get_discharge_summaries':
+                    $stmt = $conn->prepare("
+                        SELECT 
+                            dc.id,
+                            a.admission_date,
+                            COALESCE(a.discharge_date, dc.discharge_date) as discharge_date,
+                            doc.name as doctor_name,
+                            dept.name as department_name,
+                            dc.summary_text,
+                            dc.notes
+                        FROM discharge_clearance dc
+                        JOIN admissions a ON dc.admission_id = a.id
+                        LEFT JOIN users doc ON dc.doctor_id = doc.id
+                        LEFT JOIN departments dept ON a.department_id = dept.id
+                        WHERE a.patient_id = ? AND (a.discharge_date IS NOT NULL OR dc.discharge_date IS NOT NULL)
+                        ORDER BY discharge_date DESC
+                    ");
+                    $stmt->bind_param("i", $user_id);
+                    $stmt->execute();
+                    $summaries = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+                    $response = ['success' => true, 'data' => $summaries];
+                    break;
                 
                 case 'get_dashboard_data':
                     $dashboard_data = [];
@@ -107,8 +230,112 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     $response = ['success' => true, 'data' => $dashboard_data];
                     break;
 
+                case 'get_lab_results':
+                    // Base SQL query to get lab results for the logged-in user
+                    // We JOIN with the 'users' table to get the doctor's name
+                    $sql = "
+                        SELECT 
+                            lr.id,
+                            lr.test_date,
+                            lr.test_name,
+                            lr.status,
+                            lr.result_details,
+                            doc.name AS doctor_name
+                        FROM lab_results lr
+                        LEFT JOIN users doc ON lr.doctor_id = doc.id
+                        WHERE lr.patient_id = ?
+                    ";
+                
+                    // Prepare for filtering
+                    $params = [$user_id];
+                    $types = "i";
+                
+                    // Handle search by test name
+                    if (!empty($_GET['search'])) {
+                        $search_term = '%' . $_GET['search'] . '%';
+                        $sql .= " AND lr.test_name LIKE ?";
+                        $params[] = $search_term;
+                        $types .= "s";
+                    }
+                
+                    // Handle filter by date (month and year)
+                    if (!empty($_GET['date'])) {
+                        $date_filter = $_GET['date'] . '-%'; // Matches YYYY-MM format
+                        $sql .= " AND lr.test_date LIKE ?";
+                        $params[] = $date_filter;
+                        $types .= "s";
+                    }
+                
+                    $sql .= " ORDER BY lr.test_date DESC";
+                
+                    $stmt = $conn->prepare($sql);
+                    // Dynamically bind parameters based on the filters applied
+                    $stmt->bind_param($types, ...$params); 
+                    $stmt->execute();
+                    $results = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+                    
+                    $response = ['success' => true, 'data' => $results];
+                    break;
+
+                case 'get_medical_records':
+                    $records = [];
+                    $sql = "
+                        -- Admissions
+                        SELECT
+                            a.id,
+                            a.admission_date AS record_date,
+                            'admission' AS record_type,
+                            d.name AS title,
+                            CONCAT('Admitted to ', w.name) AS details,
+                            a.status AS status
+                        FROM admissions a
+                        JOIN departments d ON a.department_id = d.id
+                        LEFT JOIN wards w ON a.ward_id = w.id
+                        WHERE a.patient_id = ?
+
+                        UNION ALL
+
+                        -- Lab Results
+                        SELECT
+                            lr.id,
+                            lr.test_date AS record_date,
+                            'lab_result' AS record_type,
+                            lr.test_name AS title,
+                            CONCAT('Ordered by Dr. ', doc.name) AS details,
+                            lr.status AS status
+                        FROM lab_results lr
+                        LEFT JOIN users doc ON lr.doctor_id = doc.id
+                        WHERE lr.patient_id = ? AND lr.status = 'completed'
+
+                        UNION ALL
+
+                        -- Prescriptions
+                        SELECT
+                            p.id,
+                            p.prescription_date AS record_date,
+                            'prescription' AS record_type,
+                            'New Prescription Issued' AS title,
+                            CONCAT('Prescribed by Dr. ', doc.name) AS details,
+                            p.status AS status
+                        FROM prescriptions p
+                        JOIN users doc ON p.doctor_id = doc.id
+                        WHERE p.patient_id = ?
+
+                        ORDER BY record_date DESC;
+                    ";
+                    
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("iii", $user_id, $user_id, $user_id);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $records = $result->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+                    
+                    $response = ['success' => true, 'data' => $records];
+                    break;
+
                 case 'get_notifications':
-                    // Logic from previous turn...
                     $filter = $_GET['filter'] ?? 'all';
                     $sql = "SELECT id, message, is_read, created_at as timestamp FROM notifications 
                             WHERE (recipient_user_id = ? OR recipient_role = ? OR recipient_role = 'all')";
@@ -126,63 +353,253 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     $stmt_count->execute();
                     $unread_count = $stmt_count->get_result()->fetch_assoc()['unread_count'];
                     $stmt_count->close();
-                    
-                    $response = ['success' => true, 'data' => $notifications, 'unread_count' => $unread_count];
-                    break;
 
-                case 'generate_discharge_pdf':
-                    $summary_id = $_GET['summary_id'] ?? null;
-                    if (empty($summary_id)) {
-                        throw new Exception('Summary ID is required.');
+                    foreach ($notifications as &$notification) {
+                        if (strpos(strtolower($notification['message']), 'lab') !== false) $notification['type'] = 'labs';
+                        elseif (strpos(strtolower($notification['message']), 'bill') !== false || strpos(strtolower($notification['message']), 'payment') !== false) $notification['type'] = 'billing';
+                        elseif (strpos(strtolower($notification['message']), 'prescription') !== false) $notification['type'] = 'prescriptions';
+                        else $notification['type'] = 'appointments';
+                    }
+                    $response = ['success' => true, 'notifications' => $notifications, 'unread_count' => $unread_count];
+                    break;
+                
+                case 'get_live_tokens':
+                    // --- Main query to get the user's appointments for today ---
+                    $sql_tokens = "SELECT 
+                                       a.token_number, 
+                                       a.token_status, 
+                                       a.doctor_id, 
+                                       u.name as doctor_name, 
+                                       d.specialty,
+                                       d.office_floor,      -- NEWLY ADDED
+                                       d.office_room_number -- NEWLY ADDED
+                                   FROM appointments a
+                                   JOIN users u ON a.doctor_id = u.id
+                                   JOIN doctors d ON u.id = d.user_id
+                                   WHERE a.user_id = ? AND DATE(a.appointment_date) = CURDATE() AND a.status = 'scheduled'";
+                    
+                    $stmt_tokens = $conn->prepare($sql_tokens);
+                    $stmt_tokens->bind_param("i", $user_id);
+                    $stmt_tokens->execute();
+                    $todays_appointments = $stmt_tokens->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt_tokens->close();
+
+                    if (empty($todays_appointments)) {
+                        $response = ['success' => true, 'tokens' => [], 'message' => "No active tokens for today."];
+                        break;
+                    }
+
+                    $tokens = [];
+                    // --- Prepare statements for calculations (more efficient) ---
+                    $current_token_sql = "SELECT COALESCE(MAX(token_number), 0) as current_token 
+                                          FROM appointments 
+                                          WHERE doctor_id = ? AND DATE(appointment_date) = CURDATE() 
+                                          AND token_status IN ('in_consultation', 'completed', 'skipped')";
+                    
+                    $total_patients_sql = "SELECT COUNT(id) as total_patients 
+                                           FROM appointments 
+                                           WHERE doctor_id = ? AND DATE(appointment_date) = CURDATE() AND status = 'scheduled'";
+
+                    $current_token_stmt = $conn->prepare($current_token_sql);
+                    $total_patients_stmt = $conn->prepare($total_patients_sql);
+                    
+                    // --- Loop through each appointment and gather all required data ---
+                    foreach ($todays_appointments as $appointment) {
+                        // Get current serving token
+                        $current_token_stmt->bind_param("i", $appointment['doctor_id']);
+                        $current_token_stmt->execute();
+                        $current_token_result = $current_token_stmt->get_result()->fetch_assoc();
+
+                        // Get total patients for the doctor today
+                        $total_patients_stmt->bind_param("i", $appointment['doctor_id']);
+                        $total_patients_stmt->execute();
+                        $total_patients_result = $total_patients_stmt->get_result()->fetch_assoc();
+                        
+                        // Calculate patients left
+                        $patients_left = $total_patients_result['total_patients'] - $current_token_result['current_token'];
+
+                        $tokens[] = [
+                            'your_token' => $appointment['token_number'],
+                            'current_token' => $current_token_result['current_token'],
+                            'doctor_name' => $appointment['doctor_name'],
+                            'specialty' => $appointment['specialty'],
+                            'token_status' => $appointment['token_status'],
+                            'office_floor' => $appointment['office_floor'],       // NEW
+                            'office_room_number' => $appointment['office_room_number'], // NEW
+                            'total_patients' => $total_patients_result['total_patients'], // NEW
+                            'patients_left' => max(0, $patients_left) // NEW (ensure it's not negative)
+                        ];
+                    }
+                    $current_token_stmt->close();
+                    $total_patients_stmt->close();
+                    
+                    $response = ['success' => true, 'tokens' => $tokens, 'message' => "Live token status fetched successfully."];
+                    break;
+                
+                // =======================================================
+                // === NEWLY ADDED APPOINTMENT ENDPOINTS (GET)         ===
+                // =======================================================
+                case 'get_appointments':
+                    $appointments = [
+                        'upcoming' => [],
+                        'past' => []
+                    ];
+                
+                    $sql = "SELECT 
+                                a.id, 
+                                a.appointment_date, 
+                                a.token_number, 
+                                a.status,
+                                doc_user.name as doctor_name,
+                                d.specialty
+                            FROM appointments a
+                            JOIN users doc_user ON a.doctor_id = doc_user.id
+                            JOIN doctors d ON doc_user.id = d.user_id
+                            WHERE a.user_id = ?
+                            ORDER BY a.appointment_date DESC";
+                    
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("i", $user_id);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                
+                    while ($row = $result->fetch_assoc()) {
+                        $is_upcoming = (new DateTime($row['appointment_date']) >= new DateTime('today')) && ($row['status'] == 'scheduled');
+                        if ($is_upcoming) {
+                            $appointments['upcoming'][] = $row;
+                        } else {
+                            $appointments['past'][] = $row;
+                        }
+                    }
+                    $stmt->close();
+                    // Sort upcoming appointments in ascending order
+                    usort($appointments['upcoming'], function($a, $b) {
+                        return strtotime($a['appointment_date']) - strtotime($b['appointment_date']);
+                    });
+                
+                    $response = ['success' => true, 'data' => $appointments];
+                    break;
+                
+                // START: UPDATED CODE BLOCK
+                case 'get_doctors':
+                    $specialty_filter = $_GET['specialty'] ?? '';
+                    $name_search = $_GET['name_search'] ?? ''; // Get the name search parameter
+                    
+                    $sql = "SELECT 
+                                d.user_id as id, 
+                                u.name, 
+                                d.specialty,
+                                u.profile_picture
+                            FROM doctors d
+                            JOIN users u ON d.user_id = u.id
+                            WHERE d.is_available = 1 AND u.is_active = 1";
+                
+                    $params = [];
+                    $types = "";
+
+                    // Add condition for name search
+                    if (!empty($name_search)) {
+                        $sql .= " AND u.name LIKE ?";
+                        $params[] = '%' . $name_search . '%';
+                        $types .= "s";
+                    }
+                
+                    // Add condition for specialty filter
+                    if (!empty($specialty_filter)) {
+                        $sql .= " AND d.specialty = ?";
+                        $params[] = $specialty_filter;
+                        $types .= "s";
                     }
                     
-                    // Fetch discharge summary data from discharge_clearance
-                    $stmt = $conn->prepare("
-                        SELECT dc.discharge_date, dc.summary_text, u.name AS doctor_name, p.name AS patient_name, p.display_user_id AS patient_id
-                        FROM discharge_clearance dc
-                        JOIN admissions a ON dc.admission_id = a.id
-                        JOIN users p ON a.patient_id = p.id
-                        JOIN users u ON dc.doctor_id = u.id
-                        WHERE dc.id = ? AND a.patient_id = ? AND dc.clearance_step = 'billing' AND dc.is_cleared = 1
-                    ");
-                    $stmt->bind_param("ii", $summary_id, $user_id);
+                    $sql .= " ORDER BY u.name ASC";
+                    
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
                     $stmt->execute();
-                    $summary = $stmt->get_result()->fetch_assoc();
+                    $doctors = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     $stmt->close();
                     
-                    if (!$summary || !$summary['discharge_date'] || !$summary['summary_text']) {
-                        throw new Exception('Discharge summary not found, not fully cleared, or incomplete.');
+                    $response = ['success' => true, 'data' => $doctors];
+                    break;
+                // END: UPDATED CODE BLOCK
+                
+                case 'get_doctor_slots':
+                    // For this example, we will return static slots. 
+                    // You could expand this to read from the `doctors.slots` JSON column.
+                    $mock_slots = ["09:00 AM - 10:00 AM", "10:00 AM - 11:00 AM", "11:00 AM - 12:00 PM", "02:00 PM - 03:00 PM"];
+                    $response = ['success' => true, 'data' => $mock_slots];
+                    break;
+                
+                case 'get_available_tokens':
+                    $doctor_id = (int)($_GET['doctor_id'] ?? 0);
+                    $date = $_GET['date'] ?? '';
+                    
+                    if (empty($doctor_id) || empty($date)) {
+                        throw new Exception("Doctor ID and date are required.");
                     }
                     
-                    // Generate PDF
-                    generateUserPdfSummary($conn, $summary);
-                    exit(); // Exit after streaming PDF
+                    $stmt = $conn->prepare("SELECT token_number FROM appointments WHERE doctor_id = ? AND DATE(appointment_date) = ?");
+                    $stmt->bind_param("is", $doctor_id, $date);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    
+                    $booked_tokens = [];
+                    while ($row = $result->fetch_assoc()) {
+                        $booked_tokens[] = $row['token_number'];
+                    }
+                    $stmt->close();
+                    
+                    $response = ['success' => true, 'data' => ['total' => 20, 'booked' => $booked_tokens]]; // Assuming 20 tokens per slot
                     break;
             }
         }
-
-        // Handle POST requests for updating data
-        if (isset($_POST['action'])) {
+        // Handle POST requests for performing actions
+        elseif (isset($_POST['action'])) {
             switch ($_POST['action']) {
-                case 'update_personal_info':
-                    $name = $_POST['name'] ?? '';
-                    $email = $_POST['email'] ?? '';
-                    $phone = $_POST['phone'] ?? '';
-                    $date_of_birth = $_POST['date_of_birth'] ?? null;
-                    $gender = $_POST['gender'] ?? null;
+                case 'mark_read':
+                    if (!isset($_POST['id'])) throw new Exception('Notification ID is required.');
+                    $notification_id = (int)$_POST['id'];
+                    $stmt = $conn->prepare("UPDATE notifications SET is_read = 1 WHERE id = ? AND (recipient_user_id = ? OR recipient_role = ?)");
+                    $stmt->bind_param("iis", $notification_id, $user_id, $user_role);
+                    if ($stmt->execute()) {
+                        $response = ['success' => true, 'message' => 'Notification marked as read.'];
+                    } else {
+                        throw new Exception('Failed to update notification status.');
+                    }
+                    $stmt->close();
+                    break;
 
-                    if (empty($name) || empty($email) || empty($phone)) {
-                        throw new Exception('Name, email, and phone are required.');
+                case 'mark_all_read':
+                    $stmt = $conn->prepare("UPDATE notifications SET is_read = 1 WHERE (recipient_user_id = ? OR recipient_role = ? OR recipient_role = 'all') AND is_read = 0");
+                    $stmt->bind_param("is", $user_id, $user_role);
+                    if ($stmt->execute()) {
+                        $response = ['success' => true, 'message' => 'All notifications marked as read.'];
+                    } else {
+                        throw new Exception('Failed to update notifications.');
                     }
-                    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                        throw new Exception('Invalid email format.');
-                    }
-                    if (!preg_match('/^\+\d{1,3}\d{9,12}$/', $phone)) {
-                        throw new Exception('Invalid phone number format.');
-                    }
+                    $stmt->close();
+                    break;
+
+                case 'update_personal_info':
+                    $name = trim($_POST['name'] ?? '');
+                    $email = trim($_POST['email'] ?? '');
+                    $phone = trim($_POST['phone'] ?? '');
+                    $dob = !empty($_POST['date_of_birth']) ? trim($_POST['date_of_birth']) : null;
+                    $gender = trim($_POST['gender'] ?? '');
+
+                    if (empty($name) || empty($email)) throw new Exception('Full name and email are required.');
+                    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception('Invalid email format.');
+
+                    $stmt = $conn->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
+                    $stmt->bind_param("si", $email, $user_id);
+                    $stmt->execute();
+                    if ($stmt->get_result()->num_rows > 0) throw new Exception('This email address is already in use.');
+                    $stmt->close();
 
                     $stmt = $conn->prepare("UPDATE users SET name = ?, email = ?, phone = ?, date_of_birth = ?, gender = ? WHERE id = ?");
-                    $stmt->bind_param("sssssi", $name, $email, $phone, $date_of_birth, $gender, $user_id);
+                    $stmt->bind_param("sssssi", $name, $email, $phone, $dob, $gender, $user_id);
                     if ($stmt->execute()) {
                         $response = ['success' => true, 'message' => 'Personal information updated successfully.'];
                     } else {
@@ -223,7 +640,7 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     if (!isset($_FILES['profile_picture'])) throw new Exception('No file was uploaded.');
 
                     $file = $_FILES['profile_picture'];
-                    $upload_dir = '../Uploads/profile_pictures/';
+                    $upload_dir = '../uploads/profile_pictures/';
                     
                     if ($file['error'] !== UPLOAD_ERR_OK) throw new Exception('File upload error. Code: ' . $file['error']);
                     $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
@@ -257,6 +674,67 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                         throw new Exception('Failed to move uploaded file.');
                     }
                     break;
+                
+                // =======================================================
+                // === NEWLY ADDED APPOINTMENT ENDPOINTS (POST)        ===
+                // =======================================================
+                case 'book_appointment':
+                    $doctor_id = (int)($_POST['doctorId'] ?? 0);
+                    $date = $_POST['date'] ?? '';
+                    $slot = $_POST['slot'] ?? ''; // e.g., "09:00 AM - 10:00 AM"
+                    $token = (int)($_POST['token'] ?? 0);
+                
+                    if (empty($doctor_id) || empty($date) || empty($slot) || empty($token)) {
+                        throw new Exception("All appointment details are required.");
+                    }
+                    
+                    // Combine date and the start of the slot to create a DATETIME
+                    $time_start = explode(' - ', $slot)[0];
+                    $appointment_datetime_str = "$date $time_start";
+                    $appointment_datetime = date('Y-m-d H:i:s', strtotime($appointment_datetime_str));
+                
+                    // Check if this token is already booked for this doctor on this day
+                    $stmt_check = $conn->prepare("SELECT id FROM appointments WHERE doctor_id = ? AND DATE(appointment_date) = ? AND token_number = ?");
+                    $stmt_check->bind_param("isi", $doctor_id, $date, $token);
+                    $stmt_check->execute();
+                    if ($stmt_check->get_result()->num_rows > 0) {
+                        throw new Exception("This token has just been booked by someone else. Please select another token.");
+                    }
+                    $stmt_check->close();
+                
+                    $stmt_insert = $conn->prepare("INSERT INTO appointments (user_id, doctor_id, appointment_date, token_number, status) VALUES (?, ?, ?, ?, 'scheduled')");
+                    $stmt_insert->bind_param("iisi", $user_id, $doctor_id, $appointment_datetime, $token);
+                
+                    if ($stmt_insert->execute()) {
+                        $response = ['success' => true, 'message' => 'Appointment booked successfully!'];
+                    } else {
+                        throw new Exception("Failed to book the appointment. Please try again.");
+                    }
+                    $stmt_insert->close();
+                    break;
+                    
+                case 'cancel_appointment':
+                    $appointment_id = (int)($_POST['appointment_id'] ?? 0);
+                
+                    if (empty($appointment_id)) {
+                        throw new Exception("Appointment ID is required.");
+                    }
+                
+                    // Check if the appointment belongs to the current user and is in a cancellable state
+                    $stmt = $conn->prepare("UPDATE appointments SET status = 'cancelled' WHERE id = ? AND user_id = ? AND status = 'scheduled'");
+                    $stmt->bind_param("ii", $appointment_id, $user_id);
+                    
+                    if ($stmt->execute()) {
+                        if ($stmt->affected_rows > 0) {
+                            $response = ['success' => true, 'message' => 'Appointment cancelled successfully.'];
+                        } else {
+                            throw new Exception("Could not cancel this appointment. It may have already started or does not exist.");
+                        }
+                    } else {
+                        throw new Exception("Failed to cancel the appointment.");
+                    }
+                    $stmt->close();
+                    break;
             }
         }
 
@@ -271,7 +749,8 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
 
 // --- Standard Page Load Data Preparation ---
 $user_details = [];
-$stmt = $conn->prepare("SELECT name, email, phone, date_of_birth, gender, profile_picture FROM users WHERE id = ?");
+// THIS IS THE UPDATED LINE
+$stmt = $conn->prepare("SELECT username, name, email, phone, date_of_birth, gender, profile_picture FROM users WHERE id = ?");
 if ($stmt) {
     $stmt->bind_param("i", $user_id);
     $stmt->execute();
@@ -316,86 +795,5 @@ if ($current_hour < 12) {
     $greeting = "Good Afternoon";
 } else {
     $greeting = "Good Evening";
-}
-
-function generateUserPdfSummary($conn, $summary) {
-    // --- HTML Template for PDF ---
-    $medsync_logo_path = '../images/logo.png';
-    $hospital_logo_path = '../images/hospital.png';
-    $medsync_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($medsync_logo_path));
-    $hospital_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($hospital_logo_path));
-    
-    $html = '
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>Discharge Summary</title>
-        <style>
-            @page { margin: 20px; }
-            body { font-family: "Poppins", sans-serif; color: #333; }
-            .header { position: fixed; top: 0; left: 0; right: 0; width: 100%; height: 120px; }
-            .medsync-logo { position: absolute; top: 10px; left: 20px; }
-            .medsync-logo img { width: 80px; }
-            .hospital-logo { position: absolute; top: 10px; right: 20px; }
-            .hospital-logo img { width: 70px; }
-            .hospital-details { text-align: center; margin-top: 0; }
-            .hospital-details h2 { margin: 0; font-size: 1.5em; color: #007BFF; }
-            .hospital-details p { margin: 2px 0; font-size: 0.85em; }
-            .report-title { text-align: center; margin-top: 130px; margin-bottom: 20px; }
-            .report-title h1 { margin: 0; font-size: 1.8em; }
-            .report-title p { margin: 5px 0 0 0; font-size: 1em; color: #666; }
-            .summary-details { font-size: 0.9em; margin-bottom: 20px; }
-            .summary-details p { margin: 5px 0; }
-            .summary-content { font-size: 0.9em; white-space: pre-wrap; }
-            .footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 0.8em; color: #aaa; }
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <div class="medsync-logo">
-                <img src="' . $medsync_logo_base64 . '" alt="MedSync Logo">
-            </div>
-            <div class="hospital-details">
-                <h2>Calysta Health Institute</h2>
-                <p>Kerala, India</p>
-                <p>+91 45235 31245 | medsync.calysta@gmail.com</p>
-            </div>
-            <div class="hospital-logo">
-                <img src="' . $hospital_logo_base64 . '" alt="Hospital Logo">
-            </div>
-        </div>
-
-        <div class="report-title">
-            <h1>Discharge Summary</h1>
-            <p>Generated on: ' . date('Y-m-d H:i:s') . '</p>
-        </div>
-        
-        <div class="summary-details">
-            <p><strong>Patient Name:</strong> ' . htmlspecialchars($summary['patient_name']) . '</p>
-            <p><strong>Patient ID:</strong> ' . htmlspecialchars($summary['patient_id']) . '</p>
-            <p><strong>Discharge Date:</strong> ' . htmlspecialchars($summary['discharge_date']) . '</p>
-            <p><strong>Doctor:</strong> ' . htmlspecialchars($summary['doctor_name']) . '</p>
-        </div>
-        
-        <h2>Summary Details</h2>
-        <div class="summary-content">
-            ' . nl2br(htmlspecialchars($summary['summary_text'])) . '
-        </div>
-        
-        <div class="footer">
-            MedSync Healthcare Platform | &copy; ' . date('Y') . ' Calysta Health Institute
-        </div>
-    </body>
-    </html>';
-
-    $options = new Options();
-    $options->set('isHtml5ParserEnabled', true);
-    $options->set('isRemoteEnabled', true);
-    $dompdf = new Dompdf($options);
-    $dompdf->loadHtml($html);
-    $dompdf->setPaper('A4', 'portrait');
-    $dompdf->render();
-    $dompdf->stream('discharge_summary_' . $summary['patient_id'] . '.pdf', ["Attachment" => 1]);
 }
 ?>
