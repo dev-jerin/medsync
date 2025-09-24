@@ -99,33 +99,51 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         <p>Here’s a summary of your activities and patient status for today. Stay organized and efficient.</p>
                     </div>
                     <div class="stat-cards-container">
-                        <div class="stat-card appointments"><div class="icon"><i class="fas fa-calendar-check"></i></div><div class="info"><div class="value">12</div><div class="label">Today's Appointments</div></div></div>
-                        <div class="stat-card admissions"><div class="icon"><i class="fas fa-procedures"></i></div><div class="info"><div class="value">3</div><div class="label">Active Admissions</div></div></div>
-                        <div class="stat-card discharges"><div class="icon"><i class="fas fa-walking"></i></div><div class="info"><div class="value">2</div><div class="label">Pending Discharges</div></div></div>
+                        <div class="stat-card appointments">
+                            <div class="icon"><i class="fas fa-calendar-check"></i></div>
+                            <div class="info">
+                                <div class="value" id="stat-appointments-value">--</div>
+                                <div class="label">Today's Appointments</div>
+                            </div>
+                        </div>
+                        <div class="stat-card admissions">
+                            <div class="icon"><i class="fas fa-procedures"></i></div>
+                            <div class="info">
+                                <div class="value" id="stat-admissions-value">--</div>
+                                <div class="label">Active Admissions</div>
+                            </div>
+                        </div>
+                        <div class="stat-card discharges">
+                            <div class="icon"><i class="fas fa-walking"></i></div>
+                            <div class="info">
+                                <div class="value" id="stat-discharges-value">--</div>
+                                <div class="label">Pending Discharges</div>
+                            </div>
+                        </div>
                     </div>
                     <div class="dashboard-grid">
                         <div class="grid-card" style="grid-column: 1 / -1;">
                             <h3><i class="fas fa-user-clock"></i> Today's Appointment Queue</h3>
                             <table class="data-table">
                                 <thead><tr><th>Token</th><th>Patient Name</th><th>Time</th><th>Status</th><th>Action</th></tr></thead>
-                                <tbody>
+                                <tbody id="dashboard-appointments-tbody">
                                     </tbody>
                             </table>
                         </div>
                         <div class="grid-card">
                              <h3><i class="fas fa-bolt"></i> Quick Actions</h3>
-                             <div class="quick-actions-container">
-                                 <a href="#" class="action-card" id="quick-action-admit"><i class="fas fa-notes-medical"></i><span>Admit Patient</span></a>
-                                 <a href="#" class="action-card" id="quick-action-prescribe"><i class="fas fa-file-medical"></i><span>New Prescription</span></a>
-                                 <a href="#" class="action-card" id="quick-action-lab"><i class="fas fa-vial"></i><span>Place Lab Order</span></a>
-                                 <a href="#" class="action-card"><i class="fas fa-sign-out-alt"></i><span>Initiate Discharge</span></a>
-                             </div>
+                            <div class="quick-actions-container">
+                                <a href="#" class="action-card" id="quick-action-admit"><i class="fas fa-notes-medical"></i><span>Admit Patient</span></a>
+                                <a href="#" class="action-card" id="quick-action-prescribe"><i class="fas fa-file-medical"></i><span>New Prescription</span></a>
+                                <a href="#" class="action-card" id="quick-action-lab"><i class="fas fa-vial"></i><span>Place Lab Order</span></a>
+                                <a href="#" class="action-card" id="quick-action-discharge"><i class="fas fa-sign-out-alt"></i><span>Initiate Discharge</span></a>
+                            </div>
                         </div>
                         <div class="grid-card">
                             <h3><i class="fas fa-bed"></i> Current In-Patients</h3>
                             <table class="data-table">
                                 <thead><tr><th>Patient Name</th><th>Room/Bed</th><th>Action</th></tr></thead>
-                                <tbody>
+                                <tbody id="dashboard-inpatients-tbody">
                                     </tbody>
                             </table>
                         </div>

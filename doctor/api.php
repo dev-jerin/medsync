@@ -122,6 +122,77 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
     }
 
     // ==========================================================
+    // --- DASHBOARD ACTIONS ---
+    // ==========================================================
+    if ($action == 'get_dashboard_data') {
+        $response = [
+            'success' => true,
+            'data' => [
+                'stats' => [],
+                'appointments' => [],
+                'inpatients' => []
+            ]
+        ];
+
+        // 1. Fetch statistics
+        $stats_sql = "
+            SELECT
+                (SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND DATE(appointment_date) = CURDATE()) AS today_appointments,
+                (SELECT COUNT(*) FROM admissions WHERE doctor_id = ? AND discharge_date IS NULL) AS active_admissions,
+                (SELECT COUNT(DISTINCT a.id) 
+                 FROM admissions a 
+                 JOIN discharge_clearance dc ON a.id = dc.admission_id 
+                 WHERE a.doctor_id = ? AND a.discharge_date IS NULL) AS pending_discharges
+        ";
+        $stmt = $conn->prepare($stats_sql);
+        $stmt->bind_param("iii", $current_user_id, $current_user_id, $current_user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $response['data']['stats'] = $result->fetch_assoc();
+        $stmt->close();
+
+        // 2. Fetch today's appointment queue (Limit 5 for the dashboard)
+        $appt_sql = "
+            SELECT a.token_number, p.name AS patient_name, a.appointment_date, a.status
+            FROM appointments a
+            JOIN users p ON a.user_id = p.id
+            WHERE a.doctor_id = ? AND DATE(a.appointment_date) = CURDATE()
+            ORDER BY a.appointment_date ASC LIMIT 5
+        ";
+        $stmt = $conn->prepare($appt_sql);
+        $stmt->bind_param("i", $current_user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $response['data']['appointments'] = $result->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        // 3. Fetch current in-patients (Limit 5 for the dashboard)
+        $inpatients_sql = "
+            SELECT p.name AS patient_name,
+                   p.id AS patient_id,
+                   CASE
+                       WHEN acc.type = 'room' THEN CONCAT('Room ', acc.number)
+                       ELSE CONCAT(w.name, ' - Bed ', acc.number)
+                   END AS room_bed
+            FROM admissions adm
+            JOIN users p ON adm.patient_id = p.id
+            LEFT JOIN accommodations acc ON adm.accommodation_id = acc.id
+            LEFT JOIN wards w ON acc.ward_id = w.id
+            WHERE adm.doctor_id = ? AND adm.discharge_date IS NULL
+            ORDER BY adm.admission_date DESC LIMIT 5
+        ";
+        $stmt = $conn->prepare($inpatients_sql);
+        $stmt->bind_param("i", $current_user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $response['data']['inpatients'] = $result->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        echo json_encode($response);
+        exit();
+    }
+
+    // ==========================================================
     // --- ADMISSIONS ACTIONS ---
     // ==========================================================
     if ($action == 'get_admissions') {

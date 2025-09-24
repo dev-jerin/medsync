@@ -10,6 +10,124 @@ document.addEventListener("DOMContentLoaded", function() {
     let patientListCache = null;
 
     // ===================================================================
+    // --- Dashboard Page Logic ---
+    // ===================================================================
+    async function loadDashboardData() {
+        // Select elements to update
+        const appointmentsValue = document.getElementById('stat-appointments-value');
+        const admissionsValue = document.getElementById('stat-admissions-value');
+        const dischargesValue = document.getElementById('stat-discharges-value');
+        const appointmentsTbody = document.getElementById('dashboard-appointments-tbody');
+        const inpatientsTbody = document.getElementById('dashboard-inpatients-tbody');
+
+        // Set initial loading state
+        if (appointmentsTbody) appointmentsTbody.innerHTML = `<tr><td colspan="5" class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>`;
+        if (inpatientsTbody) inpatientsTbody.innerHTML = `<tr><td colspan="3" class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>`;
+
+        try {
+            const response = await fetch('api.php?action=get_dashboard_data');
+            const result = await response.json();
+
+            if (result.success) {
+                const data = result.data;
+                
+                // 1. Update Stat Cards
+                if (appointmentsValue) appointmentsValue.textContent = data.stats.today_appointments || 0;
+                if (admissionsValue) admissionsValue.textContent = data.stats.active_admissions || 0;
+                if (dischargesValue) dischargesValue.textContent = data.stats.pending_discharges || 0;
+
+                // 2. Render Appointments Table
+                if (appointmentsTbody) {
+                    appointmentsTbody.innerHTML = ''; // Clear loading state
+                    if (data.appointments.length > 0) {
+                        data.appointments.forEach(appt => {
+                            const time = new Date(appt.appointment_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                                <td data-label="Token">${appt.token_number || 'N/A'}</td>
+                                <td data-label="Patient Name">${appt.patient_name}</td>
+                                <td data-label="Time">${time}</td>
+                                <td data-label="Status"><span class="status ${appt.status.toLowerCase()}">${appt.status}</span></td>
+                                <td data-label="Action"><button class="action-btn"><i class="fas fa-play-circle"></i> Start</button></td>
+                            `;
+                            appointmentsTbody.appendChild(tr);
+                        });
+                    } else {
+                        appointmentsTbody.innerHTML = `<tr><td colspan="5" style="text-align: center;">No appointments scheduled for today.</td></tr>`;
+                    }
+                }
+                
+                // 3. Render In-Patients Table
+                if (inpatientsTbody) {
+                    inpatientsTbody.innerHTML = ''; // Clear loading state
+                    if (data.inpatients.length > 0) {
+                        data.inpatients.forEach(patient => {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                                <td data-label="Patient Name">${patient.patient_name}</td>
+                                <td data-label="Room/Bed">${patient.room_bed}</td>
+                                <td data-label="Action"><button class="action-btn view-record" data-id="${patient.patient_id}"><i class="fas fa-file-medical"></i> View</button></td>
+                            `;
+                            inpatientsTbody.appendChild(tr);
+                        });
+                    } else {
+                        inpatientsTbody.innerHTML = `<tr><td colspan="3" style="text-align: center;">No active in-patients.</td></tr>`;
+                    }
+                }
+            } else {
+                 console.error("Dashboard Error:", result.message);
+                 if (appointmentsTbody) appointmentsTbody.innerHTML = `<tr><td colspan="5" class="loading-placeholder" style="color:var(--danger-color);">Failed to load data.</td></tr>`;
+                 if (inpatientsTbody) inpatientsTbody.innerHTML = `<tr><td colspan="3" class="loading-placeholder" style="color:var(--danger-color);">Failed to load data.</td></tr>`;
+            }
+        } catch (error) {
+            console.error("Failed to fetch dashboard data:", error);
+        }
+    }
+
+    // ===================================================================
+    // --- Quick Actions Logic ---
+    // ===================================================================
+    const quickAdmitBtn = document.getElementById('quick-action-admit');
+    const quickPrescribeBtn = document.getElementById('quick-action-prescribe');
+    const quickLabBtn = document.getElementById('quick-action-lab');
+    const quickDischargeBtn = document.getElementById('quick-action-discharge');
+
+    if (quickAdmitBtn) {
+        quickAdmitBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // This function already opens the modal and loads patient/bed data
+            openAdmitPatientModal(); 
+        });
+    }
+
+    if (quickPrescribeBtn) {
+        quickPrescribeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // Simulate a click on the main "Create" button to reuse its logic
+            document.getElementById('create-prescription-btn').click();
+        });
+    }
+
+    if (quickLabBtn) {
+        quickLabBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // Simulate a click on the main "Place Order" button
+            document.getElementById('place-lab-order-btn').click();
+        });
+    }
+
+    if (quickDischargeBtn) {
+        quickDischargeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // Find the sidebar link for discharges and simulate a click to switch pages
+            const dischargeNavLink = document.querySelector('.nav-link[data-page="discharge"]');
+            if (dischargeNavLink) {
+                dischargeNavLink.click();
+            }
+        });
+    }
+
+    // ===================================================================
     // --- My Patients Page Logic ---
     // ===================================================================
     let allPatientsData = []; // Cache for client-side filtering
@@ -1415,5 +1533,8 @@ if (placeLabOrderBtn && labOrderModal) {
             });
         });
     }
+
+    // --- Initial Load for the Dashboard Page ---
+    loadDashboardData();
 
 }); // End of DOMContentLoaded
