@@ -1,18 +1,21 @@
 -- This is the complete and updated database schema for MedSync.
--- Version 2.3
--- This version includes a new 'specialities' table for better data integrity.
+-- Version 2.1
+-- This version includes improvements for data integrity, performance, and clarity.
 -- Key changes include:
--- 1. Added a 'specialities' table to store a normalized list of doctor specialities.
--- 2. Modified the 'doctors' table to use a 'specialty_id' foreign key.
--- 3. Renamed 'lab_results' to 'lab_orders' to better reflect its function.
--- 4. Added an 'ordered' status to the lab orders table.
--- 5. Added an 'ordered_at' timestamp to track when a doctor places an order.
+-- 1. Merged 'beds' and 'rooms' into a single 'accommodations' table.
+-- 2. Replaced ENUM for user roles with a dedicated 'roles' table.
+-- 3. Enforced foreign key for 'staff.assigned_department'.
+-- 4. Added performance-enhancing indexes on frequently queried columns.
+-- 5. Improved naming conventions for clarity (e.g., 'is_active', 'is_available').
+-- 6. Integrated admission_id into prescriptions and transactions for better billing linkage.
+-- 7. Added a cost column to lab_results.
 
 CREATE DATABASE IF NOT EXISTS `medsync` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE `medsync`;
 
 --
 -- Table structure for table `roles`
+-- Description: Replaces the ENUM in the users table for better scalability.
 --
 CREATE TABLE `roles` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -52,7 +55,7 @@ CREATE TABLE `users` (
   UNIQUE KEY `username` (`username`),
   UNIQUE KEY `email` (`email`),
   UNIQUE KEY `display_user_id` (`display_user_id`),
-  KEY `name` (`name`),
+  KEY `name` (`name`), -- Index for faster name searches
   KEY `fk_users_role` (`role_id`),
   CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`) ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -79,12 +82,12 @@ CREATE TABLE `activity_logs` (
 --
 CREATE TABLE `departments` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `name` varchar(100) NOT NULL,
   `head_of_department_id` int(11) NULL DEFAULT NULL,
+  `name` varchar(100) NOT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`),
-  KEY `fk_dept_head` (`head_of_department_id`),
+   KEY `fk_dept_head` (`head_of_department_id`),
   CONSTRAINT `fk_dept_head` FOREIGN KEY (`head_of_department_id`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -117,10 +120,10 @@ INSERT INTO `specialities` (`id`, `name`) VALUES
 (3, 'Neurology'),
 (4, 'Orthopedics'),
 (5, 'Pediatrics');
-
 --
 -- Table structure for table `doctors`
 --
+
 CREATE TABLE `doctors` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `user_id` int(11) NOT NULL,
@@ -129,10 +132,11 @@ CREATE TABLE `doctors` (
   `department_id` int(11) DEFAULT NULL,
   `is_available` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1 = Available, 0 = On Leave',
   `slots` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'JSON array of available time slots',
+  `office_floor` VARCHAR(50) NULL DEFAULT 'Ground Floor',
+  `office_room_number` VARCHAR(50) NULL DEFAULT 'N/A',
   PRIMARY KEY (`id`),
   UNIQUE KEY `user_id` (`user_id`),
   KEY `fk_doctors_department` (`department_id`),
-  KEY `fk_doctors_specialty` (`specialty_id`),
   CONSTRAINT `doctors_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_doctors_department` FOREIGN KEY (`department_id`) REFERENCES `departments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_doctors_specialty` FOREIGN KEY (`specialty_id`) REFERENCES `specialities` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
@@ -209,6 +213,7 @@ CREATE TABLE `wards` (
 
 --
 -- Table structure for table `accommodations`
+-- Description: Merged table for 'beds' and 'rooms' to reduce redundancy.
 --
 CREATE TABLE `accommodations` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
@@ -275,7 +280,7 @@ CREATE TABLE `appointments` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Table structure for table `transactions`
+-- Table structure for table `transactions` (UPDATED)
 --
 CREATE TABLE `transactions` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -325,28 +330,28 @@ CREATE TABLE `system_settings` (
 INSERT INTO `system_settings` (`setting_key`, `setting_value`) VALUES ('gmail_app_password', 'sswyqzegdpyixbyw');
 
 --
--- Table structure for table `lab_orders` (Previously lab_results)
+-- Table structure for table `lab_results` (UPDATED)
 --
-CREATE TABLE `lab_orders` (
+CREATE TABLE `lab_orders` (    
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `patient_id` int(11) NOT NULL,
   `doctor_id` int(11) DEFAULT NULL,
-  `staff_id` int(11) DEFAULT NULL COMMENT 'Staff member who processed the result',
+  `staff_id` int(11) DEFAULT NULL COMMENT 'Staff member who entered the result',
   `ordered_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `test_name` varchar(255) NOT NULL,
   `test_date` date DEFAULT NULL,
-  `status` enum('ordered','pending','processing','completed') NOT NULL DEFAULT 'ordered',
+  `status` ENUM('ordered','pending', 'processing', 'completed') NOT NULL DEFAULT 'ordered',
   `result_details` text DEFAULT NULL,
-  `cost` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `cost` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
   `attachment_path` varchar(255) DEFAULT NULL COMMENT 'Path to an uploaded file (e.g., PDF)',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `patient_id` (`patient_id`),
   KEY `doctor_id` (`doctor_id`),
   KEY `staff_id` (`staff_id`),
-  CONSTRAINT `fk_lab_orders_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `fk_lab_orders_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `fk_lab_orders_staff` FOREIGN KEY (`staff_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+  CONSTRAINT `fk_lab_results_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_lab_results_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_lab_results_staff` FOREIGN KEY (`staff_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -386,7 +391,7 @@ CREATE TABLE `messages` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Table structure for table `prescriptions`
+-- Table structure for table `prescriptions` (UPDATED)
 --
 CREATE TABLE `prescriptions` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -400,7 +405,7 @@ CREATE TABLE `prescriptions` (
   PRIMARY KEY (`id`),
   KEY `patient_id` (`patient_id`),
   KEY `doctor_id` (`doctor_id`),
-  KEY `prescription_date` (`prescription_date`),
+  KEY `prescription_date` (`prescription_date`), -- Index for faster date-based searches
   KEY `fk_prescription_admission` (`admission_id`),
   CONSTRAINT `fk_prescriptions_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_prescriptions_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -427,7 +432,8 @@ CREATE TABLE `prescription_items` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
---Table for automated discharge process
+-- Table structure for table `discharge_clearance`
+-- Description: Manages automated discharge process steps (nursing, pharmacy, billing) and discharge summary data for PDF generation.
 --
 CREATE TABLE `discharge_clearance` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
@@ -437,12 +443,17 @@ CREATE TABLE `discharge_clearance` (
   `cleared_by_user_id` INT(11) DEFAULT NULL,
   `cleared_at` TIMESTAMP NULL DEFAULT NULL,
   `notes` TEXT DEFAULT NULL,
+  `discharge_date` DATE DEFAULT NULL COMMENT 'Date of discharge, used for summary PDF',
+  `summary_text` TEXT DEFAULT NULL COMMENT 'Narrative summary for discharge, used for PDF',
+  `doctor_id` INT(11) DEFAULT NULL COMMENT 'Doctor who authored the discharge summary',
   PRIMARY KEY (`id`),
   UNIQUE KEY `unique_clearance_step` (`admission_id`, `clearance_step`),
+  KEY `discharge_date` (`discharge_date`),
+  KEY `fk_discharge_clearance_doctor` (`doctor_id`),
   CONSTRAINT `fk_clearance_admission` FOREIGN KEY (`admission_id`) REFERENCES `admissions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `fk_clearance_user` FOREIGN KEY (`cleared_by_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `fk_clearance_user` FOREIGN KEY (`cleared_by_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_discharge_clearance_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
 
 --
 -- Table structure for table `feedback`

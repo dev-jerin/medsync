@@ -1085,9 +1085,10 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
 
 
                         case 'active_doctors':
-                            $sql = "SELECT u.id, u.name, d.specialty 
+                            $sql = "SELECT u.id, u.name, sp.name as specialty
                                     FROM users u 
                                     JOIN doctors d ON u.id = d.user_id 
+                                    LEFT JOIN specialities sp ON d.specialty_id = sp.id
                                     JOIN roles r ON u.role_id = r.id
                                     WHERE u.is_active = 1 AND r.role_name = 'doctor' 
                                     ORDER BY u.name ASC";
@@ -1163,24 +1164,37 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $role_name = $_GET['role'];
                     $search = $_GET['search'] ?? '';
 
-                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, u.email, u.phone, r.role_name as role, u.is_active as active, u.created_at, u.date_of_birth, u.gender, u.profile_picture, sp.name as specialty, d.specialty_id";
+                    // Base query parts
+                    $select_clauses = [
+                        "u.id", "u.display_user_id", "u.name", "u.username", "u.email", "u.phone",
+                        "r.role_name as role", "u.is_active as active", "u.created_at",
+                        "u.date_of_birth", "u.gender", "u.profile_picture"
+                    ];
+                    $from_clause = " FROM users u JOIN roles r ON u.role_id = r.id ";
+                    $joins = "";
                     $params = [];
                     $types = "";
 
-                    // MODIFIED: Moved the JOINs out of the 'if' statement so they always apply
-                    $base_from = " FROM users u 
-                                 JOIN roles r ON u.role_id = r.id 
-                                 LEFT JOIN doctors d ON u.id = d.user_id 
-                                 LEFT JOIN specialities sp ON d.specialty_id = sp.id ";
-
+                    // Add role-specific columns and joins ONLY when needed
                     if ($role_name === 'doctor') {
-                        $sql .= ", d.qualifications, d.department_id, d.is_available as availability";
+                        $select_clauses = array_merge($select_clauses, [
+                            "sp.name as specialty", "d.specialty_id", "d.qualifications",
+                            "d.department_id", "d.is_available as availability"
+                        ]);
+                        $joins .= " LEFT JOIN doctors d ON u.id = d.user_id ";
+                        $joins .= " LEFT JOIN specialities sp ON d.specialty_id = sp.id ";
                     } elseif ($role_name === 'staff') {
-                        $sql .= ", s.shift, s.assigned_department_id, dep.name as assigned_department";
-                        $base_from .= " LEFT JOIN staff s ON u.id = s.user_id LEFT JOIN departments dep ON s.assigned_department_id = dep.id ";
+                        $select_clauses = array_merge($select_clauses, [
+                            "s.shift", "s.assigned_department_id", "dep.name as assigned_department"
+                        ]);
+                        $joins .= " LEFT JOIN staff s ON u.id = s.user_id ";
+                        $joins .= " LEFT JOIN departments dep ON s.assigned_department_id = dep.id ";
                     }
-                    $sql .= $base_from;
+                    
+                    // Construct the final SQL
+                    $sql = "SELECT " . implode(", ", $select_clauses) . $from_clause . $joins;
 
+                    // Build WHERE clause
                     $where_clauses = [];
                     if ($role_name !== 'all_users') {
                         $where_clauses[] = "r.role_name = ?";
@@ -1202,6 +1216,9 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $sql .= " ORDER BY u.created_at DESC";
 
                     $stmt = $conn->prepare($sql);
+                    if (!$stmt) {
+                        throw new Exception("SQL query preparation failed: " . $conn->error);
+                    }
                     if (!empty($params)) {
                         $stmt->bind_param($types, ...$params);
                     }
@@ -1637,7 +1654,7 @@ case 'staff_for_shifting':
                     $admin_id = $_SESSION['user_id'];
                     $sql = "SELECT COUNT(*) as unread_count 
                             FROM notifications
-                            WHERE (recipient_user_id = ? OR recipient_role = 'admin' OR recipient_role = 'all') AND is_read = 0";
+                            WHERE (recipient_user_id = ? OR n.recipient_role = 'admin' OR n.recipient_role = 'all') AND is_read = 0";
                     $stmt = $conn->prepare($sql);
                     $stmt->bind_param("i", $admin_id);
                     $stmt->execute();
