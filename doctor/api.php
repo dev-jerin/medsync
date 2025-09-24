@@ -21,6 +21,40 @@ function log_activity($conn, $user_id, $action, $target_user_id = null, $details
     $stmt->close();
 }
 
+// --- NEW HELPER FUNCTIONS ---
+
+/**
+ * Fetches a list of specialties from the database.
+ *
+ * @param mysqli $conn The database connection object.
+ * @return array An array of specialties.
+ */
+function get_specialities($conn) {
+    $specialities = [];
+    $sql = "SELECT id, name FROM specialities ORDER BY name ASC";
+    $result = $conn->query($sql);
+    if ($result) {
+        $specialities = $result->fetch_all(MYSQLI_ASSOC);
+    }
+    return $specialities;
+}
+
+/**
+ * Fetches a list of active departments from the database.
+ *
+ * @param mysqli $conn The database connection object.
+ * @return array An array of departments.
+ */
+function get_departments($conn) {
+    $departments = [];
+    $sql = "SELECT id, name FROM departments WHERE is_active = 1 ORDER BY name ASC";
+    $result = $conn->query($sql);
+    if ($result) {
+        $departments = $result->fetch_all(MYSQLI_ASSOC);
+    }
+    return $departments;
+}
+
 
 // --- Security & Session Management ---
 // 1. Check if user is logged in
@@ -78,13 +112,16 @@ if (!isset($_REQUEST['action'])) {
     $specialty = '';
     $profile_picture = 'default.png'; // Fallback default
     $display_user_id = htmlspecialchars($_SESSION['display_user_id']);
+    $qualifications = ''; // Initialize qualifications
 
-    // Updated query to fetch profile_picture
+    // Updated query to fetch profile_picture, qualifications, department, and specialty
     $stmt = $conn->prepare("
-    SELECT u.username, u.name, u.email, u.phone, u.gender, u.date_of_birth, u.profile_picture, s.name as specialty 
+    SELECT u.username, u.name, u.email, u.phone, u.gender, u.date_of_birth, u.profile_picture, 
+           s.name as specialty, d.qualifications, dep.name as department
     FROM users u 
     LEFT JOIN doctors d ON u.id = d.user_id 
-    LEFT JOIN specialities s ON d.specialty_id = s.id 
+    LEFT JOIN specialities s ON d.specialty_id = s.id
+    LEFT JOIN departments dep ON d.department_id = dep.id
     WHERE u.id = ?
 ");
     $stmt->bind_param("i", $user_id);
@@ -98,7 +135,7 @@ if (!isset($_REQUEST['action'])) {
         $gender = htmlspecialchars($row['gender']);
         $date_of_birth = htmlspecialchars($row['date_of_birth']);
         $specialty = htmlspecialchars($row['specialty']);
-        // Set profile picture, ensuring it's not null or empty
+        $qualifications = htmlspecialchars($row['qualifications']);
         $profile_picture = !empty($row['profile_picture']) ? htmlspecialchars($row['profile_picture']) : 'default.png';
     }
     $stmt->close();
@@ -120,6 +157,30 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         $input = json_decode(file_get_contents('php://input'), true);
         $action = $input['action'] ?? $action; 
     }
+    
+    // --- START: NEW CASES FOR DROPDOWNS & PROFILE DATA ---
+    if ($action == 'get_specialities') {
+        echo json_encode(['success' => true, 'data' => get_specialities($conn)]);
+        exit();
+    }
+
+    if ($action == 'get_departments') {
+        echo json_encode(['success' => true, 'data' => get_departments($conn)]);
+        exit();
+    }
+    
+    if ($action == 'get_doctor_details') {
+        $stmt = $conn->prepare("SELECT specialty_id, department_id, qualifications FROM doctors WHERE user_id = ?");
+        $stmt->bind_param("i", $current_user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $data = $result->fetch_assoc();
+        $stmt->close();
+        echo json_encode(['success' => true, 'data' => $data]);
+        exit();
+    }
+    // --- END: NEW CASES ---
+
 
     // ==========================================================
     // --- DASHBOARD ACTIONS ---
@@ -274,20 +335,35 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
     // --- APPOINTMENTS ACTIONS ---
     // ==========================================================
     if ($action == 'get_appointments') {
-        $period = $_GET['period'] ?? 'today'; 
+        $period = $_GET['period'] ?? 'today';
+        $filter_date = $_GET['date'] ?? null;
+
         $sql = "
             SELECT a.id, a.appointment_date, a.status, a.token_number, p.name AS patient_name, p.display_user_id AS patient_display_id
             FROM appointments a JOIN users p ON a.user_id = p.id
             WHERE a.doctor_id = ? 
         ";
-        switch ($period) {
-            case 'upcoming': $sql .= " AND DATE(a.appointment_date) > CURDATE() ORDER BY a.appointment_date ASC"; break;
-            case 'past': $sql .= " AND DATE(a.appointment_date) < CURDATE() ORDER BY a.appointment_date DESC"; break;
-            default: $sql .= " AND DATE(a.appointment_date) = CURDATE() ORDER BY a.appointment_date ASC"; break;
+        $params = [$current_user_id];
+        $types = "i";
+
+        if (!empty($filter_date)) {
+            $sql .= " AND DATE(a.appointment_date) = ?";
+            $params[] = $filter_date;
+            $types .= "s";
+        } else {
+            switch ($period) {
+                case 'upcoming': $sql .= " AND DATE(a.appointment_date) > CURDATE()"; break;
+                case 'past': $sql .= " AND DATE(a.appointment_date) < CURDATE()"; break;
+                default: $sql .= " AND DATE(a.appointment_date) = CURDATE()"; break;
+            }
         }
+
+        $sql .= " ORDER BY a.appointment_date ASC";
+
         $stmt = $conn->prepare($sql);
         if (!$stmt) die(json_encode(['success' => false, 'message' => 'Query preparation failed: ' . $conn->error]));
-        $stmt->bind_param("i", $current_user_id);
+        
+        $stmt->bind_param($types, ...$params);
         $stmt->execute();
         $result = $stmt->get_result();
         $appointments = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
@@ -451,38 +527,72 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
     }
     
     // ==========================================================
-    // --- PROFILE & GENERAL ACTIONS ---
+    // --- PROFILE & GENERAL ACTIONS (REVISED) ---
     // ==========================================================
     if ($action == 'update_personal_info' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        // 1. Data Retrieval
         $name = trim($_POST['name'] ?? '');
         $email = trim($_POST['email'] ?? '');
         $phone = trim($_POST['phone'] ?? '');
-        $specialty = trim($_POST['specialty'] ?? '');
         $dob = !empty($_POST['date_of_birth']) ? $_POST['date_of_birth'] : null;
         $gender = $_POST['gender'] ?? '';
-        
-        if (empty($name) || empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            echo json_encode(['success' => false, 'message' => 'Please provide a valid name and email address.']);
+        $specialty_id = !empty($_POST['specialty_id']) ? (int)$_POST['specialty_id'] : null;
+        $department_id = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
+        $qualifications = trim($_POST['qualifications'] ?? '');
+    
+        // 2. Server-Side Validation
+        if (empty($name) || empty($email) || empty($phone)) {
+            echo json_encode(['success' => false, 'message' => 'Full Name, Email, and Phone Number are required.']);
             exit();
         }
-
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            echo json_encode(['success' => false, 'message' => 'Invalid email format.']);
+            exit();
+        }
+        if (!preg_match('/^\+91\d{10}$/', $phone)) {
+            echo json_encode(['success' => false, 'message' => 'Phone number must be in the format +91xxxxxxxxxx.']);
+            exit();
+        }
+        if ($dob) {
+            $d = DateTime::createFromFormat('Y-m-d', $dob);
+            if (!$d || $d->format('Y-m-d') !== $dob || strlen(explode('-', $dob)[0]) > 4) {
+                echo json_encode(['success' => false, 'message' => 'Invalid Date of Birth format.']);
+                exit();
+            }
+        }
+    
+        // 3. Database Transaction
         $conn->begin_transaction();
         try {
+            // Update users table
             $stmt_user = $conn->prepare("UPDATE users SET name = ?, email = ?, phone = ?, gender = ?, date_of_birth = ? WHERE id = ?");
             $stmt_user->bind_param("sssssi", $name, $email, $phone, $gender, $dob, $current_user_id);
             $stmt_user->execute();
             
-            $stmt_doctor = $conn->prepare("UPDATE doctors SET specialty = ? WHERE user_id = ?");
-            $stmt_doctor->bind_param("si", $specialty, $current_user_id);
+            // Update doctors table (Use INSERT...ON DUPLICATE KEY UPDATE to handle both new and existing doctors)
+            $stmt_doctor = $conn->prepare("
+                INSERT INTO doctors (user_id, specialty_id, department_id, qualifications) 
+                VALUES (?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE 
+                    specialty_id = VALUES(specialty_id), 
+                    department_id = VALUES(department_id), 
+                    qualifications = VALUES(qualifications)
+            ");
+            $stmt_doctor->bind_param("iiis", $current_user_id, $specialty_id, $department_id, $qualifications);
             $stmt_doctor->execute();
             
             log_activity($conn, $current_user_id, 'Profile Updated', null, 'Personal info changed.');
             $conn->commit();
-            $_SESSION['name'] = $name;
+            $_SESSION['name'] = $name; // Update session name
             echo json_encode(['success' => true, 'message' => 'Profile updated successfully!']);
         } catch (mysqli_sql_exception $exception) {
             $conn->rollback();
-            echo json_encode(['success' => false, 'message' => $conn->errno === 1062 ? 'Error: This email address is already in use.' : 'A database error occurred.']);
+            // Check for duplicate email error
+            if ($conn->errno === 1062) {
+                 echo json_encode(['success' => false, 'message' => 'Error: This email address is already in use by another account.']);
+            } else {
+                 echo json_encode(['success' => false, 'message' => 'A database error occurred. Please try again.']);
+            }
         } finally {
             if (isset($stmt_user)) $stmt_user->close();
             if (isset($stmt_doctor)) $stmt_doctor->close();
@@ -507,6 +617,48 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         exit();
     }
 
+    if ($action == 'updatePassword') {
+        // ADDED: A try...catch block to handle errors and send proper JSON responses
+        try {
+            $current_password = $_POST['current_password'];
+            $new_password = $_POST['new_password'];
+
+            if ($new_password !== $_POST['confirm_password']) {
+                throw new Exception('New password and confirmation do not match.');
+            }
+            if (strlen($new_password) < 8) {
+                throw new Exception('New password must be at least 8 characters long.');
+            }
+
+            $stmt = $conn->prepare("SELECT password FROM users WHERE id = ?");
+            // CHANGED: Use the correct session variable '$current_user_id' instead of '$user_id'
+            $stmt->bind_param("i", $current_user_id);
+            $stmt->execute();
+            $result = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            if ($result && password_verify($current_password, $result['password'])) {
+                $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
+                $stmt_update = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
+                // CHANGED: Use the correct session variable here as well
+                $stmt_update->bind_param("si", $hashed_password, $current_user_id);
+                
+                if ($stmt_update->execute()) {
+                    log_activity($conn, $current_user_id, 'update_password', $current_user_id, 'User changed their own password.');
+                    echo json_encode(['success' => true, 'message' => 'Password changed successfully.']);
+                } else {
+                    throw new Exception('Failed to update password in the database.');
+                }
+                $stmt_update->close();
+            } else {
+                throw new Exception('Incorrect current password.');
+            }
+        } catch (Exception $e) {
+            // This 'catch' block ensures errors are sent back as JSON
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit();
+    }
     // ==========================================================
     // --- MESSENGER ACTIONS ---
     // ==========================================================
