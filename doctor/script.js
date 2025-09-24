@@ -508,11 +508,57 @@ document.addEventListener("DOMContentLoaded", function() {
                 <td data-label="Status"><span class="status ${rx.status.toLowerCase()}">${rx.status}</span></td>
                 <td data-label="Actions">
                     <button class="action-btn view-prescription" data-id="${rx.id}"><i class="fas fa-eye"></i> View</button>
-                    <button class="action-btn" data-id="${rx.id}"><i class="fas fa-share-square"></i> Share</button>
+                    <button class="action-btn print-prescription" data-id="${rx.id}"><i class="fas fa-print"></i> Print</button>
                 </td>
             `;
             tableBody.appendChild(tr);
         });
+    }
+
+    async function openViewPrescriptionModal(prescriptionId) {
+        try {
+            const response = await fetch(`api.php?action=get_prescription_details&id=${prescriptionId}`);
+            const result = await response.json();
+
+            if (result.success) {
+                const rx = result.data;
+                
+                // Populate modal fields
+                document.getElementById('rx-patient-name').textContent = rx.patient_name;
+                document.getElementById('rx-patient-id').textContent = rx.patient_display_id;
+                document.getElementById('rx-date').textContent = new Date(rx.prescription_date).toLocaleDateString();
+                document.getElementById('rx-notes-content').textContent = rx.notes || 'No specific notes provided.';
+
+                const medicationList = document.getElementById('rx-medication-list');
+                medicationList.innerHTML = ''; // Clear previous items
+                
+                if (rx.items.length > 0) {
+                    rx.items.forEach(item => {
+                        const row = `
+                            <tr>
+                                <td>
+                                    <div class="med-name">${item.name}</div>
+                                    <div class="med-details">${item.dosage} - ${item.frequency} (Qty: ${item.quantity_prescribed})</div>
+                                </td>
+                            </tr>
+                        `;
+                        medicationList.innerHTML += row;
+                    });
+                } else {
+                    medicationList.innerHTML = '<tr><td>No medications listed.</td></tr>';
+                }
+
+                document.getElementById('print-prescription-btn').dataset.id = prescriptionId;
+
+                openModalById('prescription-view-modal-overlay');
+
+            } else {
+                alert(`Error: ${result.message}`);
+            }
+        } catch (error) {
+            console.error('Failed to fetch prescription details:', error);
+            alert('Could not load prescription details.');
+        }
     }
 
     function filterPrescriptions() {
@@ -1660,6 +1706,20 @@ document.querySelectorAll('.toggle-password').forEach(icon => {
 
     const prescriptionsPage = document.getElementById('prescriptions-page');
     if (prescriptionsPage) {
+        prescriptionsPage.addEventListener('click', function(e) {
+            const viewButton = e.target.closest('.view-prescription');
+            const printButton = e.target.closest('.print-prescription'); // New
+
+            if (viewButton) {
+                const prescriptionId = viewButton.dataset.id;
+                openViewPrescriptionModal(prescriptionId);
+            } else if (printButton) { // New else-if block
+                const prescriptionId = printButton.dataset.id;
+                if(prescriptionId) {
+                    window.open(`api.php?action=download_prescription&id=${prescriptionId}`, '_blank');
+                }
+            }
+        });
         document.getElementById('prescription-search').addEventListener('input', filterPrescriptions);
         document.getElementById('prescription-date-filter').addEventListener('change', filterPrescriptions);
     }
@@ -1687,3 +1747,17 @@ document.querySelectorAll('.toggle-password').forEach(icon => {
     loadDashboardData();
 
 });
+
+// Add this new event listener for the modal's print button
+const prescriptionViewModal = document.getElementById('prescription-view-modal-overlay');
+if (prescriptionViewModal) {
+    prescriptionViewModal.addEventListener('click', function(e) {
+        const printBtn = e.target.closest('#print-prescription-btn');
+        if (printBtn) {
+            const prescriptionId = printBtn.dataset.id;
+            if (prescriptionId) {
+                window.open(`api.php?action=download_prescription&id=${prescriptionId}`, '_blank');
+            }
+        }
+    });
+}

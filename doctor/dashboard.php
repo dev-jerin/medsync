@@ -45,7 +45,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                 </ul>
             </nav>
             <div class="sidebar-footer">
-                 <a href="../logout" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
+                 <a href="../logout.php" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
             </div>
         </aside>
 
@@ -259,9 +259,13 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         <div class="conversation-search">
                             <input type="text" placeholder="Search by name or ID...">
                         </div>
-                        <div class="loading-placeholder" style="padding: 2rem; text-align: center;">
-                            <i class="fas fa-spinner fa-spin"></i> Loading conversations...
+                        
+                        <div id="conversation-list-items">
+                            <div class="loading-placeholder" style="padding: 2rem; text-align: center;">
+                                <i class="fas fa-spinner fa-spin"></i> Loading conversations...
+                            </div>
                         </div>
+
                     </div>
                     <div class="chat-window">
                         <div class="chat-header">
@@ -500,10 +504,12 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     <form id="prescription-form">
                         <div class="form-grid">
                             <div class="form-group full-width">
-                                <label for="patient-select-presc">Select Patient</label>
-                                <select id="patient-select-presc" name="patient_id" required>
-                                    <option value="">-- Choose a patient --</option>
-                                </select>
+                                <label for="patient-search-presc">Select Patient</label>
+                                <div class="med-search-group">
+                                    <input type="hidden" id="patient-id-presc" name="patient_id" required>
+                                    <input type="text" id="patient-search-presc" placeholder="Search by Patient Name or ID..." autocomplete="off" required>
+                                    <div class="search-results-dropdown" id="patient-search-results"></div>
+                                </div>
                             </div>
                         </div>
 
@@ -660,15 +666,15 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         <div class="rx-hospital-details">
                             <img src="../images/logo.png" alt="MedSync Logo" class="rx-logo">
                             <div>
-                                <strong>MedSync Hospital</strong><br>
-                                123 Health St, Wellness City<br>
-                                medsync.hospital@email.com
+                                <strong>MedSync </strong><br>
+                                Kerala, India<br>
+                                medsync.calysta@gmail.com
                             </div>
                         </div>
                         <div class="rx-doctor-details">
                             <strong>Dr. <?php echo htmlspecialchars($full_name, ENT_QUOTES, 'UTF-8'); ?></strong><br>
                             <?php echo htmlspecialchars($specialty, ENT_QUOTES, 'UTF-8'); ?><br>
-                            Reg. No: MS-DOC-12345
+                            Reg. No: <?php echo htmlspecialchars($display_user_id, ENT_QUOTES, 'UTF-8'); ?>
                         </div>
                     </div>
                     <div class="rx-patient-details">

@@ -1327,7 +1327,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     $response = ['success' => true, 'data' => $messages];
                     break;
 
-case 'staff_for_shifting':
+                case 'staff_for_shifting':
                     $search = $_GET['search'] ?? '';
                     $sql = "SELECT u.id, u.name, u.display_user_id, s.shift 
                             FROM users u 
