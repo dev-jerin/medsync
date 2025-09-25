@@ -472,7 +472,15 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
             $stmt = $conn->prepare("UPDATE accommodations SET status = ?, patient_id = NULL, occupied_since = NULL WHERE id = ?");
             $stmt->bind_param("si", $new_status, $id);
             if ($stmt->execute()) {
-                log_activity($conn, $current_user_id, 'Accommodation Status Update', null, "Set accommodation ID {$id} to {$new_status}");
+                // Fetch identifier for better logging
+                $sql_ident = "SELECT CASE WHEN acc.type = 'room' THEN CONCAT('Room ', acc.number) ELSE CONCAT(w.name, ' - Bed ', acc.number) END AS identifier FROM accommodations acc LEFT JOIN wards w ON acc.ward_id = w.id WHERE acc.id = ?";
+                $stmt_ident = $conn->prepare($sql_ident);
+                $stmt_ident->bind_param("i", $id);
+                $stmt_ident->execute();
+                $identifier = $stmt_ident->get_result()->fetch_assoc()['identifier'] ?? "ID {$id}";
+                $stmt_ident->close();
+
+                log_activity($conn, $current_user_id, 'Bed Status Updated', null, "Set {$identifier} to {$new_status}");
                 echo json_encode(['success' => true, 'message' => ucfirst($type) . ' status updated successfully.']);
             } else {
                 echo json_encode(['success' => false, 'message' => 'Database error: Failed to update status.']);
@@ -593,8 +601,31 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
             }
             $stmt_item->close();
 
+            // Get patient and medicine names for detailed logging
+            $stmt_patient = $conn->prepare("SELECT name FROM users WHERE id = ?");
+            $stmt_patient->bind_param("i", $patient_id);
+            $stmt_patient->execute();
+            $patient_name = $stmt_patient->get_result()->fetch_assoc()['name'] ?? 'N/A';
+            $stmt_patient->close();
+
+            $medicine_names = [];
+            $medicine_ids = array_column($items, 'medicine_id');
+            if (!empty($medicine_ids)) {
+                $sql_meds = "SELECT name FROM medicines WHERE id IN (" . implode(',', array_fill(0, count($medicine_ids), '?')) . ")";
+                $stmt_meds = $conn->prepare($sql_meds);
+                $stmt_meds->bind_param(str_repeat('i', count($medicine_ids)), ...$medicine_ids);
+                $stmt_meds->execute();
+                $result_meds = $stmt_meds->get_result();
+                while ($row = $result_meds->fetch_assoc()) {
+                    $medicine_names[] = $row['name'];
+                }
+                $stmt_meds->close();
+            }
+
+            $log_details = "Issued Rx ID: {$prescription_id} to {$patient_name}. Medications: " . implode(', ', $medicine_names);
+            
             $conn->commit();
-            log_activity($conn, $current_user_id, 'Prescription Issued', $patient_id, "Prescription ID: {$prescription_id}");
+            log_activity($conn, $current_user_id, 'Prescription Issued', $patient_id, $log_details);
             echo json_encode(['success' => true, 'message' => 'Prescription created successfully!']);
         } catch (Exception $e) {
             $conn->rollback();
@@ -695,7 +726,8 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
             $stmt_doctor->bind_param("iiis", $current_user_id, $specialty_id, $department_id, $qualifications);
             $stmt_doctor->execute();
             
-            log_activity($conn, $current_user_id, 'Profile Updated', null, 'Personal info changed.');
+            $log_details = "Updated profile details. Name: {$name}, Email: {$email}, Phone: {$phone}, Qualifications: {$qualifications}.";
+            log_activity($conn, $current_user_id, 'Profile Updated', $current_user_id, $log_details);
             $conn->commit();
             $_SESSION['name'] = $name; // Update session name
             echo json_encode(['success' => true, 'message' => 'Profile updated successfully!']);
@@ -758,7 +790,7 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
                 $stmt_update->bind_param("si", $hashed_password, $current_user_id);
                 
                 if ($stmt_update->execute()) {
-                    log_activity($conn, $current_user_id, 'update_password', $current_user_id, 'User changed their own password.');
+                    log_activity($conn, $current_user_id, 'Password Changed', $current_user_id, 'User changed their own password.');
                     echo json_encode(['success' => true, 'message' => 'Password changed successfully.']);
                 } else {
                     throw new Exception('Failed to update password in the database.');
@@ -956,9 +988,17 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
                 }
             }
             $stmt->close();
-            $conn->commit();
             
-            log_activity($conn, $current_user_id, 'Lab Order Placed', $patient_id, count($test_names) . " test(s) ordered.");
+            $stmt_patient = $conn->prepare("SELECT name FROM users WHERE id = ?");
+            $stmt_patient->bind_param("i", $patient_id);
+            $stmt_patient->execute();
+            $patient_name = $stmt_patient->get_result()->fetch_assoc()['name'] ?? 'N/A';
+            $stmt_patient->close();
+            
+            $log_details = "Ordered for {$patient_name}: " . implode(', ', $test_names);
+            log_activity($conn, $current_user_id, 'Lab Order Placed', $patient_id, $log_details);
+            
+            $conn->commit();
             echo json_encode(['success' => true, 'message' => 'Lab order(s) placed successfully.']);
 
         } catch (Exception $e) {

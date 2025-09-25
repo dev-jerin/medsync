@@ -157,7 +157,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     <div class="tabs"><button class="tab-link active" data-tab="today">Today's</button><button class="tab-link" data-tab="upcoming">Upcoming</button><button class="tab-link" data-tab="past">Past</button></div>
                     <div class="filters">
     <input type="text" class="search-bar" placeholder="Search by patient name...">
-    <input type="date" id="appointment-date-filter" class="date-filter" > 
+    <input type="date" id="appointment-date-filter" class="date-filter" max=<?php echo date('Y-m-d'); ?>> 
     <select class="status-filter"><option value="all">All Statuses</option><option value="confirmed">Confirmed</option><option value="completed">Completed</option><option value="canceled">Canceled</option></select>
 </div>
                     <div id="today-tab" class="appointment-tab active">
@@ -508,7 +508,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                                 <div class="med-search-group">
                                     <input type="hidden" id="patient-id-presc" name="patient_id" required>
                                     <input type="text" id="patient-search-presc" placeholder="Search by Patient Name or ID..." autocomplete="off" required>
-                                    <div class="search-results-dropdown" id="patient-search-results"></div>
+                                    <div class="search-results-dropdown" id="patient-search-results-presc"></div>
                                 </div>
                             </div>
                         </div>
@@ -535,7 +535,30 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
         <div class="modal-overlay" id="admit-patient-modal-overlay">
             <div class="modal-container">
                 <div class="modal-header"><h4>Admit New Patient</h4><button class="modal-close-btn" data-modal-id="admit-patient-modal-overlay">&times;</button></div>
-                <div class="modal-body"><form id="admit-patient-form"><div class="form-grid"><div class="form-group full-width"><label for="patient-select-admit">Select Patient</label><select id="patient-select-admit" name="patient_id" required><option value="">-- Choose an existing patient --</option></select></div><div class="form-group full-width"><label for="bed-select-admit">Assign Bed</label><select id="bed-select-admit" name="accommodation_id" required><option value="">-- Select an available bed --</option></select></div><div class="form-group full-width"><label for="admission-notes">Admission Notes</label><textarea id="admission-notes" name="notes" placeholder="Reason for admission, initial observations, etc."></textarea></div></div></form></div>
+                <div class="modal-body">
+                    <form id="admit-patient-form">
+                        <div class="form-grid">
+                            <div class="form-group full-width">
+                                <label for="patient-search-admit">Select Patient</label>
+                                <div class="med-search-group"> 
+                                    <input type="hidden" id="patient-id-admit" name="patient_id" required>
+                                    <input type="text" id="patient-search-admit" placeholder="Search by Patient Name or ID..." autocomplete="off" required>
+                                    <div class="search-results-dropdown" id="patient-search-results-admit"></div>
+                                </div>
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="bed-select-admit">Assign Bed</label>
+                                <select id="bed-select-admit" name="accommodation_id" required>
+                                    <option value="">-- Select an available bed --</option>
+                                </select>
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="admission-notes">Admission Notes</label>
+                                <textarea id="admission-notes" name="notes" placeholder="Reason for admission, initial observations, etc."></textarea>
+                            </div>
+                        </div>
+                    </form>
+                </div>
                 <div class="modal-footer"><button class="btn btn-secondary" data-modal-id="admit-patient-modal-overlay">Cancel</button><button class="btn btn-primary" id="modal-save-btn-admit" type="submit" form="admit-patient-form">Confirm Admission</button></div>
             </div>
         </div>
@@ -558,12 +581,14 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     <form id="lab-order-form">
                         <div class="form-grid">
                             <div class="form-group full-width">
-                                <label for="lab-order-patient-select">Select Patient</label>
-                                <select id="lab-order-patient-select" name="patient_id" required>
-                                    <option value="">-- Choose a patient --</option>
-                                </select>
+                                <label for="lab-order-patient-search">Select Patient</label>
+                                <div class="med-search-group">
+                                    <input type="hidden" id="lab-order-patient-id" name="patient_id" required>
+                                    <input type="text" id="lab-order-patient-search" placeholder="Search by Patient Name or ID..." autocomplete="off" required>
+                                    <div class="search-results-dropdown" id="lab-order-patient-results"></div>
+                                </div>
                             </div>
-                        </div>
+                            </div>
 
                         <div id="test-rows-container" style="margin-top: 1rem;">
                             </div>

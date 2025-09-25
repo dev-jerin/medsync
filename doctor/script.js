@@ -249,6 +249,43 @@ document.addEventListener("DOMContentLoaded", function() {
     // ===================================================================
     // --- Lab Orders Page Logic ---
     // ===================================================================
+    let allLabOrdersData = []; // Global variable to hold all lab order data
+
+    /**
+     * Renders the lab orders table with a given dataset.
+     * @param {Array} ordersToRender The array of lab order objects to display.
+     */
+    function renderLabOrdersTable(ordersToRender) {
+        const tableBody = document.querySelector('#lab-orders-table tbody');
+        tableBody.innerHTML = ''; // Clear the table first
+
+        if (ordersToRender.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No matching lab orders found.</td></tr>`;
+            return;
+        }
+
+        ordersToRender.forEach(order => {
+           const tr = document.createElement('tr');
+           let actionButtonHtml = `<button class="action-btn" disabled><i class="fas fa-spinner"></i> In Progress</button>`;
+           if (order.status.toLowerCase() === 'completed') {
+               actionButtonHtml = `<button class="action-btn view-lab-report" data-id="${order.id}"><i class="fas fa-file-alt"></i> View Report</button>`;
+           }
+
+           tr.innerHTML = `
+               <td data-label="Order ID">ORD-${order.id}</td>
+               <td data-label="Patient">${order.patient_name}</td>
+               <td data-label="Test Name">${order.test_name}</td>
+               <td data-label="Order Date">${new Date(order.ordered_at).toLocaleDateString()}</td>
+               <td data-label="Status"><span class="status ${order.status.toLowerCase()}">${order.status}</span></td>
+               <td data-label="Actions">${actionButtonHtml}</td>
+           `;
+           tableBody.appendChild(tr);
+        });
+    }
+
+    /**
+     * Fetches lab orders from the API and renders them.
+     */
     async function loadLabOrders() {
         const tableBody = document.querySelector('#lab-orders-table tbody');
         if (!tableBody) return;
@@ -258,39 +295,50 @@ document.addEventListener("DOMContentLoaded", function() {
             const response = await fetch('api.php?action=get_lab_orders');
             const result = await response.json();
 
-            tableBody.innerHTML = '';
-            if (result.success && result.data.length > 0) {
-                result.data.forEach(order => {
-                   const tr = document.createElement('tr');
-                   let actionButtonHtml = `<button class="action-btn" disabled><i class="fas fa-spinner"></i> In Progress</button>`;
-                   if (order.status.toLowerCase() === 'completed') {
-                       actionButtonHtml = `<button class="action-btn view-lab-report" data-id="${order.id}"><i class="fas fa-file-alt"></i> View Report</button>`;
-                   }
-
-                   tr.innerHTML = `
-                       <td data-label="Order ID">ORD-${order.id}</td>
-                       <td data-label="Patient">${order.patient_name}</td>
-                       <td data-label="Test Name">${order.test_name}</td>
-                       <td data-label="Order Date">${new Date(order.ordered_at).toLocaleDateString()}</td>
-                       <td data-label="Status"><span class="status ${order.status.toLowerCase()}">${order.status}</span></td>
-                       <td data-label="Actions">${actionButtonHtml}</td>
-                   `;
-                   tableBody.appendChild(tr);
-                });
+            if (result.success) {
+                allLabOrdersData = result.data; // Store the full dataset
+                renderLabOrdersTable(allLabOrdersData); // Render the initial full table
             } else {
                 tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No lab orders found.</td></tr>`;
             }
-
         } catch (error) {
             console.error("Error loading lab orders: ", error);
             tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger-color);">Failed to load lab orders.</td></tr>`;
         }
     }
+    
+    /**
+     * Filters and re-renders the lab orders table based on search and status filters.
+     */
+    function filterLabOrders() {
+        const searchTerm = document.getElementById('lab-search').value.toLowerCase();
+        const statusFilter = document.getElementById('lab-status-filter').value;
 
+        const filteredData = allLabOrdersData.filter(order => {
+            const searchMatch = order.patient_name.toLowerCase().includes(searchTerm) ||
+                                order.test_name.toLowerCase().includes(searchTerm);
+            
+            const statusMatch = (statusFilter === 'all') || (order.status.toLowerCase() === statusFilter);
+
+            return searchMatch && statusMatch;
+        });
+
+        renderLabOrdersTable(filteredData);
+    }
+
+    // Attach event listeners for the lab order filters
+    const labSearchInput = document.getElementById('lab-search');
+    const labStatusFilter = document.getElementById('lab-status-filter');
+    if (labSearchInput) labSearchInput.addEventListener('input', filterLabOrders);
+    if (labStatusFilter) labStatusFilter.addEventListener('change', filterLabOrders);
+
+
+    // --- Place New Lab Order Modal Logic ---
     const placeLabOrderBtn = document.getElementById('place-lab-order-btn');
     if (placeLabOrderBtn) {
         const testRowsContainer = document.getElementById('test-rows-container');
         const addTestRowBtn = document.getElementById('add-test-row-btn');
+        let patientSearchTimeout;
 
         function addTestRow() {
             const row = document.createElement('div');
@@ -305,26 +353,63 @@ document.addEventListener("DOMContentLoaded", function() {
             testRowsContainer.appendChild(row);
         }
 
-        placeLabOrderBtn.addEventListener('click', async () => {
+        // Open Modal and Prepare Form
+        placeLabOrderBtn.addEventListener('click', () => {
             const form = document.getElementById('lab-order-form');
             form.reset();
             testRowsContainer.innerHTML = '';
             addTestRow();
-
-            const patientSelect = document.getElementById('lab-order-patient-select');
-            patientSelect.innerHTML = '<option value="">Loading...</option>';
-            if (!patientListCache) { 
-                const response = await fetch('api.php?action=get_patients_for_dropdown');
-                const result = await response.json();
-                if (result.success) patientListCache = result.data;
-            }
-            patientSelect.innerHTML = '<option value="">-- Choose a patient --</option>';
-            patientListCache.forEach(p => {
-                patientSelect.innerHTML += `<option value="${p.id}">${p.display_user_id} - ${p.name}</option>`;
-            });
+            
+            // Clear previous search results and values
+            document.getElementById('lab-order-patient-search').value = '';
+            document.getElementById('lab-order-patient-id').value = '';
+            document.getElementById('lab-order-patient-results').innerHTML = '';
+            document.getElementById('lab-order-patient-results').classList.remove('active');
 
             openModalById('lab-order-modal-overlay');
         });
+        
+        // Handle Patient Search Input
+        const labPatientSearchInput = document.getElementById('lab-order-patient-search');
+        const labPatientResultsDiv = document.getElementById('lab-order-patient-results');
+        const labPatientIdInput = document.getElementById('lab-order-patient-id');
+
+        if (labPatientSearchInput) {
+            labPatientSearchInput.addEventListener('input', () => {
+                const searchTerm = labPatientSearchInput.value.trim();
+                labPatientResultsDiv.innerHTML = '';
+                labPatientResultsDiv.classList.remove('active');
+                
+                if (searchTerm.length < 2) return;
+
+                clearTimeout(patientSearchTimeout);
+                patientSearchTimeout = setTimeout(async () => {
+                    const response = await fetch(`api.php?action=search_patients&term=${encodeURIComponent(searchTerm)}`);
+                    const result = await response.json();
+
+                    if (result.success && result.data.length > 0) {
+                        result.data.forEach(patient => {
+                            const item = document.createElement('div');
+                            item.className = 'search-result-item';
+                            item.textContent = `${patient.name} (${patient.display_user_id})`;
+                            item.dataset.patientId = patient.id;
+                            item.dataset.patientName = patient.name;
+                            labPatientResultsDiv.appendChild(item);
+                        });
+                        labPatientResultsDiv.classList.add('active');
+                    }
+                }, 300);
+            });
+
+            labPatientResultsDiv.addEventListener('click', (e) => {
+                if (e.target.classList.contains('search-result-item')) {
+                    labPatientIdInput.value = e.target.dataset.patientId;
+                    labPatientSearchInput.value = e.target.dataset.patientName;
+                    labPatientResultsDiv.classList.remove('active');
+                }
+            });
+        }
+
 
         if (addTestRowBtn) addTestRowBtn.addEventListener('click', addTestRow);
 
@@ -339,11 +424,12 @@ document.addEventListener("DOMContentLoaded", function() {
             });
         }
         
+        // Handle Form Submission
         const labOrderForm = document.getElementById('lab-order-form');
         if (labOrderForm) {
             labOrderForm.addEventListener('submit', async function(e) {
                 e.preventDefault();
-                const patientId = document.getElementById('lab-order-patient-select').value;
+                const patientId = document.getElementById('lab-order-patient-id').value; // Get ID from hidden input
                 const testNameInputs = document.querySelectorAll('.test-name-input');
                 const testNames = Array.from(testNameInputs).map(input => input.value.trim()).filter(name => name);
         
@@ -429,25 +515,21 @@ document.addEventListener("DOMContentLoaded", function() {
     async function openAdmitPatientModal() {
         const form = document.getElementById('admit-patient-form');
         form.reset();
-
-        const patientSelect = document.getElementById('patient-select-admit');
+    
+        // Reset the new search fields instead of the old dropdown
+        document.getElementById('patient-search-admit').value = '';
+        document.getElementById('patient-id-admit').value = '';
+        const resultsDiv = document.getElementById('patient-search-results-admit');
+        resultsDiv.innerHTML = '';
+        resultsDiv.classList.remove('active');
+    
         const bedSelect = document.getElementById('bed-select-admit');
-        patientSelect.innerHTML = '<option value="">Loading...</option>';
-        bedSelect.innerHTML = '<option value="">Loading...</option>';
+        bedSelect.innerHTML = '<option value="">Loading beds...</option>';
         
         openModalById('admit-patient-modal-overlay');
-
+    
+        // The logic to fetch all patients is removed; we now only fetch available beds.
         try {
-            if (!patientListCache) {
-                const response = await fetch('api.php?action=get_patients_for_dropdown');
-                const result = await response.json();
-                if (result.success) patientListCache = result.data;
-            }
-            patientSelect.innerHTML = '<option value="">-- Choose a patient --</option>';
-            patientListCache.forEach(p => {
-                patientSelect.innerHTML += `<option value="${p.id}">${p.display_user_id} - ${p.name}</option>`;
-            });
-
             const bedsResponse = await fetch('api.php?action=get_available_accommodations');
             const bedsResult = await bedsResponse.json();
             if (bedsResult.success) {
@@ -459,8 +541,7 @@ document.addEventListener("DOMContentLoaded", function() {
                  bedSelect.innerHTML = '<option value="">Could not load beds</option>';
             }
         } catch (error) {
-            console.error('Failed to populate modal:', error);
-            patientSelect.innerHTML = '<option value="">Error loading patients</option>';
+            console.error('Failed to populate modal beds:', error);
             bedSelect.innerHTML = '<option value="">Error loading beds</option>';
         }
     }
@@ -619,19 +700,13 @@ document.addEventListener("DOMContentLoaded", function() {
             if (rowsContainer) rowsContainer.innerHTML = ''; 
             addMedicationRow();
             
-            const patientSelect = document.getElementById('patient-select-presc');
-            patientSelect.innerHTML = '<option value="">Loading...</option>';
+            // Clear patient search when opening
+            document.getElementById('patient-search-presc').value = '';
+            document.getElementById('patient-id-presc').value = '';
+            document.getElementById('patient-search-results-presc').innerHTML = '';
+            document.getElementById('patient-search-results-presc').classList.remove('active');
+            
             openModalById('prescription-modal-overlay');
-    
-            if (!patientListCache) {
-                const response = await fetch('api.php?action=get_patients_for_dropdown');
-                const result = await response.json();
-                if (result.success) patientListCache = result.data;
-            }
-            patientSelect.innerHTML = '<option value="">-- Choose a patient --</option>';
-            patientListCache.forEach(p => {
-                patientSelect.innerHTML += `<option value="${p.id}">${p.display_user_id} - ${p.name}</option>`;
-            });
         });
     
         if(addRowBtn) addRowBtn.addEventListener('click', addMedicationRow);
@@ -694,7 +769,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 const saveButton = document.getElementById('modal-save-btn-presc');
                 
                 const prescriptionData = {
-                    patient_id: document.getElementById('patient-select-presc').value,
+                    patient_id: document.getElementById('patient-id-presc').value,
                     notes: document.getElementById('notes-presc').value,
                     items: []
                 };
@@ -741,6 +816,46 @@ document.addEventListener("DOMContentLoaded", function() {
                     saveButton.innerHTML = `Save Prescription`;
                 }
             });
+
+            // Patient search logic for prescription form
+            const prescPatientSearch = document.getElementById('patient-search-presc');
+            const prescPatientResults = document.getElementById('patient-search-results-presc');
+            const prescPatientId = document.getElementById('patient-id-presc');
+            
+            if(prescPatientSearch) {
+                prescPatientSearch.addEventListener('input', () => {
+                     const term = prescPatientSearch.value.trim();
+                     if (term.length < 2) {
+                        prescPatientResults.classList.remove('active');
+                        return;
+                     }
+                     clearTimeout(searchTimeout);
+                     searchTimeout = setTimeout(async () => {
+                        const res = await fetch(`api.php?action=search_patients&term=${encodeURIComponent(term)}`);
+                        const result = await res.json();
+                        prescPatientResults.innerHTML = '';
+                        if(result.success && result.data.length > 0){
+                            result.data.forEach(p => {
+                                const item = document.createElement('div');
+                                item.className = 'search-result-item';
+                                item.textContent = `${p.name} (${p.display_user_id})`;
+                                item.dataset.patientId = p.id;
+                                item.dataset.patientName = p.name;
+                                prescPatientResults.appendChild(item);
+                            });
+                            prescPatientResults.classList.add('active');
+                        }
+                     }, 300);
+                });
+
+                prescPatientResults.addEventListener('click', (e) => {
+                    if(e.target.classList.contains('search-result-item')) {
+                        prescPatientId.value = e.target.dataset.patientId;
+                        prescPatientSearch.value = e.target.dataset.patientName;
+                        prescPatientResults.classList.remove('active');
+                    }
+                });
+            }
         }
     }
 
@@ -1083,42 +1198,46 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     async function loadConversations(selectConversationId = null) {
-        const listContainer = messengerPage.querySelector('.conversation-list');
-        listContainer.innerHTML = `<div class="conversation-search"><input type="text" placeholder="Search users..."></div><div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading...</div>`;
+        const listItemsContainer = document.getElementById('conversation-list-items');
+        if (!listItemsContainer) return;
+
+        // Only show loading inside the items container
+        listItemsContainer.innerHTML = `<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading...</div>`;
 
         try {
             const response = await fetch('api.php?action=get_conversations');
             const result = await response.json();
             
-            const placeholder = listContainer.querySelector('.loading-placeholder');
-            if (placeholder) placeholder.remove();
+            listItemsContainer.innerHTML = ''; // Clear the container
 
             if (result.success && result.data.length > 0) {
                 result.data.forEach(convo => renderConversation(convo));
                 
                 if (selectConversationId) {
-                    const newConvoEl = listContainer.querySelector(`.conversation-item[data-conversation-id='${selectConversationId}']`);
+                    const newConvoEl = listItemsContainer.querySelector(`.conversation-item[data-conversation-id='${selectConversationId}']`);
                     if (newConvoEl) newConvoEl.click();
                 }
 
             } else {
-                listContainer.insertAdjacentHTML('beforeend', '<p style="padding: 1rem; text-align: center;">No conversations yet.</p>');
+                listItemsContainer.innerHTML = '<p style="padding: 1rem; text-align: center;">No conversations yet.</p>';
             }
         } catch (error) {
             console.error('Error loading conversations:', error);
-            listContainer.insertAdjacentHTML('beforeend', '<p style="padding: 1rem; text-align: center; color: var(--danger-color);">Could not load conversations.</p>');
+            listItemsContainer.innerHTML = '<p style="padding: 1rem; text-align: center; color: var(--danger-color);">Could not load conversations.</p>';
         }
     }
 
     function renderConversation(convo) {
-        const listContainer = messengerPage.querySelector('.conversation-list');
+        const listItemsContainer = document.getElementById('conversation-list-items');
+        if (!listItemsContainer) return;
+
         const lastMessageTime = convo.last_message_time ? new Date(convo.last_message_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
         
         const conversationHtml = `
             <div class="conversation-item" 
-                 data-conversation-id="${convo.conversation_id}" 
-                 data-other-user-id="${convo.other_user_id}"
-                 data-other-user-name="${convo.other_user_name}">
+                data-conversation-id="${convo.conversation_id}" 
+                data-other-user-id="${convo.other_user_id}"
+                data-other-user-name="${convo.other_user_name}">
                 <i class="fas ${getIconForRole(convo.other_user_role)} user-avatar"></i>
                 <div class="user-details">
                     <div class="user-name">${convo.other_user_name}</div>
@@ -1130,7 +1249,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 </div>
             </div>
         `;
-        listContainer.insertAdjacentHTML('beforeend', conversationHtml);
+        listItemsContainer.insertAdjacentHTML('beforeend', conversationHtml);
     }
     
     async function loadMessages(conversationId) {
@@ -1175,38 +1294,41 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     
     async function searchUsers(term) {
-        const listContainer = messengerPage.querySelector('.conversation-list');
-        const searchBarHtml = listContainer.querySelector('.conversation-search').outerHTML;
-        listContainer.innerHTML = searchBarHtml + `<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Searching...</div>`;
+        const listItemsContainer = document.getElementById('conversation-list-items');
+        if (!listItemsContainer) return;
+
+        // Don't touch the search bar, just the results area
+        listItemsContainer.innerHTML = `<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Searching...</div>`;
 
         try {
             const response = await fetch(`api.php?action=searchUsers&term=${encodeURIComponent(term)}`);
             const result = await response.json();
             
-            const placeholder = listContainer.querySelector('.loading-placeholder');
-            if (placeholder) placeholder.remove();
+            listItemsContainer.innerHTML = ''; // Clear the container
 
             if (result.success && result.data.length > 0) {
                 result.data.forEach(user => {
+                    // This HTML now includes the data-conversation-id
                     const searchResultHtml = `
                         <div class="conversation-item" 
-                             data-other-user-id="${user.id}"
-                             data-other-user-name="${user.name}">
+                            data-conversation-id="${user.conversation_id || ''}"
+                            data-other-user-id="${user.id}"
+                            data-other-user-name="${user.name}">
                             <i class="fas ${getIconForRole(user.role)} user-avatar"></i>
                             <div class="user-details">
                                 <div class="user-name">${user.name} <small>(${user.role})</small></div>
-                                <div class="last-message">Click to start a new conversation.</div>
+                                <div class="last-message">${user.conversation_id ? '' : 'Click to start a new conversation.'}</div>
                             </div>
                         </div>
                     `;
-                    listContainer.insertAdjacentHTML('beforeend', searchResultHtml);
+                    listItemsContainer.insertAdjacentHTML('beforeend', searchResultHtml);
                 });
             } else {
-                listContainer.insertAdjacentHTML('beforeend', '<p style="padding: 1rem; text-align: center;">No users found.</p>');
+                listItemsContainer.innerHTML = '<p style="padding: 1rem; text-align: center;">No users found.</p>';
             }
         } catch (error) {
             console.error('Error searching users:', error);
-            listContainer.insertAdjacentHTML('beforeend', '<p style="padding: 1rem; text-align: center; color: var(--danger-color);">Search failed.</p>');
+            listItemsContainer.innerHTML = '<p style="padding: 1rem; text-align: center; color: var(--danger-color);">Search failed.</p>';
         }
     }
 
@@ -1701,6 +1823,51 @@ document.querySelectorAll('.toggle-password').forEach(icon => {
                 (adm.display_user_id && adm.display_user_id.toLowerCase().includes(searchTerm))
             );
             renderAdmissionsTable(filteredData);
+        });
+    }
+
+    // --- New Patient Search Logic for Admit Patient Modal ---
+    const admitPatientSearch = document.getElementById('patient-search-admit');
+    const admitPatientResults = document.getElementById('patient-search-results-admit');
+    const admitPatientId = document.getElementById('patient-id-admit');
+    let admitSearchTimeout;
+
+    if (admitPatientSearch) {
+        // Listen for user typing in the search box
+        admitPatientSearch.addEventListener('input', () => {
+             const term = admitPatientSearch.value.trim();
+             admitPatientResults.innerHTML = '';
+             admitPatientResults.classList.remove('active');
+
+             if (term.length < 2) return; // Don't search for less than 2 characters
+
+             clearTimeout(admitSearchTimeout);
+             admitSearchTimeout = setTimeout(async () => {
+                // Use the existing 'search_patients' API action
+                const res = await fetch(`api.php?action=search_patients&term=${encodeURIComponent(term)}`);
+                const result = await res.json();
+                
+                if (result.success && result.data.length > 0) {
+                    result.data.forEach(p => {
+                        const item = document.createElement('div');
+                        item.className = 'search-result-item';
+                        item.textContent = `${p.name} (${p.display_user_id})`;
+                        item.dataset.patientId = p.id;
+                        item.dataset.patientName = p.name;
+                        admitPatientResults.appendChild(item);
+                    });
+                    admitPatientResults.classList.add('active');
+                }
+             }, 300); // Wait 300ms after typing to search
+        });
+
+        // Listen for a click on one of the search results
+        admitPatientResults.addEventListener('click', (e) => {
+            if (e.target.classList.contains('search-result-item')) {
+                admitPatientId.value = e.target.dataset.patientId; // Set the hidden ID input
+                admitPatientSearch.value = e.target.dataset.patientName; // Set the visible search input
+                admitPatientResults.classList.remove('active'); // Hide the results dropdown
+            }
         });
     }
 
