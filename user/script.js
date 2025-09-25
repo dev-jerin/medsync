@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Page Navigation Logic ---
     let tokenInterval; // To hold the interval ID for the token page
+    let clockInterval; // To hold the interval ID for the live clock
 
     const showPage = (pageId) => {
         pages.forEach(page => page.classList.remove('active'));
@@ -40,7 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (pageId === 'dashboard') {
             headerTitle.textContent = 'Dashboard';
         } else if (pageId === 'billing') { // Set header for billing page
-             headerTitle.textContent = 'Bills & Payments';
+            headerTitle.textContent = 'Bills & Payments';
         } else if (pageId === 'appointments') {
             headerTitle.textContent = 'Appointments';
         }
@@ -57,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Clear any running intervals when navigating away from a page
         if (tokenInterval) clearInterval(tokenInterval);
+        if (clockInterval) clearInterval(clockInterval);
 
         updateActiveLink(pageId);
         showPage(pageId);
@@ -69,17 +71,37 @@ document.addEventListener('DOMContentLoaded', () => {
             fetchAndRenderDashboardData();
         } else if (pageId === 'notifications') {
             fetchAndRenderNotifications();
+        } else if (pageId === 'billing') {
+            fetchAndRenderBillingData(); 
         } else if (pageId === 'labs') {
             fetchAndRenderLabResults();
         } else if (pageId === 'prescriptions') {
             fetchAndRenderPrescriptions();
         } else if (pageId === 'appointments') {
             fetchAndRenderAppointments();
+        } else if (pageId === 'summaries') { 
+            fetchAndRenderDischargeSummaries();
+        } else if (pageId === 'records') {
+            fetchAndRenderMedicalRecords();
         } else if (pageId === 'token') {
             fetchAndRenderTokens(); // Fetch immediately
             tokenInterval = setInterval(fetchAndRenderTokens, 30000); // Then update every 30 seconds
+            updateTime(); // Call once immediately
+            clockInterval = setInterval(updateTime, 1000); // Start the clock
         }
     };
+    
+    // --- Live Clock for Token Card ---
+    const updateTime = () => {
+        const dateEl = document.getElementById('current-date');
+        const timeEl = document.getElementById('current-time');
+        if (dateEl && timeEl) {
+            const now = new Date();
+            dateEl.textContent = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            timeEl.textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        }
+    };
+
 
     // --- Theme Toggling Logic ---
     const applyTheme = (theme) => {
@@ -101,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Event Listeners (Existing) ---
     navTriggers.forEach(link => {
         link.addEventListener('click', (e) => {
-            if (link.getAttribute('href') === '../logout.php') return;
+            if (link.getAttribute('href') === '../logout') return;
             e.preventDefault();
             navigateToPage(link.dataset.page);
         });
@@ -134,7 +156,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===       NOTIFICATION PAGE LOGIC       ===
     // ===========================================
 
-    // --- Renders a single notification item ---
     const createNotificationElement = (notification) => {
         const item = document.createElement('div');
         item.className = `notification-item ${notification.is_read == 0 ? 'unread' : ''}`;
@@ -157,7 +178,6 @@ document.addEventListener('DOMContentLoaded', () => {
             <a href="#" class="notification-action" data-page="${notification.type}" title="View Details"><i class="fas fa-arrow-right"></i></a>
         `;
         
-        // Add click listener to the whole item for navigation and marking as read
         item.addEventListener('click', (e) => {
             e.preventDefault();
             markNotificationAsRead(notification.id);
@@ -167,7 +187,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return item;
     };
     
-    // --- Fetches notifications from the server and displays them ---
     const fetchAndRenderNotifications = async () => {
         if (!notificationList) return;
         
@@ -199,7 +218,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- Marks a single notification as read ---
     const markNotificationAsRead = async (notificationId) => {
         try {
             const formData = new FormData();
@@ -212,7 +230,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result.success) {
                 const item = notificationList.querySelector(`.notification-item[data-id="${notificationId}"]`);
                 if (item) item.classList.remove('unread');
-                // Optionally, refetch to update the count
                 fetchAndRenderNotifications();
             }
 
@@ -221,7 +238,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- Updates the badge in the header ---
     const updateUnreadCount = (count) => {
         if (!notificationBadge) return;
         if (count > 0) {
@@ -232,7 +248,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     
-    // --- Notification Event Listeners ---
     if (notificationFilter) {
         notificationFilter.addEventListener('change', fetchAndRenderNotifications);
     }
@@ -253,6 +268,136 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===========================================
     // ===   DISCHARGE SUMMARY PAGE LOGIC      ===
     // ===========================================
+    const fetchAndRenderDischargeSummaries = async () => {
+        const summariesList = document.querySelector('#summaries-page .summaries-list');
+        const summariesEmptyState = document.getElementById('summaries-empty-state');
+        if (!summariesList) return;
+    
+        summariesList.innerHTML = '<p>Loading summaries...</p>'; // Loading state
+        if (summariesEmptyState) summariesEmptyState.style.display = 'none';
+    
+        try {
+            const response = await fetch('api.php?action=get_discharge_summaries');
+            const result = await response.json();
+    
+            summariesList.innerHTML = ''; // Clear loading state
+    
+            if (result.success && result.data.length > 0) {
+                result.data.forEach(summary => {
+                    const card = document.createElement('div');
+                    card.className = 'summary-card';
+                    card.dataset.summaryId = summary.id; // Crucial for the download link
+    
+                    const admissionDate = new Date(summary.admission_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                    const dischargeDate = new Date(summary.discharge_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                    
+                    card.innerHTML = `
+                        <div class="summary-card-header">
+                            <div class="summary-icon"><i class="fas fa-hospital-user"></i></div>
+                            <div class="summary-info">
+                                <h4>Admitted: <strong>${admissionDate}</strong> - Discharged: <strong>${dischargeDate}</strong></h4>
+                                <p>Admitting Physician: <strong>Dr. ${summary.doctor_name || 'N/A'}</strong> (${summary.department_name || 'N/A'})</p>
+                            </div>
+                        </div>
+                        <div class="summary-card-actions">
+                            <button class="btn-secondary btn-sm toggle-details-btn"><i class="fas fa-eye"></i> View Details</button>
+                            <button class="btn-primary btn-sm download-summary-btn"><i class="fas fa-file-pdf"></i> Download Summary</button>
+                        </div>
+                        <div class="summary-details">
+                            <hr class="section-divider">
+                            <h5><i class="fas fa-file-medical-alt"></i> Discharge Summary</h5>
+                            <p>${summary.summary_text || 'Not available.'}</p>
+                            <hr class="section-divider">
+                            <h5><i class="fas fa-notes-medical"></i> Follow-up Instructions</h5>
+                            <p>${summary.notes || 'No specific instructions provided.'}</p>
+                        </div>
+                    `;
+                    summariesList.appendChild(card);
+                });
+            } else {
+                if (summariesEmptyState) summariesEmptyState.style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Error fetching discharge summaries:', error);
+            summariesList.innerHTML = '<p class="error-text">Could not load summaries. Please try again later.</p>';
+        }
+    };
+
+    const handleDownloadClick = (e) => {
+        if (e.target.closest('.download-summary-btn')) {
+            e.preventDefault();
+            const summaryId = e.target.closest('.summary-card').dataset.summaryId;
+            window.open(`api.php?action=download_discharge_summary&id=${summaryId}`, '_blank');
+        }
+    };
+    
+    document.addEventListener('click', handleDownloadClick);
+    
+    // ===========================================
+    // ===       MEDICAL RECORDS PAGE LOGIC    ===
+    // ===========================================
+    const fetchAndRenderMedicalRecords = async () => {
+        const container = document.getElementById('records-timeline-container');
+        const loadingState = document.getElementById('records-loading-state');
+        const emptyState = document.getElementById('records-empty-state');
+        if (!container) return;
+
+        loadingState.style.display = 'block';
+        emptyState.style.display = 'none';
+        container.innerHTML = '';
+
+        try {
+            const response = await fetch('api.php?action=get_medical_records');
+            const result = await response.json();
+            
+            if (result.success && result.data.length > 0) {
+                result.data.forEach(record => {
+                    const recordEl = createRecordElement(record);
+                    container.appendChild(recordEl);
+                });
+            } else {
+                emptyState.style.display = 'block';
+            }
+
+        } catch (error) {
+            console.error('Error fetching medical records:', error);
+            container.innerHTML = '<p class="error-text">Could not load medical records. Please try again later.</p>';
+        } finally {
+            loadingState.style.display = 'none';
+        }
+    };
+
+    const createRecordElement = (record) => {
+        const item = document.createElement('div');
+        item.className = 'timeline-item';
+
+        const icons = {
+            admission: { icon: 'fa-hospital', class: 'admission' },
+            lab_result: { icon: 'fa-vials', class: 'lab' },
+            prescription: { icon: 'fa-pills', class: 'prescription' }
+        };
+
+        const typeInfo = icons[record.record_type] || { icon: 'fa-file-alt', class: 'default' };
+        const formattedDate = new Date(record.record_date).toLocaleDateString('en-US', {
+            year: 'numeric', month: 'long', day: 'numeric'
+        });
+
+        item.innerHTML = `
+            <div class="timeline-icon ${typeInfo.class}">
+                <i class="fas ${typeInfo.icon}"></i>
+            </div>
+            <div class="timeline-content">
+                <div class="timeline-header">
+                    <h4 class="timeline-title">${record.title}</h4>
+                    <span class="timeline-date">${formattedDate}</span>
+                </div>
+                <p class="timeline-details">${record.details}</p>
+                <span class="status ${record.status.toLowerCase()}">${record.status}</span>
+            </div>
+        `;
+        return item;
+    };
+
 
     document.addEventListener('click', (e) => {
         const toggleBtn = e.target.closest('.toggle-details-btn');
@@ -270,12 +415,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-
     // ===========================================
     // ===       PROFILE PAGE LOGIC (UPDATED)    ===
     // ===========================================
 
-    // --- Generic function to handle form submissions via Fetch ---
     const handleFormSubmit = async (form, action) => {
         const formData = new FormData(form);
         formData.append('action', action);
@@ -296,7 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result.success) {
                 alert(result.message);
                 if (action === 'change_password') {
-                    form.reset(); // Clear password fields
+                    form.reset();
                 }
             } else {
                 alert(`Update failed: ${result.message}`);
@@ -310,7 +453,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     
-    // --- Handle profile picture upload ---
     if (avatarUploadInput) {
         avatarUploadInput.addEventListener('change', async () => {
             const file = avatarUploadInput.files[0];
@@ -325,12 +467,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const result = await response.json();
 
                 if (result.success) {
-                    const newImageUrl = `../uploads/profile_pictures/${result.filepath}?t=${new Date().getTime()}`; // Add timestamp to break cache
+                    const newImageUrl = `../uploads/profile_pictures/${result.filepath}?t=${new Date().getTime()}`;
                     if (profilePageAvatar) profilePageAvatar.src = newImageUrl;
                     if (profileAvatar) profileAvatar.src = newImageUrl;
                     alert('Profile picture updated successfully!');
                 } else {
-                     alert(`Upload failed: ${result.message}`);
+                    alert(`Upload failed: ${result.message}`);
                 }
             } catch (error) {
                 console.error('Avatar upload error:', error);
@@ -339,7 +481,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- Password strength checker ---
     const checkPasswordStrength = (password) => {
         let score = 0;
         if (password.length >= 8) score++;
@@ -381,7 +522,6 @@ document.addEventListener('DOMContentLoaded', () => {
         confirmPasswordInput.addEventListener('input', validatePasswordConfirmation);
     }
     
-    // --- Attach event listeners to forms ---
     if (personalInfoForm) {
         personalInfoForm.addEventListener('submit', (e) => {
             e.preventDefault();
@@ -424,7 +564,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let bookingData = {}; 
 
     const stepTitles = [
-        "Step 1: Find Your Doctor", "Step 2: Select Date & Time",
+        "Step 1: Find Your Doctor", "Step 2: Select Date",
         "Step 3: Pick Your Token", "Step 4: Confirm Details"
     ];
 
@@ -440,16 +580,15 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (step === 2) {
             document.getElementById('selected-doctor-name').textContent = bookingData.doctorName;
-            fetchAndRenderSlots(bookingData.doctorId); 
+            const today = new Date();
+            renderCalendar(today.getFullYear(), today.getMonth());
         } else if (step === 3) {
             document.getElementById('token-doctor-name').textContent = bookingData.doctorName;
             document.getElementById('token-selected-date').textContent = bookingData.date;
-            document.getElementById('token-selected-slot').textContent = bookingData.slot;
-            fetchAndRenderTokenGrid(bookingData.doctorId, bookingData.date, bookingData.slot);
+            fetchAndRenderTokenGrid(bookingData.doctorId, bookingData.date);
         } else if (step === 4) {
-            document.getElementById('confirm-doctor').textContent = `${bookingData.doctorName}`;
+            document.getElementById('confirm-doctor').textContent = bookingData.doctorName;
             document.getElementById('confirm-date').textContent = bookingData.date;
-            document.getElementById('confirm-slot').textContent = bookingData.slot;
             document.getElementById('confirm-token').textContent = `#${bookingData.token}`;
         }
         updateNextButtonState();
@@ -459,11 +598,12 @@ document.addEventListener('DOMContentLoaded', () => {
         let enabled = false;
         switch(currentStep) {
             case 1: enabled = !!bookingData.doctorId; break;
-            case 2: enabled = !!bookingData.date && !!bookingData.slot; break;
+            case 2: enabled = !!bookingData.date; break; // Only depends on date now
             case 3: enabled = !!bookingData.token; break;
         }
         bookingNextBtn.disabled = !enabled;
     };
+
 
     if (appointmentsPage) {
         const tabs = appointmentsPage.querySelectorAll('.tab-link');
@@ -492,120 +632,325 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (bookingNextBtn) bookingNextBtn.addEventListener('click', () => { if (currentStep < 4) goToStep(currentStep + 1); });
     if (bookingBackBtn) bookingBackBtn.addEventListener('click', () => { if (currentStep > 1) goToStep(currentStep - 1); });
+    
+    // =======================================================
+    // === NEWLY ADDED/MODIFIED APPOINTMENT FUNCTIONS      ===
+    // =======================================================
 
     if (bookingConfirmBtn) {
         bookingConfirmBtn.addEventListener('click', async () => {
-            console.log("Submitting booking:", bookingData);
-            alert('Appointment Confirmed! (This is a demo).');
-            bookingModal.classList.remove('show');
-            fetchAndRenderAppointments();
+            bookingConfirmBtn.disabled = true;
+            bookingConfirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Confirming...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('action', 'book_appointment');
+                formData.append('doctorId', bookingData.doctorId);
+                formData.append('date', bookingData.date);
+                // We no longer send 'slot'
+                formData.append('token', bookingData.token);
+    
+                const response = await fetch('api.php', {
+                    method: 'POST',
+                    body: formData
+                });
+    
+                const result = await response.json();
+    
+                if (result.success) {
+                    alert(result.message);
+                    bookingModal.classList.remove('show');
+                    fetchAndRenderAppointments(); // Refresh the list
+                } else {
+                    throw new Error(result.message || 'An unknown error occurred.');
+                }
+            } catch (error) {
+                console.error('Booking failed:', error);
+                alert(`Booking failed: ${error.message}`);
+            } finally {
+                bookingConfirmBtn.disabled = false;
+                bookingConfirmBtn.innerHTML = '<i class="fas fa-check-circle"></i> Confirm Appointment';
+            }
         });
     }
     
     const fetchAndRenderAppointments = async () => {
-        const mockAppointments = {
-            upcoming: [
-                { id: 1, doctorName: 'Dr. Emily Carter', specialty: 'Cardiology', date: '2025-09-01', time: '11:00 AM', token: 8, status: 'scheduled' },
-                { id: 2, doctorName: 'Dr. Alan Grant', specialty: 'General Checkup', date: '2025-09-05', time: '02:30 PM', token: 3, status: 'scheduled' }
-            ],
-            past: [
-                { id: 3, doctorName: 'Dr. James Smith', specialty: 'Dermatology', date: '2025-08-15', time: '09:00 AM', token: 12, status: 'completed' }
-            ]
-        };
-        
         const upcomingBody = document.getElementById('upcoming-appointments-body');
-        upcomingBody.innerHTML = mockAppointments.upcoming.map(app => `
-            <tr>
-                <td data-label="Doctor"><strong>${app.doctorName}</strong><br><small>${app.specialty}</small></td>
-                <td data-label="Date & Time">${new Date(app.date).toLocaleDateString('en-US', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}, ${app.time}</td>
-                <td data-label="Token No.">#${String(app.token).padStart(2, '0')}</td>
-                <td data-label="Status"><span class="status upcoming">${app.status}</span></td>
-                <td data-label="Actions"><button class="btn-danger btn-sm">Cancel</button></td>
-            </tr>
-        `).join('');
-
         const pastBody = document.getElementById('past-appointments-body');
-        pastBody.innerHTML = mockAppointments.past.map(app => `
-             <tr>
-                <td data-label="Doctor"><strong>${app.doctorName}</strong><br><small>${app.specialty}</small></td>
-                <td data-label="Date & Time">${new Date(app.date).toLocaleDateString('en-US', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}, ${app.time}</td>
-                <td data-label="Token No.">#${String(app.token).padStart(2, '0')}</td>
-                <td data-label="Status"><span class="status completed">${app.status}</span></td>
-            </tr>
-        `).join('');
+        const upcomingEmpty = document.getElementById('upcoming-empty-state');
+        const pastEmpty = document.getElementById('past-empty-state');
+    
+        try {
+            upcomingBody.innerHTML = '<tr><td colspan="5">Loading...</td></tr>';
+            pastBody.innerHTML = '<tr><td colspan="4">Loading...</td></tr>';
+    
+            const response = await fetch('api.php?action=get_appointments');
+            const result = await response.json();
+    
+            if (!result.success) throw new Error(result.message);
+    
+            const { upcoming, past } = result.data;
+    
+            // Render Upcoming Appointments
+            if (upcoming.length > 0) {
+                if(upcomingEmpty) upcomingEmpty.style.display = 'none';
+                upcomingBody.innerHTML = upcoming.map(app => {
+                    const appDate = new Date(app.appointment_date);
+                    const formattedDate = appDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                    const formattedTime = appDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                    return `
+                        <tr>
+                            <td data-label="Doctor"><strong>${app.doctor_name}</strong><br><small>${app.specialty}</small></td>
+                            <td data-label="Date & Time">${formattedDate}, ${formattedTime}</td>
+                            <td data-label="Token No.">#${String(app.token_number).padStart(2, '0')}</td>
+                            <td data-label="Status"><span class="status upcoming">${app.status}</span></td>
+                            <td data-label="Actions"><button class="btn-danger btn-sm cancel-appointment-btn" data-id="${app.id}">Cancel</button></td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                if(upcomingEmpty) upcomingEmpty.style.display = 'block';
+                upcomingBody.innerHTML = '';
+            }
+    
+            // Render Past Appointments
+            if (past.length > 0) {
+                if(pastEmpty) pastEmpty.style.display = 'none';
+                pastBody.innerHTML = past.map(app => {
+                     const appDate = new Date(app.appointment_date);
+                    const formattedDate = appDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                    const formattedTime = appDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                    return `
+                        <tr>
+                            <td data-label="Doctor"><strong>${app.doctor_name}</strong><br><small>${app.specialty}</small></td>
+                            <td data-label="Date & Time">${formattedDate}, ${formattedTime}</td>
+                            <td data-label="Token No.">#${String(app.token_number).padStart(2, '0')}</td>
+                            <td data-label="Status"><span class="status ${app.status.toLowerCase()}">${app.status}</span></td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                if(pastEmpty) pastEmpty.style.display = 'block';
+                pastBody.innerHTML = '';
+            }
+        } catch (error) {
+            console.error('Error fetching appointments:', error);
+            upcomingBody.innerHTML = '<tr><td colspan="5" class="error-text">Could not load appointments.</td></tr>';
+            pastBody.innerHTML = '<tr><td colspan="4" class="error-text">Could not load past appointments.</td></tr>';
+        }
     };
 
     const fetchAndRenderDoctors = async () => {
-        const mockDoctors = [
-            { id: 1, name: 'Dr. Emily Carter', specialty: 'Cardiology', profile_picture: 'doc1.jpg' },
-            { id: 2, name: 'Dr. Alan Grant', specialty: 'General Medicine', profile_picture: 'doc2.jpg' },
-            { id: 3, name: 'Dr. James Smith', specialty: 'Dermatology', profile_picture: 'doc3.jpg' }
-        ];
-        
         const doctorListContainer = document.getElementById('doctor-list');
-        doctorListContainer.innerHTML = mockDoctors.map(doc => `
-            <div class="doctor-card" data-doctor-id="${doc.id}" data-doctor-name="${doc.name}">
-                <img src="../uploads/profile_pictures/${doc.profile_picture}" alt="${doc.name}">
-                <div>
-                    <strong>${doc.name}</strong><br>
-                    <small>${doc.specialty}</small>
-                </div>
-            </div>
-        `).join('');
+        const nameSearch = document.getElementById('doctor-search-name').value;
+        const specialtyFilter = document.getElementById('doctor-search-specialty')?.value || '';
 
+        doctorListContainer.innerHTML = '<p>Loading doctors...</p>';
+        
+        try {
+            // Build URL with search parameters
+            const params = new URLSearchParams({
+                action: 'get_doctors',
+                name_search: nameSearch,
+                specialty: specialtyFilter
+            });
+
+            const response = await fetch(`api.php?${params.toString()}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+    
+            if (result.data.length > 0) {
+                doctorListContainer.innerHTML = result.data.map(doc => `
+                    <div class="doctor-card" data-doctor-id="${doc.id}" data-doctor-name="${doc.name}">
+                        <img src="../uploads/profile_pictures/${doc.profile_picture || 'default.png'}" alt="${doc.name}">
+                        <div>
+                            <strong>${doc.name}</strong><br>
+                            <small>${doc.specialty}</small>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                doctorListContainer.innerHTML = '<p>No doctors found matching your search.</p>';
+            }
+        } catch (error) {
+            console.error('Error fetching doctors:', error);
+            doctorListContainer.innerHTML = '<p class="error-text">Could not load doctors.</p>';
+        }
+    };
+
+    // Event listener for the doctor list container (handles clicks on cards)
+    const doctorListContainer = document.getElementById('doctor-list');
+    if (doctorListContainer) {
         doctorListContainer.addEventListener('click', (e) => {
             const card = e.target.closest('.doctor-card');
             if (!card) return;
+            
+            // Handle selection styling
             doctorListContainer.querySelectorAll('.doctor-card').forEach(c => c.classList.remove('selected'));
             card.classList.add('selected');
+
+            // Store data and update UI
             bookingData.doctorId = card.dataset.doctorId;
             bookingData.doctorName = card.dataset.doctorName;
             updateNextButtonState();
         });
-    };
+    }
+
+    // Event listeners for the search inputs
+    const doctorSearchInput = document.getElementById('doctor-search-name');
+    const specialtyFilterInput = document.getElementById('doctor-search-specialty');
+
+    if(doctorSearchInput) {
+        doctorSearchInput.addEventListener('keyup', fetchAndRenderDoctors);
+    }
+    if(specialtyFilterInput) {
+        specialtyFilterInput.addEventListener('change', fetchAndRenderDoctors);
+    }
     
-    const fetchAndRenderSlots = async (doctorId) => {
-        bookingData.date = '2025-09-10'; 
-        const mockSlots = ["09:00 AM - 10:00 AM", "10:00 AM - 11:00 AM", "11:00 AM - 12:00 PM"];
+    const renderCalendar = (year, month) => {
+        const datepicker = document.getElementById('datepicker');
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
         
-        const slotsContainer = document.getElementById('slots-container');
-        slotsContainer.innerHTML = mockSlots.map(slot => `<div class="slot" data-slot-time="${slot}">${slot}</div>`).join('');
+        const firstDay = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Normalize today's date
 
-        slotsContainer.addEventListener('click', (e) => {
-            const slotEl = e.target.closest('.slot');
-            if (!slotEl || slotEl.classList.contains('disabled')) return;
-            slotsContainer.querySelectorAll('.slot').forEach(s => s.classList.remove('selected'));
-            slotEl.classList.add('selected');
-            bookingData.slot = slotEl.dataset.slotTime;
-            updateNextButtonState();
-        });
-    };
-    
-    const fetchAndRenderTokenGrid = async (doctorId, date, slot) => {
-        const totalTokens = 12;
-        const bookedTokens = [2, 5, 8]; 
+        let html = `
+            <div class="calendar">
+                <div class="calendar-header">
+                    <button id="prev-month-btn">&lt;</button>
+                    <span id="month-year">${monthNames[month]} ${year}</span>
+                    <button id="next-month-btn">&gt;</button>
+                </div>
+                <div class="calendar-grid">
+                    <div class="calendar-day-name">Sun</div>
+                    <div class="calendar-day-name">Mon</div>
+                    <div class="calendar-day-name">Tue</div>
+                    <div class="calendar-day-name">Wed</div>
+                    <div class="calendar-day-name">Thu</div>
+                    <div class="calendar-day-name">Fri</div>
+                    <div class="calendar-day-name">Sat</div>
+        `;
 
-        const tokenGrid = document.getElementById('token-grid');
-        tokenGrid.innerHTML = ''; 
-        for (let i = 1; i <= totalTokens; i++) {
-            const isBooked = bookedTokens.includes(i);
-            const tokenEl = document.createElement('div');
-            tokenEl.className = `token ${isBooked ? 'booked' : 'available'}`;
-            tokenEl.textContent = i;
-            if (!isBooked) tokenEl.dataset.tokenNumber = i;
-            tokenGrid.appendChild(tokenEl);
+        for (let i = 0; i < firstDay; i++) {
+            html += `<div></div>`; // Blank days
         }
 
-        tokenGrid.addEventListener('click', (e) => {
-            const tokenEl = e.target.closest('.token.available');
-            if (!tokenEl) return;
-            tokenGrid.querySelectorAll('.token').forEach(t => t.classList.remove('selected'));
-            tokenEl.classList.add('selected');
-            bookingData.token = tokenEl.dataset.tokenNumber;
-            updateNextButtonState();
+        for (let day = 1; day <= daysInMonth; day++) {
+            const currentDate = new Date(year, month, day);
+            const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            
+            let classes = 'calendar-day';
+            if (currentDate < today) {
+                classes += ' inactive'; // Disable past dates
+            } else {
+                classes += ' active';
+            }
+            if (dateString === bookingData.date) {
+                classes += ' selected'; // Highlight selected date
+            }
+            html += `<div class="${classes}" data-date="${dateString}">${day}</div>`;
+        }
+
+        html += `</div></div>`;
+        datepicker.innerHTML = html;
+
+        // Add event listeners for the new buttons
+        document.getElementById('prev-month-btn').addEventListener('click', () => {
+            const newDate = new Date(year, month - 1, 1);
+            renderCalendar(newDate.getFullYear(), newDate.getMonth());
+        });
+        document.getElementById('next-month-btn').addEventListener('click', () => {
+            const newDate = new Date(year, month + 1, 1);
+            renderCalendar(newDate.getFullYear(), newDate.getMonth());
         });
     };
 
+    const bookingStep2 = document.getElementById('booking-step-2');
+    if (bookingStep2) {
+        bookingStep2.addEventListener('click', e => {
+            const dateEl = e.target.closest('.calendar-day.active');
+
+            if (dateEl) {
+                // Store the selected date
+                bookingData.date = dateEl.dataset.date;
+                
+                // When a new date is picked, delete any old data that is no longer relevant
+                delete bookingData.slot; 
+                delete bookingData.token;
+                
+                // Re-render the calendar to visually highlight the selected date
+                const [year, month] = bookingData.date.split('-').map(Number);
+                renderCalendar(year, month - 1); // month is 0-indexed
+                
+                // Check if the next button can be enabled
+                updateNextButtonState();
+            }
+        });
+    }
+    
+    const fetchAndRenderTokenGrid = async (doctorId, date) => {
+        const tokenGrid = document.getElementById('token-grid');
+        tokenGrid.innerHTML = '<p>Loading available tokens...</p>';
+        try {
+            const response = await fetch(`api.php?action=get_available_tokens&doctor_id=${doctorId}&date=${date}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+    
+            const { total, booked } = result.data;
+            tokenGrid.innerHTML = '';
+            for (let i = 1; i <= total; i++) {
+                const isBooked = booked.includes(i);
+                const tokenEl = document.createElement('div');
+                tokenEl.className = `token ${isBooked ? 'booked' : 'available'}`;
+                tokenEl.textContent = i;
+                if (!isBooked) tokenEl.dataset.tokenNumber = i;
+                tokenGrid.appendChild(tokenEl);
+            }
+    
+            tokenGrid.addEventListener('click', (e) => {
+                const tokenEl = e.target.closest('.token.available');
+                if (!tokenEl) return;
+                tokenGrid.querySelectorAll('.token').forEach(t => t.classList.remove('selected'));
+                tokenEl.classList.add('selected');
+                bookingData.token = tokenEl.dataset.tokenNumber;
+                updateNextButtonState();
+            });
+        } catch (error) {
+            console.error('Error fetching tokens:', error);
+            tokenGrid.innerHTML = '<p class="error-text">Could not load tokens.</p>';
+        }
+    };
+
+    document.addEventListener('click', async (e) => {
+        if (e.target.classList.contains('cancel-appointment-btn')) {
+            const appointmentId = e.target.dataset.id;
+            if (confirm('Are you sure you want to cancel this appointment?')) {
+                try {
+                    const formData = new FormData();
+                    formData.append('action', 'cancel_appointment');
+                    formData.append('appointment_id', appointmentId);
+    
+                    const response = await fetch('api.php', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await response.json();
+    
+                    if (result.success) {
+                        alert(result.message);
+                        fetchAndRenderAppointments(); // Refresh the list
+                    } else {
+                        throw new Error(result.message);
+                    }
+                } catch (error) {
+                    console.error('Cancellation error:', error);
+                    alert(`Error: ${error.message}`);
+                }
+            }
+        }
+    });
 
     // ===========================================
     // ===       PRESCRIPTIONS PAGE LOGIC      ===
@@ -661,17 +1006,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 <h5><i class="fas fa-prescription-bottle-alt"></i> Medications</h5>
                 <div class="table-responsive">
                     <table class="data-table compact">
-                       <thead>
+                    <thead>
                             <tr>
                                 <th>Medicine</th>
                                 <th>Dosage</th>
                                 <th>Frequency</th>
                                 <th>Quantity</th>
                             </tr>
-                       </thead>
-                       <tbody>
+                    </thead>
+                    <tbody>
                             ${itemsHtml}
-                       </tbody>
+                    </tbody>
                     </table>
                 </div>
             </div>
@@ -690,24 +1035,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const dateFilter = document.getElementById('prescription-filter-date').value;
             const statusFilter = document.getElementById('prescription-filter-status').value;
             
-            const apiUrl = `api/get_prescriptions.php?date=${dateFilter}&status=${statusFilter}`;
-            const response = await fetch(apiUrl);
+            // This API endpoint doesn't exist yet, this part is for demonstration
+            // const apiUrl = `api/get_prescriptions.php?date=${dateFilter}&status=${statusFilter}`;
+            // const response = await fetch(apiUrl);
             
-            if (!response.ok) {
-                 throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            if (data.success && data.prescriptions.length > 0) {
-                data.prescriptions.forEach(prescription => {
-                    const card = createPrescriptionCard(prescription);
-                    prescriptionsList.appendChild(card);
-                });
-            } else {
-                prescriptionsEmptyState.style.display = 'block';
-            }
-
+            // Mocking the response for now
+            prescriptionsEmptyState.style.display = 'block';
+            
         } catch (error) {
             console.error("Error fetching prescriptions:", error);
             prescriptionsList.innerHTML = `<p style="text-align:center; color: var(--status-red);">Could not load prescriptions. Please try again later.</p>`;
@@ -716,74 +1050,98 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    if (prescriptionsPage) {
+    if (prescriptionsPage && applyPrescriptionFiltersBtn) {
         applyPrescriptionFiltersBtn.addEventListener('click', fetchAndRenderPrescriptions);
     }
     
     // ===========================================
     // ===      BILLS & PAYMENTS PAGE LOGIC      ===
     // ===========================================
-    
     const billingPage = document.getElementById('billing-page');
-    const modalOverlay = document.getElementById('bill-details-modal');
+    const billingTableBody = document.getElementById('billing-table-body');
+    const billingEmptyState = document.getElementById('billing-empty-state');
+    const applyBillingFiltersBtn = document.getElementById('billing-apply-filters');
+    const billDetailsModal = document.getElementById('bill-details-modal');
     const billCloseModalBtn = document.getElementById('modal-close-btn');
 
-    const getBillData = async (billId) => {
-        const mockBills = {
-            "1": {
-                id: "TXN74652", date: "2025-08-28", description: "Consultation with Dr. Carter", amount: 50.00,
-                status: "due", patientName: "John Doe",
-                items: [{ description: "Cardiology Consultation Fee", amount: 50.00 }]
-            },
-            "2": {
-                id: "TXN74601", date: "2025-08-20", description: "Lipid Profile Test", amount: 75.00,
-                status: "paid", patientName: "John Doe",
-                items: [
-                    { description: "Lab Test: Lipid Profile", amount: 60.00 },
-                    { description: "Report Generation Fee", amount: 15.00 }
-                ]
+    const fetchAndRenderBillingData = async () => {
+        if (!billingPage) return;
+
+        billingTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">Loading billing history...</td></tr>`;
+        billingEmptyState.style.display = 'none';
+
+        try {
+            const statusFilter = document.getElementById('billing-filter-status').value;
+            const dateFilter = document.getElementById('billing-filter-date').value;
+
+            const params = new URLSearchParams({ action: 'get_billing_data' });
+            if (statusFilter !== 'all') params.append('status', statusFilter);
+            if (dateFilter) params.append('date', dateFilter);
+            
+            const response = await fetch(`api.php?${params.toString()}`);
+            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+            const result = await response.json();
+
+            if (!result.success) throw new Error(result.message);
+            
+            const { summary, history } = result.data;
+
+            document.getElementById('outstanding-balance').textContent = `₹${parseFloat(summary.outstanding_balance).toFixed(2)}`;
+            document.getElementById('last-payment-amount').textContent = `₹${parseFloat(summary.last_payment_amount).toFixed(2)}`;
+            document.getElementById('last-payment-date').textContent = summary.last_payment_date;
+
+            if (history.length > 0) {
+                billingEmptyState.style.display = 'none';
+                billingTableBody.innerHTML = history.map(bill => {
+                    const billDate = new Date(bill.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    const displayStatus = bill.status === 'pending' ? 'due' : bill.status;
+                    const statusClass = displayStatus.toLowerCase();
+                    const statusText = statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
+                    
+                    const actionsHtml = statusClass === 'due'
+                        ? `<button class="btn-primary btn-sm view-bill-details-btn" data-bill-id="${bill.id}">Pay Now</button>`
+                        : `<button class="btn-secondary btn-sm view-bill-details-btn" data-bill-id="${bill.id}">View Details</button>
+                           <a href="api.php?action=download_receipt&id=${bill.id}" class="action-link" style="margin-left: 10px;"><i class="fas fa-download"></i> Receipt</a>`;
+
+                    return `
+                        <tr>
+                            <td data-label="Date">${billDate}</td>
+                            <td data-label="Bill ID">TXN${bill.id}</td>
+                            <td data-label="Description">${bill.description}</td>
+                            <td data-label="Amount"><strong>₹${parseFloat(bill.amount).toFixed(2)}</strong></td>
+                            <td data-label="Status"><span class="status ${statusClass}">${statusText}</span></td>
+                            <td data-label="Actions">${actionsHtml}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                billingTableBody.innerHTML = '';
+                billingEmptyState.style.display = 'block';
             }
-        };
-        return mockBills[billId];
+
+        } catch (error) {
+            console.error("Error fetching billing data:", error);
+            billingTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--status-red);">Could not load billing history. Please try again.</td></tr>`;
+        }
     };
 
-    const showBillDetailsModal = async (billId) => {
-        const data = await getBillData(billId);
-        if (!data || !modalOverlay) return;
-
-        document.getElementById('modal-bill-id').textContent = data.id;
-        document.getElementById('modal-patient-name').textContent = data.patientName;
-        document.getElementById('modal-bill-date').textContent = new Date(data.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-        
-        const statusEl = document.getElementById('modal-bill-status');
-        statusEl.textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
-        statusEl.className = `status ${data.status}`;
-        
-        const itemizedBody = document.getElementById('modal-itemized-charges');
-        itemizedBody.innerHTML = '';
-        data.items.forEach(item => {
-            itemizedBody.innerHTML += `<tr><td>${item.description}</td><td>$${item.amount.toFixed(2)}</td></tr>`;
-        });
-        
-        document.getElementById('modal-total-amount').textContent = `$${data.amount.toFixed(2)}`;
-        document.getElementById('modal-payment-section').style.display = data.status === 'due' ? 'block' : 'none';
-
-        modalOverlay.classList.add('show');
-    };
-
+    if (billingPage && applyBillingFiltersBtn) {
+        applyBillingFiltersBtn.addEventListener('click', fetchAndRenderBillingData);
+    }
+    
     if (billingPage) {
         billingPage.addEventListener('click', (e) => {
             const targetButton = e.target.closest('.view-bill-details-btn');
             if (targetButton) {
-                showBillDetailsModal(targetButton.dataset.billId);
+                // Future logic for showing bill details modal can go here
+                alert('Viewing bill details for Bill ID: ' + targetButton.dataset.billId);
             }
         });
     }
     
-    if (billCloseModalBtn) billCloseModalBtn.addEventListener('click', () => modalOverlay.classList.remove('show'));
-    if (modalOverlay) modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) modalOverlay.classList.remove('show') });
-
-
+    if (billCloseModalBtn) billCloseModalBtn.addEventListener('click', () => billDetailsModal.classList.remove('show'));
+    if (billDetailsModal) billDetailsModal.addEventListener('click', (e) => { if (e.target === billDetailsModal) billDetailsModal.classList.remove('show') });
+    
     // ===========================================
     // ===        LAB RESULTS PAGE LOGIC       ===
     // ===========================================
@@ -791,65 +1149,73 @@ document.addEventListener('DOMContentLoaded', () => {
     const labModal = document.getElementById('lab-details-modal');
     const closeLabModalBtn = document.getElementById('modal-lab-close-btn');
     const labTableBody = document.getElementById('lab-results-table-body');
-    const emptyState = document.getElementById('lab-results-empty-state');
-    const loadingState = document.getElementById('lab-results-loading-state');
-    const applyFiltersBtn = document.getElementById('lab-apply-filters');
-
-    const getLabResultsData = async (filters = {}) => {
-        const mockResults = [
-            { id: 1, test_date: "2025-08-20", test_name: "Lipid Profile", doctor_name: "Dr. Emily Carter", status: "ready", result_details: "Cholesterol: 200 mg/dL\nTriglycerides: 150 mg/dL\nHDL: 50 mg/dL\nLDL: 100 mg/dL", attachment_path: "/path/to/lipid-profile.pdf" },
-            { id: 2, test_date: "2025-08-15", test_name: "Complete Blood Count (CBC)", doctor_name: "Dr. Alan Grant", status: "ready", result_details: "WBC: 5.0 x 10^9/L\nRBC: 4.5 x 10^12/L\nHemoglobin: 14 g/dL", attachment_path: null },
-            { id: 3, test_date: "2025-09-01", test_name: "Thyroid Function Test", doctor_name: "Dr. Emily Carter", status: "pending", result_details: null, attachment_path: null }
-        ];
-
-        return mockResults.filter(result => {
-            const searchInput = (filters.search || '').toLowerCase();
-            const dateInput = filters.date || '';
-            const nameMatch = result.test_name.toLowerCase().includes(searchInput);
-            const dateMatch = dateInput ? result.test_date.startsWith(dateInput) : true;
-            return nameMatch && dateMatch;
-        });
-    };
+    const labEmptyState = document.getElementById('lab-results-empty-state');
+    const labLoadingState = document.getElementById('lab-results-loading-state');
+    const labApplyFiltersBtn = document.getElementById('lab-apply-filters');
 
     const renderLabResults = (results) => {
         labTableBody.innerHTML = '';
         if (results.length > 0) {
-            emptyState.style.display = 'none';
+            labEmptyState.style.display = 'none';
             results.forEach(result => {
                 const row = document.createElement('tr');
-                const statusClass = result.status === 'ready' ? 'ready' : 'pending';
+                const statusClass = result.status === 'completed' ? 'ready' : (result.status === 'pending' ? 'pending' : 'processing');
+                
+                const reportButtonHtml = result.status === 'completed' 
+                    ? `<a href="api.php?action=download_lab_report&id=${result.id}" target="_blank" class="btn-secondary btn-sm" style="margin-left: 5px;"><i class="fas fa-file-pdf"></i> Report</a>` 
+                    : '';
+
                 row.innerHTML = `
                     <td data-label="Test Date">${new Date(result.test_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
                     <td data-label="Test Name"><strong>${result.test_name}</strong></td>
-                    <td data-label="Ordering Doctor">${result.doctor_name}</td>
+                    <td data-label="Ordering Doctor">Dr. ${result.doctor_name || 'N/A'}</td>
                     <td data-label="Status"><span class="status ${statusClass}">${result.status.charAt(0).toUpperCase() + result.status.slice(1)}</span></td>
                     <td data-label="Actions">
-                        <button class="btn-primary btn-sm view-lab-details-btn" data-result-id="${result.id}" ${result.status === 'pending' ? 'disabled' : ''}>View Details</button>
-                        ${result.attachment_path ? `<a href="${result.attachment_path}" class="btn-secondary btn-sm" style="margin-left: 5px;" download><i class="fas fa-download"></i> Report</a>` : ''}
+                        <button class="btn-primary btn-sm view-lab-details-btn" data-result-id="${result.id}" ${result.status !== 'completed' ? 'disabled' : ''}>View Details</button>
+                        ${reportButtonHtml}
                     </td>`;
                 labTableBody.appendChild(row);
             });
         } else {
-            emptyState.style.display = 'block';
+            labEmptyState.style.display = 'block';
         }
     };
-
+    
     const fetchAndRenderLabResults = async () => {
         if (!labsPage) return;
-        loadingState.style.display = 'block';
-        emptyState.style.display = 'none';
+        labLoadingState.style.display = 'block';
+        labEmptyState.style.display = 'none';
         labTableBody.innerHTML = '';
+        
         try {
             const searchFilter = document.getElementById('lab-search-input').value;
             const dateFilter = document.getElementById('lab-filter-date').value;
-            const results = await getLabResultsData({ search: searchFilter, date: dateFilter });
-            labsPage.dataset.results = JSON.stringify(results);
-            renderLabResults(results);
+    
+            const params = new URLSearchParams();
+            if (searchFilter) params.append('search', searchFilter);
+            if (dateFilter) params.append('date', dateFilter);
+            
+            const apiUrl = `api.php?action=get_lab_results&${params.toString()}`;
+    
+            const response = await fetch(apiUrl);
+            if (!response.ok) {
+                throw new Error(`HTTP Error: ${response.status}`);
+            }
+            const result = await response.json();
+    
+            if (result.success && result.data) {
+                labsPage.dataset.results = JSON.stringify(result.data);
+                renderLabResults(result.data); 
+            } else {
+                labEmptyState.style.display = 'block';
+                labTableBody.innerHTML = '';
+            }
+    
         } catch (error) {
             console.error("Error fetching lab results:", error);
-            labTableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">Could not load lab results.</td></tr>`;
+            labTableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--status-red);">Could not load lab results. Please try again.</td></tr>`;
         } finally {
-            loadingState.style.display = 'none';
+            labLoadingState.style.display = 'none';
         }
     };
 
@@ -860,12 +1226,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.getElementById('modal-lab-test-name').textContent = data.test_name;
         document.getElementById('modal-lab-date').textContent = new Date(data.test_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-        document.getElementById('modal-lab-doctor').textContent = data.doctor_name;
+        document.getElementById('modal-lab-doctor').textContent = `Dr. ${data.doctor_name || 'N/A'}`;
         document.getElementById('modal-lab-result-details').textContent = data.result_details || 'Details are not available.';
+        
         const downloadSection = document.getElementById('modal-lab-download-section');
         const downloadBtn = document.getElementById('modal-lab-download-btn');
-        if (data.attachment_path) {
-            downloadBtn.href = data.attachment_path;
+        if (data.status === 'completed') {
+            downloadBtn.href = `api.php?action=download_lab_report&id=${data.id}`;
             downloadSection.style.display = 'block';
         } else {
             downloadSection.style.display = 'none';
@@ -880,7 +1247,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 showLabDetailsModal(targetButton.dataset.resultId);
             }
         });
-        applyFiltersBtn.addEventListener('click', fetchAndRenderLabResults);
+        labApplyFiltersBtn.addEventListener('click', fetchAndRenderLabResults);
         if (closeLabModalBtn) closeLabModalBtn.addEventListener('click', () => labModal.classList.remove('show'));
         if (labModal) labModal.addEventListener('click', (e) => { if (e.target === labModal) labModal.classList.remove('show') });
     }
@@ -896,56 +1263,78 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const createTokenCard = (tokenData) => {
         const card = document.createElement('div');
-        card.className = 'token-card';
+        card.className = 'live-token-card';
 
         const yourToken = parseInt(tokenData.your_token, 10);
         const currentToken = parseInt(tokenData.current_token, 10);
-        
-        const tokensAhead = yourToken > currentToken ? yourToken - currentToken - 1 : 0;
-        const avgTimePerToken = 5; 
-        const estimatedWait = tokensAhead * avgTimePerToken;
-        let waitMessage = `Approximately ${estimatedWait} minutes remaining.`;
-        if (tokensAhead === 0 && yourToken > currentToken) {
-            waitMessage = "You're next! Please be ready.";
+        const totalPatients = parseInt(tokenData.total_patients, 10);
+
+        const tokensAhead = Math.max(0, yourToken - currentToken - 1);
+        const avgTimePerPatient = 5; 
+        const estimatedWait = tokensAhead * avgTimePerPatient;
+
+        let statusMessage = "Please wait for your turn.";
+        if (yourToken === currentToken + 1) {
+            statusMessage = "You're next! Please be ready near the doctor's room.";
         } else if (yourToken === currentToken) {
-             waitMessage = "It's your turn now!";
-        } else if (yourToken < currentToken || tokenData.token_status !== 'waiting') {
-            waitMessage = "Your turn is complete or has passed.";
+            statusMessage = "It's your turn now! Please proceed to the doctor's room.";
+        } else if (yourToken < currentToken) {
+            statusMessage = "Your turn has passed. Please contact reception if you missed it.";
         }
 
-        const progressPercentage = yourToken > 0 ? (currentToken / yourToken) * 100 : 0;
-        const finalProgress = Math.min(progressPercentage, 100); 
+        const progressPercent = totalPatients > 0 ? (currentToken / totalPatients) * 100 : 0;
 
         card.innerHTML = `
-            <div class="token-card-header">
-                <div class="token-doctor-info">
-                    <h4>Dr. ${tokenData.doctor_name}</h4>
+            <div class="token-card-header-new">
+                <div class="doctor-details">
+                    <h3>Dr. ${tokenData.doctor_name}</h3>
                     <p>${tokenData.specialty}</p>
                 </div>
-                <div class="token-status-badge ${tokenData.token_status.toLowerCase().replace(' ', '_')}">
-                    ${tokenData.token_status}
+                <div class="location-details">
+                    <span><i class="fas fa-building"></i> ${tokenData.office_floor}</span>
+                    <span><i class="fas fa-door-open"></i> Room ${tokenData.office_room_number}</span>
                 </div>
             </div>
-            <div class="token-card-body">
-                <div class="token-number-display">
-                    <h5>Currently Serving</h5>
-                    <span class="token-number">${currentToken > 0 ? '#' + String(currentToken).padStart(2, '0') : '--'}</span>
+            
+            <div class="token-main-display">
+                <div class="token-progress-circle">
+                    <svg viewBox="0 0 36 36">
+                        <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path class="circle" stroke-dasharray="${progressPercent}, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    </svg>
+                    <div class="token-number-large">
+                        <small>Serving Now</small>
+                        <span>#${String(currentToken).padStart(2, '0')}</span>
+                    </div>
                 </div>
-                <div class="token-number-display your-token">
-                    <h5>Your Token</h5>
-                    <span class="token-number">#${String(yourToken).padStart(2, '0')}</span>
+                <div class="your-token-display">
+                    <small>Your Token</small>
+                    <span>#${String(yourToken).padStart(2, '0')}</span>
+                    <p class="status-message">${statusMessage}</p>
                 </div>
             </div>
-            ${ (tokenData.token_status === 'waiting' && yourToken > currentToken) ? `
-            <div class="token-progress-tracker">
-                <p>${tokensAhead} patient(s) ahead of you.</p>
-                <div class="progress-bar">
-                    <div class="progress-bar-inner" style="width: ${finalProgress}%;"></div>
+
+            <div class="token-stats-grid">
+                <div class="stat-item">
+                    <i class="fas fa-users"></i>
+                    <p>${tokenData.total_patients}</p>
+                    <small>Total Patients</small>
                 </div>
-            </div>` : ''}
-            <div class="token-card-footer">
-                <i class="fas fa-info-circle"></i>
-                <span>${waitMessage}</span>
+                <div class="stat-item">
+                    <i class="fas fa-user-clock"></i>
+                    <p>${tokenData.patients_left}</p>
+                    <small>Patients Left</small>
+                </div>
+                <div class="stat-item">
+                    <i class="fas fa-hourglass-half"></i>
+                    <p>~${estimatedWait} min</p>
+                    <small>Est. Your Turn</small>
+                </div>
+            </div>
+
+            <div class="token-card-footer-new">
+                <span id="current-date"></span>
+                <span id="current-time"></span>
             </div>
         `;
         return card;
@@ -958,8 +1347,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tokenEmptyState.style.display = 'none';
         
         try {
-            // NOTE: This API endpoint (get_live_tokens.php) needs to be created
-            const response = await fetch('api/get_live_tokens.php');
+            const response = await fetch('api.php?action=get_live_tokens');
             const data = await response.json();
             
             tokenContainer.innerHTML = ''; 
@@ -981,6 +1369,151 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     
+    // ===========================================
+    // ===      NEW: DASHBOARD PAGE LOGIC        ===
+    // ===========================================
+    const fetchAndRenderDashboardData = async () => {
+        const appointmentsList = document.getElementById('dashboard-appointments-list');
+        const appointmentsEmpty = document.getElementById('dashboard-appointments-empty');
+        const activityFeed = document.getElementById('dashboard-activity-feed');
+        const activityEmpty = document.getElementById('dashboard-activity-empty');
+        const tokenWidget = document.getElementById('dashboard-token-widget');
+        const tokenEmpty = document.getElementById('dashboard-token-empty');
+        const welcomeSubtext = document.getElementById('welcome-subtext');
+
+        try {
+            const response = await fetch('api.php?action=get_dashboard_data');
+            if (!response.ok) {
+                throw new Error(`HTTP Error: ${response.status}`);
+            }
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.message || 'Failed to fetch dashboard data.');
+            }
+
+            const data = result.data;
+            
+            appointmentsList.innerHTML = ''; 
+            if (data.appointments && data.appointments.length > 0) {
+                appointmentsEmpty.style.display = 'none';
+                data.appointments.forEach(app => {
+                    const date = new Date(app.appointment_date);
+                    const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+                    const card = document.createElement('div');
+                    card.className = 'appointment-card';
+                    card.dataset.page = 'appointments'; 
+                    card.innerHTML = `
+                        <div class="doctor-avatar">
+                            <img src="../uploads/profile_pictures/${app.avatar}" alt="${app.doctorName}">
+                        </div>
+                        <div class="appointment-details">
+                            <p>${app.specialty} with <strong>${app.doctorName}</strong></p>
+                            <small>You have an upcoming appointment.</small>
+                        </div>
+                        <div class="appointment-time">
+                            <span>${time}</span>
+                            <small>${dateStr}</small>
+                        </div>
+                    `;
+                    card.addEventListener('click', () => navigateToPage('appointments'));
+                    appointmentsList.appendChild(card);
+                });
+                welcomeSubtext.textContent = `You have ${data.appointments.length} upcoming appointment(s).`;
+            } else {
+                appointmentsEmpty.style.display = 'block';
+                welcomeSubtext.textContent = `You're all caught up. No upcoming appointments.`;
+            }
+
+            activityFeed.innerHTML = '';
+            if (data.activity && data.activity.length > 0) {
+                activityEmpty.style.display = 'none';
+                
+                // Map actions to icons and colors
+                const activityInfoMap = {
+                    'booked_appointment': { icon: 'fa-calendar-plus', colorClass: 'appointments', page: 'appointments' },
+                    'cancelled_appointment': { icon: 'fa-calendar-times', colorClass: 'billing', page: 'appointments' }, // using billing color (orange)
+                    'downloaded_summary': { icon: 'fa-file-download', colorClass: 'labs', page: 'summaries' }, // using labs color (blue)
+                    'downloaded_lab_report': { icon: 'fa-file-download', colorClass: 'labs', page: 'labs' },
+                    'default': { icon: 'fa-history', colorClass: 'prescriptions', page: 'dashboard' } // Green for default
+                };
+
+                data.activity.forEach(act => {
+                    const item = document.createElement('div');
+                    const activityInfo = activityInfoMap[act.action] || activityInfoMap['default'];
+                    
+                    item.className = 'activity-item notification-item'; // Keep styling consistent
+                    item.dataset.page = activityInfo.page;
+                    
+                    const activityTime = new Date(act.time).toLocaleString('en-US', {
+                        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                    });
+                    
+                    // Use the 'details' from the database as the main message
+                    item.innerHTML = `
+                        <div class="notification-icon ${activityInfo.colorClass}"><i class="fas ${activityInfo.icon}"></i></div>
+                        <div class="notification-content">
+                            <p>${act.details}</p>
+                            <small class="timestamp">${activityTime}</small>
+                        </div>
+                    `;
+
+                    // Make the activity item clickable to navigate to the relevant page
+                    item.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        navigateToPage(activityInfo.page);
+                    });
+                    
+                    activityFeed.appendChild(item);
+                });
+
+            } else {
+                activityEmpty.style.display = 'block';
+            }
+
+            tokenWidget.innerHTML = ''; 
+            if (data.token) {
+                tokenEmpty.style.display = 'none';
+                tokenWidget.innerHTML = `
+                    <div class="mini-token-card">
+                        <h4>Dr. ${data.token.doctorName}</h4>
+                        <div class="mini-token-body">
+                            <div class="mini-token-number">
+                                <p>Serving</p>
+                                <span>#${String(data.token.current).padStart(2, '0')}</span>
+                            </div>
+                            <div class="mini-token-divider"></div>
+                            <div class="mini-token-number your">
+                                <p>Your Token</p>
+                                <span>#${String(data.token.yours).padStart(2, '0')}</span>
+                            </div>
+                        </div>
+                        <a href="#" class="btn-primary full-width" data-page="token">View Details</a>
+                    </div>
+                `;
+                tokenWidget.querySelector('[data-page="token"]').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    navigateToPage('token');
+                });
+            } else {
+                tokenEmpty.style.display = 'block';
+            }
+
+        } catch (error) {
+            console.error('Error fetching dashboard data:', error);
+            appointmentsList.innerHTML = '';
+            activityFeed.innerHTML = '';
+            tokenWidget.innerHTML = '';
+            appointmentsEmpty.style.display = 'block';
+            activityEmpty.style.display = 'block';
+            tokenEmpty.style.display = 'block';
+            appointmentsEmpty.innerHTML = '<p>Could not load appointments.</p>';
+            activityEmpty.innerHTML = '<p>Could not load activity.</p>';
+            tokenEmpty.innerHTML = '<p>Could not load token status.</p>';
+        }
+    };
+
     // --- Initial Page Load ---
     const savedTheme = localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -994,139 +1527,3 @@ document.addEventListener('DOMContentLoaded', () => {
 
     navigateToPage('dashboard');
 });
-
-// ===========================================
-// ===      NEW: DASHBOARD PAGE LOGIC        ===
-// ===========================================
-
-const fetchAndRenderDashboardData = async () => {
-    // Selectors for dashboard elements
-    const appointmentsList = document.getElementById('dashboard-appointments-list');
-    const appointmentsEmpty = document.getElementById('dashboard-appointments-empty');
-    const activityFeed = document.getElementById('dashboard-activity-feed');
-    const activityEmpty = document.getElementById('dashboard-activity-empty');
-    const tokenWidget = document.getElementById('dashboard-token-widget');
-    const tokenEmpty = document.getElementById('dashboard-token-empty');
-    const welcomeSubtext = document.getElementById('welcome-subtext');
-
-    try {
-        const response = await fetch('api.php?action=get_dashboard_data');
-        if (!response.ok) {
-            throw new Error(`HTTP Error: ${response.status}`);
-        }
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.message || 'Failed to fetch dashboard data.');
-        }
-
-        const data = result.data;
-        
-        // Render Appointments
-        appointmentsList.innerHTML = ''; 
-        if (data.appointments && data.appointments.length > 0) {
-            appointmentsEmpty.style.display = 'none';
-            data.appointments.forEach(app => {
-                const date = new Date(app.appointment_date);
-                const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-                const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-                const card = document.createElement('div');
-                card.className = 'appointment-card';
-                card.dataset.page = 'appointments'; 
-                card.innerHTML = `
-                    <div class="doctor-avatar">
-                        <img src="../uploads/profile_pictures/${app.avatar}" alt="${app.doctorName}">
-                    </div>
-                    <div class="appointment-details">
-                        <p>${app.specialty} with <strong>${app.doctorName}</strong></p>
-                        <small>You have an upcoming appointment.</small>
-                    </div>
-                    <div class="appointment-time">
-                        <span>${time}</span>
-                        <small>${dateStr}</small>
-                    </div>
-                `;
-                card.addEventListener('click', () => navigateToPage('appointments'));
-                appointmentsList.appendChild(card);
-            });
-            welcomeSubtext.textContent = `You have ${data.appointments.length} upcoming appointment(s).`;
-        } else {
-            appointmentsEmpty.style.display = 'block';
-            welcomeSubtext.textContent = `You're all caught up. No upcoming appointments.`;
-        }
-
-        // Render Activity Feed
-        activityFeed.innerHTML = ''; 
-        if (data.activity && data.activity.length > 0) {
-            activityEmpty.style.display = 'none';
-            const icons = {
-                labs: { icon: 'fa-vial', page: 'labs'},
-                billing: { icon: 'fa-file-invoice-dollar', page: 'billing' },
-                prescriptions: { icon: 'fa-pills', page: 'prescriptions' },
-                appointments: { icon: 'fa-calendar-check', page: 'appointments'}
-            };
-            
-            data.activity.forEach(act => {
-                const item = document.createElement('div');
-                const activityInfo = icons[act.type] || { icon: 'fa-bell', page: 'notifications' };
-                item.className = 'activity-item notification-item'; 
-                item.dataset.page = activityInfo.page;
-                
-                const timeAgo = new Date(act.time);
-                
-                item.innerHTML = `
-                    <div class="notification-icon ${act.type}"><i class="fas ${activityInfo.icon}"></i></div>
-                    <div class="notification-content">
-                        <p>${act.message}</p>
-                        <small class="timestamp">${timeAgo.toLocaleString()}</small>
-                    </div>
-                `;
-                item.addEventListener('click', () => navigateToPage(activityInfo.page));
-                activityFeed.appendChild(item);
-            });
-        } else {
-            activityEmpty.style.display = 'block';
-        }
-
-        // Render Token Widget
-        tokenWidget.innerHTML = ''; 
-        if (data.token) {
-            tokenEmpty.style.display = 'none';
-            tokenWidget.innerHTML = `
-                <div class="mini-token-card">
-                    <h4>Dr. ${data.token.doctorName}</h4>
-                    <div class="mini-token-body">
-                        <div class="mini-token-number">
-                            <p>Serving</p>
-                            <span>#${String(data.token.current).padStart(2, '0')}</span>
-                        </div>
-                        <div class="mini-token-divider"></div>
-                        <div class="mini-token-number your">
-                            <p>Your Token</p>
-                            <span>#${String(data.token.yours).padStart(2, '0')}</span>
-                        </div>
-                    </div>
-                    <a href="#" class="btn-primary full-width" data-page="token">View Details</a>
-                </div>
-            `;
-            tokenWidget.querySelector('[data-page="token"]').addEventListener('click', (e) => {
-                e.preventDefault();
-                navigateToPage('token');
-            });
-        } else {
-            tokenEmpty.style.display = 'block';
-        }
-
-    } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-        appointmentsList.innerHTML = '';
-        activityFeed.innerHTML = '';
-        tokenWidget.innerHTML = '';
-        appointmentsEmpty.style.display = 'block';
-        activityEmpty.style.display = 'block';
-        tokenEmpty.style.display = 'block';
-        appointmentsEmpty.innerHTML = '<p>Could not load appointments.</p>';
-        activityEmpty.innerHTML = '<p>Could not load activity.</p>';
-        tokenEmpty.innerHTML = '<p>Could not load token status.</p>';
-    }
-};
