@@ -38,9 +38,10 @@ body, html {
     color: var(--text-primary);
     font-size: 16px;
     transition: background-color 0.3s, color 0.3s;
+    overflow: hidden;
 }
 
-.dashboard-container { display: flex; min-height: 100vh; }
+.dashboard-container { display: flex; height: 100vh; }
 
 /* --- Sidebar --- */
 .sidebar {
@@ -962,10 +963,7 @@ body.dark-mode #slots-container .slot.disabled {
     from { background-color: var(--border-color); }
     to { background-color: var(--bg-light); }
 }
-body.dark-mode @keyframes skeleton-loading {
-    from { background-color: var(--border-color); }
-    to { background-color: #2a2a2a; }
-}
+
 
 .skeleton {
     animation: skeleton-loading 1s linear infinite alternate;
