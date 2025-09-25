@@ -541,6 +541,18 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     $response = ['success' => true, 'data' => $appointments];
                     break;
                 
+                // ==========================================================
+                // === NEWLY ADDED CASE TO FETCH SPECIALTIES ===
+                // ==========================================================
+                case 'get_specialties':
+                    $stmt = $conn->prepare("SELECT name FROM specialities ORDER BY name ASC");
+                    $stmt->execute();
+                    $specialties = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+                    $response = ['success' => true, 'data' => $specialties];
+                    break;
+                // ==========================================================
+                
                 case 'get_doctors':
                     $specialty_filter = $_GET['specialty'] ?? '';
                     $name_search = $_GET['name_search'] ?? '';
