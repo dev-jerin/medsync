@@ -71,6 +71,8 @@ document.addEventListener('DOMContentLoaded', () => {
             fetchAndRenderDashboardData();
         } else if (pageId === 'notifications') {
             fetchAndRenderNotifications();
+        } else if (pageId === 'billing') {
+            fetchAndRenderBillingData(); 
         } else if (pageId === 'labs') {
             fetchAndRenderLabResults();
         } else if (pageId === 'prescriptions') {
@@ -562,7 +564,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let bookingData = {}; 
 
     const stepTitles = [
-        "Step 1: Find Your Doctor", "Step 2: Select Date & Time",
+        "Step 1: Find Your Doctor", "Step 2: Select Date",
         "Step 3: Pick Your Token", "Step 4: Confirm Details"
     ];
 
@@ -578,16 +580,15 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (step === 2) {
             document.getElementById('selected-doctor-name').textContent = bookingData.doctorName;
-            fetchAndRenderSlots(bookingData.doctorId); 
+            const today = new Date();
+            renderCalendar(today.getFullYear(), today.getMonth());
         } else if (step === 3) {
             document.getElementById('token-doctor-name').textContent = bookingData.doctorName;
             document.getElementById('token-selected-date').textContent = bookingData.date;
-            document.getElementById('token-selected-slot').textContent = bookingData.slot;
-            fetchAndRenderTokenGrid(bookingData.doctorId, bookingData.date, bookingData.slot);
+            fetchAndRenderTokenGrid(bookingData.doctorId, bookingData.date);
         } else if (step === 4) {
-            document.getElementById('confirm-doctor').textContent = `${bookingData.doctorName}`;
+            document.getElementById('confirm-doctor').textContent = bookingData.doctorName;
             document.getElementById('confirm-date').textContent = bookingData.date;
-            document.getElementById('confirm-slot').textContent = bookingData.slot;
             document.getElementById('confirm-token').textContent = `#${bookingData.token}`;
         }
         updateNextButtonState();
@@ -597,11 +598,12 @@ document.addEventListener('DOMContentLoaded', () => {
         let enabled = false;
         switch(currentStep) {
             case 1: enabled = !!bookingData.doctorId; break;
-            case 2: enabled = !!bookingData.date && !!bookingData.slot; break;
+            case 2: enabled = !!bookingData.date; break; // Only depends on date now
             case 3: enabled = !!bookingData.token; break;
         }
         bookingNextBtn.disabled = !enabled;
     };
+
 
     if (appointmentsPage) {
         const tabs = appointmentsPage.querySelectorAll('.tab-link');
@@ -635,9 +637,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // === NEWLY ADDED/MODIFIED APPOINTMENT FUNCTIONS      ===
     // =======================================================
 
-    /**
-     * MODIFIED: Handles booking confirmation by sending data to the API.
-     */
     if (bookingConfirmBtn) {
         bookingConfirmBtn.addEventListener('click', async () => {
             bookingConfirmBtn.disabled = true;
@@ -648,7 +647,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 formData.append('action', 'book_appointment');
                 formData.append('doctorId', bookingData.doctorId);
                 formData.append('date', bookingData.date);
-                formData.append('slot', bookingData.slot);
+                // We no longer send 'slot'
                 formData.append('token', bookingData.token);
     
                 const response = await fetch('api.php', {
@@ -675,9 +674,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    /**
-     * MODIFIED: Fetches real appointment data from the API.
-     */
     const fetchAndRenderAppointments = async () => {
         const upcomingBody = document.getElementById('upcoming-appointments-body');
         const pastBody = document.getElementById('past-appointments-body');
@@ -744,10 +740,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    /**
-     * START: UPDATED CODE BLOCK
-     * MODIFIED: Fetches doctors from the API based on search criteria.
-     */
     const fetchAndRenderDoctors = async () => {
         const doctorListContainer = document.getElementById('doctor-list');
         const nameSearch = document.getElementById('doctor-search-name').value;
@@ -814,44 +806,91 @@ document.addEventListener('DOMContentLoaded', () => {
     if(specialtyFilterInput) {
         specialtyFilterInput.addEventListener('change', fetchAndRenderDoctors);
     }
-    /**
-     * END: UPDATED CODE BLOCK
-     */
     
-    /**
-     * MODIFIED: Fetches time slots from the API.
-     */
-    const fetchAndRenderSlots = async (doctorId) => {
-        // For now, we use a fixed date (tomorrow). A real calendar library could be added.
-        bookingData.date = new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0]; 
+    const renderCalendar = (year, month) => {
+        const datepicker = document.getElementById('datepicker');
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
         
-        const slotsContainer = document.getElementById('slots-container');
-        slotsContainer.innerHTML = '<p>Loading slots...</p>';
-        try {
-            const response = await fetch(`api.php?action=get_doctor_slots&doctor_id=${doctorId}&date=${bookingData.date}`);
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-            
-            slotsContainer.innerHTML = result.data.map(slot => `<div class="slot" data-slot-time="${slot}">${slot}</div>`).join('');
-    
-            slotsContainer.addEventListener('click', (e) => {
-                const slotEl = e.target.closest('.slot');
-                if (!slotEl || slotEl.classList.contains('disabled')) return;
-                slotsContainer.querySelectorAll('.slot').forEach(s => s.classList.remove('selected'));
-                slotEl.classList.add('selected');
-                bookingData.slot = slotEl.dataset.slotTime;
-                updateNextButtonState();
-            });
-        } catch (error) {
-            console.error('Error fetching slots:', error);
-            slotsContainer.innerHTML = '<p class="error-text">Could not load slots.</p>';
+        const firstDay = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Normalize today's date
+
+        let html = `
+            <div class="calendar">
+                <div class="calendar-header">
+                    <button id="prev-month-btn">&lt;</button>
+                    <span id="month-year">${monthNames[month]} ${year}</span>
+                    <button id="next-month-btn">&gt;</button>
+                </div>
+                <div class="calendar-grid">
+                    <div class="calendar-day-name">Sun</div>
+                    <div class="calendar-day-name">Mon</div>
+                    <div class="calendar-day-name">Tue</div>
+                    <div class="calendar-day-name">Wed</div>
+                    <div class="calendar-day-name">Thu</div>
+                    <div class="calendar-day-name">Fri</div>
+                    <div class="calendar-day-name">Sat</div>
+        `;
+
+        for (let i = 0; i < firstDay; i++) {
+            html += `<div></div>`; // Blank days
         }
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const currentDate = new Date(year, month, day);
+            const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            
+            let classes = 'calendar-day';
+            if (currentDate < today) {
+                classes += ' inactive'; // Disable past dates
+            } else {
+                classes += ' active';
+            }
+            if (dateString === bookingData.date) {
+                classes += ' selected'; // Highlight selected date
+            }
+            html += `<div class="${classes}" data-date="${dateString}">${day}</div>`;
+        }
+
+        html += `</div></div>`;
+        datepicker.innerHTML = html;
+
+        // Add event listeners for the new buttons
+        document.getElementById('prev-month-btn').addEventListener('click', () => {
+            const newDate = new Date(year, month - 1, 1);
+            renderCalendar(newDate.getFullYear(), newDate.getMonth());
+        });
+        document.getElementById('next-month-btn').addEventListener('click', () => {
+            const newDate = new Date(year, month + 1, 1);
+            renderCalendar(newDate.getFullYear(), newDate.getMonth());
+        });
     };
+
+    const bookingStep2 = document.getElementById('booking-step-2');
+    if (bookingStep2) {
+        bookingStep2.addEventListener('click', e => {
+            const dateEl = e.target.closest('.calendar-day.active');
+
+            if (dateEl) {
+                // Store the selected date
+                bookingData.date = dateEl.dataset.date;
+                
+                // When a new date is picked, delete any old data that is no longer relevant
+                delete bookingData.slot; 
+                delete bookingData.token;
+                
+                // Re-render the calendar to visually highlight the selected date
+                const [year, month] = bookingData.date.split('-').map(Number);
+                renderCalendar(year, month - 1); // month is 0-indexed
+                
+                // Check if the next button can be enabled
+                updateNextButtonState();
+            }
+        });
+    }
     
-    /**
-     * MODIFIED: Fetches available tokens for a specific slot from the API.
-     */
-    const fetchAndRenderTokenGrid = async (doctorId, date, slot) => {
+    const fetchAndRenderTokenGrid = async (doctorId, date) => {
         const tokenGrid = document.getElementById('token-grid');
         tokenGrid.innerHTML = '<p>Loading available tokens...</p>';
         try {
@@ -884,9 +923,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    /**
-     * NEW: Global event listener to handle appointment cancellations.
-     */
     document.addEventListener('click', async (e) => {
         if (e.target.classList.contains('cancel-appointment-btn')) {
             const appointmentId = e.target.dataset.id;
@@ -1021,66 +1057,91 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===========================================
     // ===      BILLS & PAYMENTS PAGE LOGIC      ===
     // ===========================================
-    
     const billingPage = document.getElementById('billing-page');
-    const modalOverlay = document.getElementById('bill-details-modal');
+    const billingTableBody = document.getElementById('billing-table-body');
+    const billingEmptyState = document.getElementById('billing-empty-state');
+    const applyBillingFiltersBtn = document.getElementById('billing-apply-filters');
+    const billDetailsModal = document.getElementById('bill-details-modal');
     const billCloseModalBtn = document.getElementById('modal-close-btn');
 
-    const getBillData = async (billId) => {
-        const mockBills = {
-            "1": {
-                id: "TXN74652", date: "2025-08-28", description: "Consultation with Dr. Carter", amount: 50.00,
-                status: "due", patientName: "John Doe",
-                items: [{ description: "Cardiology Consultation Fee", amount: 50.00 }]
-            },
-            "2": {
-                id: "TXN74601", date: "2025-08-20", description: "Lipid Profile Test", amount: 75.00,
-                status: "paid", patientName: "John Doe",
-                items: [
-                    { description: "Lab Test: Lipid Profile", amount: 60.00 },
-                    { description: "Report Generation Fee", amount: 15.00 }
-                ]
+    const fetchAndRenderBillingData = async () => {
+        if (!billingPage) return;
+
+        billingTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">Loading billing history...</td></tr>`;
+        billingEmptyState.style.display = 'none';
+
+        try {
+            const statusFilter = document.getElementById('billing-filter-status').value;
+            const dateFilter = document.getElementById('billing-filter-date').value;
+
+            const params = new URLSearchParams({ action: 'get_billing_data' });
+            if (statusFilter !== 'all') params.append('status', statusFilter);
+            if (dateFilter) params.append('date', dateFilter);
+            
+            const response = await fetch(`api.php?${params.toString()}`);
+            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+            const result = await response.json();
+
+            if (!result.success) throw new Error(result.message);
+            
+            const { summary, history } = result.data;
+
+            document.getElementById('outstanding-balance').textContent = `₹${parseFloat(summary.outstanding_balance).toFixed(2)}`;
+            document.getElementById('last-payment-amount').textContent = `₹${parseFloat(summary.last_payment_amount).toFixed(2)}`;
+            document.getElementById('last-payment-date').textContent = summary.last_payment_date;
+
+            if (history.length > 0) {
+                billingEmptyState.style.display = 'none';
+                billingTableBody.innerHTML = history.map(bill => {
+                    const billDate = new Date(bill.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    const displayStatus = bill.status === 'pending' ? 'due' : bill.status;
+                    const statusClass = displayStatus.toLowerCase();
+                    const statusText = statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
+                    
+                    const actionsHtml = statusClass === 'due'
+                        ? `<button class="btn-primary btn-sm view-bill-details-btn" data-bill-id="${bill.id}">Pay Now</button>`
+                        : `<button class="btn-secondary btn-sm view-bill-details-btn" data-bill-id="${bill.id}">View Details</button>
+                           <a href="api.php?action=download_receipt&id=${bill.id}" class="action-link" style="margin-left: 10px;"><i class="fas fa-download"></i> Receipt</a>`;
+
+                    return `
+                        <tr>
+                            <td data-label="Date">${billDate}</td>
+                            <td data-label="Bill ID">TXN${bill.id}</td>
+                            <td data-label="Description">${bill.description}</td>
+                            <td data-label="Amount"><strong>₹${parseFloat(bill.amount).toFixed(2)}</strong></td>
+                            <td data-label="Status"><span class="status ${statusClass}">${statusText}</span></td>
+                            <td data-label="Actions">${actionsHtml}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                billingTableBody.innerHTML = '';
+                billingEmptyState.style.display = 'block';
             }
-        };
-        return mockBills[billId];
+
+        } catch (error) {
+            console.error("Error fetching billing data:", error);
+            billingTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--status-red);">Could not load billing history. Please try again.</td></tr>`;
+        }
     };
 
-    const showBillDetailsModal = async (billId) => {
-        const data = await getBillData(billId);
-        if (!data || !modalOverlay) return;
-
-        document.getElementById('modal-bill-id').textContent = data.id;
-        document.getElementById('modal-patient-name').textContent = data.patientName;
-        document.getElementById('modal-bill-date').textContent = new Date(data.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-        
-        const statusEl = document.getElementById('modal-bill-status');
-        statusEl.textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
-        statusEl.className = `status ${data.status}`;
-        
-        const itemizedBody = document.getElementById('modal-itemized-charges');
-        itemizedBody.innerHTML = '';
-        data.items.forEach(item => {
-            itemizedBody.innerHTML += `<tr><td>${item.description}</td><td>₹${item.amount.toFixed(2)}</td></tr>`;
-        });
-        
-        document.getElementById('modal-total-amount').textContent = `₹${data.amount.toFixed(2)}`;
-        document.getElementById('modal-payment-section').style.display = data.status === 'due' ? 'block' : 'none';
-
-        modalOverlay.classList.add('show');
-    };
-
+    if (billingPage && applyBillingFiltersBtn) {
+        applyBillingFiltersBtn.addEventListener('click', fetchAndRenderBillingData);
+    }
+    
     if (billingPage) {
         billingPage.addEventListener('click', (e) => {
             const targetButton = e.target.closest('.view-bill-details-btn');
             if (targetButton) {
-                showBillDetailsModal(targetButton.dataset.billId);
+                // Future logic for showing bill details modal can go here
+                alert('Viewing bill details for Bill ID: ' + targetButton.dataset.billId);
             }
         });
     }
     
-    if (billCloseModalBtn) billCloseModalBtn.addEventListener('click', () => modalOverlay.classList.remove('show'));
-    if (modalOverlay) modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) modalOverlay.classList.remove('show') });
-
+    if (billCloseModalBtn) billCloseModalBtn.addEventListener('click', () => billDetailsModal.classList.remove('show'));
+    if (billDetailsModal) billDetailsModal.addEventListener('click', (e) => { if (e.target === billDetailsModal) billDetailsModal.classList.remove('show') });
+    
     // ===========================================
     // ===        LAB RESULTS PAGE LOGIC       ===
     // ===========================================
@@ -1100,7 +1161,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const row = document.createElement('tr');
                 const statusClass = result.status === 'completed' ? 'ready' : (result.status === 'pending' ? 'pending' : 'processing');
                 
-                // The API now returns a status of 'completed', which we map to the 'ready' class for styling.
                 const reportButtonHtml = result.status === 'completed' 
                     ? `<a href="api.php?action=download_lab_report&id=${result.id}" target="_blank" class="btn-secondary btn-sm" style="margin-left: 5px;"><i class="fas fa-file-pdf"></i> Report</a>` 
                     : '';
@@ -1128,18 +1188,15 @@ document.addEventListener('DOMContentLoaded', () => {
         labTableBody.innerHTML = '';
         
         try {
-            // Get filter values from the input fields
             const searchFilter = document.getElementById('lab-search-input').value;
             const dateFilter = document.getElementById('lab-filter-date').value;
     
-            // Build the API URL with query parameters for filtering
             const params = new URLSearchParams();
             if (searchFilter) params.append('search', searchFilter);
             if (dateFilter) params.append('date', dateFilter);
             
             const apiUrl = `api.php?action=get_lab_results&${params.toString()}`;
     
-            // Fetch real data from the backend
             const response = await fetch(apiUrl);
             if (!response.ok) {
                 throw new Error(`HTTP Error: ${response.status}`);
@@ -1147,9 +1204,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await response.json();
     
             if (result.success && result.data) {
-                // Store the real results in the dataset for the modal to use
                 labsPage.dataset.results = JSON.stringify(result.data);
-                // The existing renderLabResults function will work perfectly with this real data
                 renderLabResults(result.data); 
             } else {
                 labEmptyState.style.display = 'block';
@@ -1208,15 +1263,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const createTokenCard = (tokenData) => {
         const card = document.createElement('div');
-        card.className = 'live-token-card'; // New class for new styling
+        card.className = 'live-token-card';
 
         const yourToken = parseInt(tokenData.your_token, 10);
         const currentToken = parseInt(tokenData.current_token, 10);
         const totalPatients = parseInt(tokenData.total_patients, 10);
 
-        // --- Calculations for display ---
         const tokensAhead = Math.max(0, yourToken - currentToken - 1);
-        const avgTimePerPatient = 5; // Assuming 5 minutes per patient
+        const avgTimePerPatient = 5; 
         const estimatedWait = tokensAhead * avgTimePerPatient;
 
         let statusMessage = "Please wait for your turn.";
@@ -1372,34 +1426,48 @@ document.addEventListener('DOMContentLoaded', () => {
                 welcomeSubtext.textContent = `You're all caught up. No upcoming appointments.`;
             }
 
-            activityFeed.innerHTML = ''; 
+            activityFeed.innerHTML = '';
             if (data.activity && data.activity.length > 0) {
                 activityEmpty.style.display = 'none';
-                const icons = {
-                    labs: { icon: 'fa-vial', page: 'labs'},
-                    billing: { icon: 'fa-file-invoice-dollar', page: 'billing' },
-                    prescriptions: { icon: 'fa-pills', page: 'prescriptions' },
-                    appointments: { icon: 'fa-calendar-check', page: 'appointments'}
-                };
                 
+                // Map actions to icons and colors
+                const activityInfoMap = {
+                    'booked_appointment': { icon: 'fa-calendar-plus', colorClass: 'appointments', page: 'appointments' },
+                    'cancelled_appointment': { icon: 'fa-calendar-times', colorClass: 'billing', page: 'appointments' }, // using billing color (orange)
+                    'downloaded_summary': { icon: 'fa-file-download', colorClass: 'labs', page: 'summaries' }, // using labs color (blue)
+                    'downloaded_lab_report': { icon: 'fa-file-download', colorClass: 'labs', page: 'labs' },
+                    'default': { icon: 'fa-history', colorClass: 'prescriptions', page: 'dashboard' } // Green for default
+                };
+
                 data.activity.forEach(act => {
                     const item = document.createElement('div');
-                    const activityInfo = icons[act.type] || { icon: 'fa-bell', page: 'notifications' };
-                    item.className = 'activity-item notification-item'; 
+                    const activityInfo = activityInfoMap[act.action] || activityInfoMap['default'];
+                    
+                    item.className = 'activity-item notification-item'; // Keep styling consistent
                     item.dataset.page = activityInfo.page;
                     
-                    const timeAgo = new Date(act.time);
+                    const activityTime = new Date(act.time).toLocaleString('en-US', {
+                        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                    });
                     
+                    // Use the 'details' from the database as the main message
                     item.innerHTML = `
-                        <div class="notification-icon ${act.type}"><i class="fas ${activityInfo.icon}"></i></div>
+                        <div class="notification-icon ${activityInfo.colorClass}"><i class="fas ${activityInfo.icon}"></i></div>
                         <div class="notification-content">
-                            <p>${act.message}</p>
-                            <small class="timestamp">${timeAgo.toLocaleString()}</small>
+                            <p>${act.details}</p>
+                            <small class="timestamp">${activityTime}</small>
                         </div>
                     `;
-                    item.addEventListener('click', () => navigateToPage(activityInfo.page));
+
+                    // Make the activity item clickable to navigate to the relevant page
+                    item.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        navigateToPage(activityInfo.page);
+                    });
+                    
                     activityFeed.appendChild(item);
                 });
+
             } else {
                 activityEmpty.style.display = 'block';
             }

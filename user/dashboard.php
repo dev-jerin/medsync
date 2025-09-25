@@ -361,32 +361,13 @@ require_once 'api.php';
                                     </tr>
                                 </thead>
                                 <tbody id="billing-table-body">
-                                    <tr>
-                                        <td data-label="Date">Aug 28, 2025</td>
-                                        <td data-label="Bill ID">TXN74652</td>
-                                        <td data-label="Description">Consultation with Dr. Carter</td>
-                                        <td data-label="Amount"><strong>₹50.00</strong></td>
-                                        <td data-label="Status"><span class="status due">Due</span></td>
-                                        <td data-label="Actions">
-                                            <button class="btn-primary btn-sm view-bill-details-btn" data-bill-id="1">Pay Now</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td data-label="Date">Aug 20, 2025</td>
-                                        <td data-label="Bill ID">TXN74601</td>
-                                        <td data-label="Description">Lipid Profile Test</td>
-                                        <td data-label="Amount">₹75.00</td>
-                                        <td data-label="Status"><span class="status paid">Paid</span></td>
-                                        <td data-label="Actions">
-                                            <button class="btn-secondary btn-sm view-bill-details-btn" data-bill-id="2">View Details</button>
-                                            <a href="api.php?action=download_receipt&id=2" class="action-link" style="margin-left: 10px;"><i class="fas fa-download"></i> Receipt</a>
-                                        </td>
-                                    </tr>
-                                </tbody>
+                                    </tbody>
                             </table>
                         </div>
-                        <div id="billing-empty-state" style="display: none; text-align: center; padding: 2rem;">
-                            <p>No billing records found for the selected criteria.</p>
+                        <div id="billing-empty-state" class="empty-state" style="display: none; text-align: center; padding: 4rem 2rem;">
+                             <i class="fas fa-file-invoice"></i>
+                             <h3>No Billing Records Found</h3>
+                            <p>Your billing history will appear here. No records match the current filters.</p>
                         </div>
                     </div>
                 </section>
@@ -418,7 +399,9 @@ require_once 'api.php';
                             </table>
                         </div>
                         
-                        <div id="lab-results-empty-state" style="display: none; text-align: center; padding: 2rem;">
+                        <div id="lab-results-empty-state" style="display: none; text-align: center; padding: 2rem;" class="empty-state">
+                            <i class="fas fa-flask"></i>
+                            <h3>No Lab Results Found</h3>
                             <p>No lab results found for the selected criteria.</p>
                         </div>
                         
@@ -605,25 +588,22 @@ require_once 'api.php';
                         <input type="text" id="doctor-search-name" class="form-control-sm" placeholder="Search by Doctor Name...">
                         <select id="doctor-search-specialty" class="form-control-sm">
                             <option value="">Filter by Specialty</option>
-                            </select>
+                        </select>
                     </div>
                     <div id="doctor-list" style="margin-top: 1.5rem; max-height: 40vh; overflow-y: auto;">
-                        </div>
+                    </div>
                 </div>
 
                 <div id="booking-step-2" class="booking-step" style="display: none;">
                     <p>Selected Doctor: <strong id="selected-doctor-name"></strong></p>
-                    <div style="display: flex; flex-wrap: wrap; gap: 2rem;">
-                        <div id="datepicker"></div> <div id="slot-list" style="flex-grow: 1;">
-                            <h4>Available Slots</h4>
-                            <div id="slots-container">
-                               </div>
-                        </div>
+                    <p class="text-secondary">Please select an available date from the calendar below.</p>
+                    <div style="display: flex; justify-content: center; margin-top: 1rem;">
+                        <div id="datepicker"></div> 
                     </div>
                 </div>
 
                 <div id="booking-step-3" class="booking-step" style="display: none;">
-                     <p>Doctor: <strong id="token-doctor-name"></strong> | Date: <strong id="token-selected-date"></strong> | Slot: <strong id="token-selected-slot"></strong></p>
+                     <p>Doctor: <strong id="token-doctor-name"></strong> | Date: <strong id="token-selected-date"></strong></p>
                      <div class="token-grid-wrapper">
                         <div class="token-grid-legend">
                             <span><i class="fas fa-square available"></i> Available</span>
@@ -631,7 +611,7 @@ require_once 'api.php';
                             <span><i class="fas fa-square selected"></i> Your Selection</span>
                         </div>
                         <div id="token-grid" class="token-grid">
-                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -641,7 +621,6 @@ require_once 'api.php';
                     <ul style="list-style-type: none; padding-left: 0;">
                         <li style="margin-bottom: 0.5rem;"><strong>Doctor:</strong> <span id="confirm-doctor"></span></li>
                         <li style="margin-bottom: 0.5rem;"><strong>Date:</strong> <span id="confirm-date"></span></li>
-                        <li style="margin-bottom: 0.5rem;"><strong>Time Slot:</strong> <span id="confirm-slot"></span></li>
                         <li style="margin-bottom: 0.5rem;"><strong>Your Token Number:</strong> <span id="confirm-token" style="font-size: 1.2rem; font-weight: bold; color: var(--primary-color);"></span></li>
                     </ul>
                 </div>

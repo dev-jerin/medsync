@@ -141,7 +141,7 @@ input:checked + .slider:before { transform: translateX(24px); content: "\f186"; 
 body.dark-mode .data-table tbody tr:hover { background-color: rgba(74, 144, 226, 0.1); }
 .status { padding: 0.3em 0.8em; border-radius: 20px; font-size: 0.8rem; font-weight: 600; color: white; text-align: center; }
 .status.paid, .status.completed { background-color: var(--status-green); }
-.status.due { background-color: var(--status-red); }
+.status.due, .status.pending { background-color: var(--status-red); } /* Combined for consistency */
 .status.upcoming, .status.ready { background-color: var(--status-blue); }
 .btn-primary, .btn-secondary, .btn-danger, .btn-sm { padding: 0.7rem 1.4rem; border: none; border-radius: var(--border-radius); cursor: pointer; font-weight: 500; transition: all 0.2s; font-family: var(--font-family); display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .btn-primary { background-color: var(--primary-color); color: white; }
@@ -550,11 +550,6 @@ body.dark-mode .notification-item.unread {
     align-items: center;
     gap: 0.75rem;
 }
-
-/* Status Badge for Due Bills (already have .status.due) */
-.status.due { background-color: var(--status-red); }
-.status.paid { background-color: var(--status-green); }
-
 
 /* Modal Styles */
 .modal-overlay {
@@ -967,11 +962,10 @@ body.dark-mode #slots-container .slot.disabled {
     from { background-color: var(--border-color); }
     to { background-color: var(--bg-light); }
 }
-body.dark-mode {
-@keyframes skeleton-loading {
+body.dark-mode @keyframes skeleton-loading {
     from { background-color: var(--border-color); }
     to { background-color: #2a2a2a; }
-}}
+}
 
 .skeleton {
     animation: skeleton-loading 1s linear infinite alternate;
@@ -1386,4 +1380,64 @@ body.dark-mode {
     color: var(--text-secondary);
     font-size: 0.9rem;
     font-weight: 500;
-}   
+}
+
+/* ============================================== */
+/* ===         APPOINTMENT CALENDAR STYLES    === */
+/* ============================================== */
+.calendar {
+    width: 320px;
+    font-size: 0.9rem;
+}
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+}
+.calendar-header button {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: var(--text-primary);
+    padding: 0.5rem;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+}
+.calendar-header button:hover {
+    background-color: var(--bg-light);
+}
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+    text-align: center;
+}
+.calendar-grid div {
+    padding: 0.6rem 0;
+    border-radius: var(--border-radius);
+    transition: all 0.2s ease;
+}
+.calendar-day-name {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+.calendar-day.inactive {
+    color: var(--text-secondary);
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.calendar-day.active {
+    cursor: pointer;
+}
+.calendar-day.active:hover {
+    background-color: var(--bg-light);
+    color: var(--primary-color);
+}
+.calendar-day.selected {
+    background-color: var(--primary-color);
+    color: white;
+    font-weight: 600;
+}

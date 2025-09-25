@@ -14,6 +14,15 @@ require_once '../vendor/autoload.php'; // Assuming Composer autoload for Dompdf
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
+function log_user_activity($conn, $user_id, $action, $details = null) {
+    $stmt = $conn->prepare("INSERT INTO activity_logs (user_id, action, details) VALUES (?, ?, ?)");
+    if ($stmt) {
+        $stmt->bind_param("iss", $user_id, $action, $details);
+        $stmt->execute();
+        $stmt->close();
+    }
+}
+
 // --- Security & Session Management ---
 if (!isset($_SESSION['user_id']) || !isset($_SESSION['role']) || $_SESSION['role'] !== 'user') {
     if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
@@ -73,6 +82,8 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
         $summary_data = $stmt->get_result()->fetch_assoc();
         
         if ($summary_data) {
+            log_user_activity($conn, $user_id, 'downloaded_summary', "Downloaded discharge summary for admission on " . date('M j, Y', strtotime($summary_data['admission_date'])));
+            
             // Check if summary_template.php exists before including
             if (file_exists('summary_template.php')) {
                 ob_start();
@@ -102,23 +113,25 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
     if (isset($_GET['action']) && $_GET['action'] == 'download_lab_report' && isset($_GET['id'])) {
         $lab_result_id = (int)$_GET['id'];
 
-        // Prepare a query to get lab data, including patient and doctor names.
+        // FIXED: Use the correct table name 'lab_orders' instead of 'lab_results'
         $stmt = $conn->prepare("
             SELECT 
-                lr.*,
+                lo.*,
                 p.name AS patient_name,
                 p.display_user_id,
                 doc.name AS doctor_name
-            FROM lab_results lr
-            JOIN users p ON lr.patient_id = p.id
-            LEFT JOIN users doc ON lr.doctor_id = doc.id
-            WHERE lr.id = ? AND p.id = ?
+            FROM lab_orders lo
+            JOIN users p ON lo.patient_id = p.id
+            LEFT JOIN users doc ON lo.doctor_id = doc.id
+            WHERE lo.id = ? AND p.id = ?
         ");
         $stmt->bind_param("ii", $lab_result_id, $user_id);
         $stmt->execute();
         $lab_data = $stmt->get_result()->fetch_assoc();
 
         if ($lab_data) {
+            log_user_activity($conn, $user_id, 'downloaded_lab_report', "Downloaded lab report for '{$lab_data['test_name']}'.");
+
             // Ensure the template file exists
             if (file_exists('lab_result_template.php')) {
                 // Capture the template output into a variable
@@ -156,6 +169,64 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
         if (isset($_GET['action'])) {
             switch ($_GET['action']) {
                 
+                case 'get_billing_data':
+                    $summary = [
+                        'outstanding_balance' => 0.00,
+                        'last_payment_amount' => 0.00,
+                        'last_payment_date' => 'N/A'
+                    ];
+
+                    // Calculate outstanding balance
+                    $stmt_due = $conn->prepare("SELECT COALESCE(SUM(amount), 0.00) as total_due FROM transactions WHERE user_id = ? AND status = 'pending'");
+                    $stmt_due->bind_param("i", $user_id);
+                    $stmt_due->execute();
+                    $summary['outstanding_balance'] = $stmt_due->get_result()->fetch_assoc()['total_due'];
+                    $stmt_due->close();
+
+                    // Get last payment details
+                    $stmt_last_paid = $conn->prepare("SELECT amount, paid_at FROM transactions WHERE user_id = ? AND status = 'paid' ORDER BY paid_at DESC LIMIT 1");
+                    $stmt_last_paid->bind_param("i", $user_id);
+                    $stmt_last_paid->execute();
+                    $last_payment = $stmt_last_paid->get_result()->fetch_assoc();
+                    if ($last_payment) {
+                        $summary['last_payment_amount'] = $last_payment['amount'];
+                        $summary['last_payment_date'] = date('M j, Y', strtotime($last_payment['paid_at']));
+                    }
+                    $stmt_last_paid->close();
+
+                    // Get billing history with filtering
+                    $sql_history = "SELECT id, created_at, description, amount, status, paid_at FROM transactions WHERE user_id = ?";
+                    $params = [$user_id];
+                    $types = "i";
+
+                    // Apply status filter
+                    if (!empty($_GET['status']) && in_array($_GET['status'], ['pending', 'paid', 'due'])) {
+                        // The frontend uses 'due', but the DB uses 'pending'
+                        $db_status = ($_GET['status'] === 'due') ? 'pending' : $_GET['status'];
+                        $sql_history .= " AND status = ?";
+                        $params[] = $db_status;
+                        $types .= "s";
+                    }
+
+                    // Apply date filter (by month)
+                    if (!empty($_GET['date'])) {
+                        $date_filter = $_GET['date'] . '-%'; // e.g., '2025-09-%'
+                        $sql_history .= " AND created_at LIKE ?";
+                        $params[] = $date_filter;
+                        $types .= "s";
+                    }
+                    
+                    $sql_history .= " ORDER BY created_at DESC";
+
+                    $stmt_history = $conn->prepare($sql_history);
+                    $stmt_history->bind_param($types, ...$params);
+                    $stmt_history->execute();
+                    $history = $stmt_history->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt_history->close();
+
+                    $response = ['success' => true, 'data' => ['summary' => $summary, 'history' => $history]];
+                    break;
+                
                 case 'get_discharge_summaries':
                     $stmt = $conn->prepare("
                         SELECT 
@@ -169,7 +240,8 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                         FROM discharge_clearance dc
                         JOIN admissions a ON dc.admission_id = a.id
                         LEFT JOIN users doc ON dc.doctor_id = doc.id
-                        LEFT JOIN departments dept ON a.department_id = dept.id
+                        LEFT JOIN doctors dr ON doc.id = dr.user_id
+                        LEFT JOIN departments dept ON dr.department_id = dept.id
                         WHERE a.patient_id = ? AND (a.discharge_date IS NOT NULL OR dc.discharge_date IS NOT NULL)
                         ORDER BY discharge_date DESC
                     ");
@@ -182,12 +254,17 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                 
                 case 'get_dashboard_data':
                     $dashboard_data = [];
-                    // Fetch upcoming appointments (limit 2)
+                    // Fetch upcoming appointments (limit 2) - UPDATED QUERY
                     $stmt_app = $conn->prepare("
-                        SELECT a.appointment_date, u.name as doctorName, u.profile_picture as avatar, d.specialty
+                        SELECT 
+                            a.appointment_date, 
+                            u.name as doctorName, 
+                            u.profile_picture as avatar, 
+                            sp.name as specialty
                         FROM appointments a
                         JOIN users u ON a.doctor_id = u.id
                         JOIN doctors d ON u.id = d.user_id
+                        LEFT JOIN specialities sp ON d.specialty_id = sp.id
                         WHERE a.user_id = ? AND a.appointment_date >= CURDATE() AND a.status = 'scheduled'
                         ORDER BY a.appointment_date ASC LIMIT 2
                     ");
@@ -196,23 +273,18 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     $dashboard_data['appointments'] = $stmt_app->get_result()->fetch_all(MYSQLI_ASSOC);
                     $stmt_app->close();
 
-                    // Fetch recent activity (from notifications, limit 3)
+                    // Fetch recent activity (from the user's own activity log, limit 5)
                     $stmt_act = $conn->prepare("
-                        SELECT message, created_at as time FROM notifications 
-                        WHERE (recipient_user_id = ? OR recipient_role = ? OR recipient_role = 'all')
-                        ORDER BY created_at DESC LIMIT 3
+                        SELECT action, details, created_at as time 
+                        FROM activity_logs 
+                        WHERE user_id = ? 
+                        ORDER BY created_at DESC 
+                        LIMIT 5
                     ");
-                    $stmt_act->bind_param("is", $user_id, $user_role);
+                    $stmt_act->bind_param("i", $user_id);
                     $stmt_act->execute();
-                    $activity = $stmt_act->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $dashboard_data['activity'] = $stmt_act->get_result()->fetch_all(MYSQLI_ASSOC);
                     $stmt_act->close();
-                    foreach ($activity as &$act) {
-                        if (strpos(strtolower($act['message']), 'lab') !== false) $act['type'] = 'labs';
-                        elseif (strpos(strtolower($act['message']), 'bill') !== false) $act['type'] = 'billing';
-                        elseif (strpos(strtolower($act['message']), 'prescription') !== false) $act['type'] = 'prescriptions';
-                        else $act['type'] = 'appointments';
-                    }
-                    $dashboard_data['activity'] = $activity;
 
                     // Fetch live token for today, if any
                     $stmt_token = $conn->prepare("
@@ -231,45 +303,40 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     break;
 
                 case 'get_lab_results':
-                    // Base SQL query to get lab results for the logged-in user
-                    // We JOIN with the 'users' table to get the doctor's name
+                    // FIXED: Use the correct table name 'lab_orders' instead of 'lab_results'
                     $sql = "
                         SELECT 
-                            lr.id,
-                            lr.test_date,
-                            lr.test_name,
-                            lr.status,
-                            lr.result_details,
+                            lo.id,
+                            lo.test_date,
+                            lo.test_name,
+                            lo.status,
+                            lo.result_details,
                             doc.name AS doctor_name
-                        FROM lab_results lr
-                        LEFT JOIN users doc ON lr.doctor_id = doc.id
-                        WHERE lr.patient_id = ?
+                        FROM lab_orders lo
+                        LEFT JOIN users doc ON lo.doctor_id = doc.id
+                        WHERE lo.patient_id = ?
                     ";
                 
-                    // Prepare for filtering
                     $params = [$user_id];
                     $types = "i";
                 
-                    // Handle search by test name
                     if (!empty($_GET['search'])) {
                         $search_term = '%' . $_GET['search'] . '%';
-                        $sql .= " AND lr.test_name LIKE ?";
+                        $sql .= " AND lo.test_name LIKE ?";
                         $params[] = $search_term;
                         $types .= "s";
                     }
                 
-                    // Handle filter by date (month and year)
                     if (!empty($_GET['date'])) {
-                        $date_filter = $_GET['date'] . '-%'; // Matches YYYY-MM format
-                        $sql .= " AND lr.test_date LIKE ?";
+                        $date_filter = $_GET['date'] . '-%';
+                        $sql .= " AND lo.test_date LIKE ?";
                         $params[] = $date_filter;
                         $types .= "s";
                     }
                 
-                    $sql .= " ORDER BY lr.test_date DESC";
+                    $sql .= " ORDER BY lo.test_date DESC";
                 
                     $stmt = $conn->prepare($sql);
-                    // Dynamically bind parameters based on the filters applied
                     $stmt->bind_param($types, ...$params); 
                     $stmt->execute();
                     $results = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -280,6 +347,7 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
 
                 case 'get_medical_records':
                     $records = [];
+                    // FIXED: Use the correct table name 'lab_orders' in the UNION and corrected admissions join
                     $sql = "
                         -- Admissions
                         SELECT
@@ -287,26 +355,27 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                             a.admission_date AS record_date,
                             'admission' AS record_type,
                             d.name AS title,
-                            CONCAT('Admitted to ', w.name) AS details,
-                            a.status AS status
+                            CONCAT('Admitted under Dr. ', doc.name) AS details,
+                            CASE WHEN a.discharge_date IS NULL THEN 'Admitted' ELSE 'Discharged' END AS status
                         FROM admissions a
-                        JOIN departments d ON a.department_id = d.id
-                        LEFT JOIN wards w ON a.ward_id = w.id
+                        JOIN users doc ON a.doctor_id = doc.id
+                        JOIN doctors dr ON doc.id = dr.user_id
+                        JOIN departments d ON dr.department_id = d.id
                         WHERE a.patient_id = ?
 
                         UNION ALL
 
                         -- Lab Results
                         SELECT
-                            lr.id,
-                            lr.test_date AS record_date,
+                            lo.id,
+                            lo.test_date AS record_date,
                             'lab_result' AS record_type,
-                            lr.test_name AS title,
+                            lo.test_name AS title,
                             CONCAT('Ordered by Dr. ', doc.name) AS details,
-                            lr.status AS status
-                        FROM lab_results lr
-                        LEFT JOIN users doc ON lr.doctor_id = doc.id
-                        WHERE lr.patient_id = ? AND lr.status = 'completed'
+                            lo.status AS status
+                        FROM lab_orders lo
+                        LEFT JOIN users doc ON lo.doctor_id = doc.id
+                        WHERE lo.patient_id = ? AND lo.status = 'completed'
 
                         UNION ALL
 
@@ -364,18 +433,18 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     break;
                 
                 case 'get_live_tokens':
-                    // --- Main query to get the user's appointments for today ---
                     $sql_tokens = "SELECT 
                                        a.token_number, 
                                        a.token_status, 
                                        a.doctor_id, 
                                        u.name as doctor_name, 
-                                       d.specialty,
-                                       d.office_floor,      -- NEWLY ADDED
-                                       d.office_room_number -- NEWLY ADDED
+                                       sp.name as specialty,
+                                       d.office_floor,
+                                       d.office_room_number
                                    FROM appointments a
                                    JOIN users u ON a.doctor_id = u.id
-                                   JOIN doctors d ON u.id = d.user_id
+                                   LEFT JOIN doctors d ON u.id = d.user_id
+                                   LEFT JOIN specialities sp ON d.specialty_id = sp.id
                                    WHERE a.user_id = ? AND DATE(a.appointment_date) = CURDATE() AND a.status = 'scheduled'";
                     
                     $stmt_tokens = $conn->prepare($sql_tokens);
@@ -390,7 +459,6 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     }
 
                     $tokens = [];
-                    // --- Prepare statements for calculations (more efficient) ---
                     $current_token_sql = "SELECT COALESCE(MAX(token_number), 0) as current_token 
                                           FROM appointments 
                                           WHERE doctor_id = ? AND DATE(appointment_date) = CURDATE() 
@@ -403,19 +471,15 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     $current_token_stmt = $conn->prepare($current_token_sql);
                     $total_patients_stmt = $conn->prepare($total_patients_sql);
                     
-                    // --- Loop through each appointment and gather all required data ---
                     foreach ($todays_appointments as $appointment) {
-                        // Get current serving token
                         $current_token_stmt->bind_param("i", $appointment['doctor_id']);
                         $current_token_stmt->execute();
                         $current_token_result = $current_token_stmt->get_result()->fetch_assoc();
 
-                        // Get total patients for the doctor today
                         $total_patients_stmt->bind_param("i", $appointment['doctor_id']);
                         $total_patients_stmt->execute();
                         $total_patients_result = $total_patients_stmt->get_result()->fetch_assoc();
                         
-                        // Calculate patients left
                         $patients_left = $total_patients_result['total_patients'] - $current_token_result['current_token'];
 
                         $tokens[] = [
@@ -424,10 +488,10 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                             'doctor_name' => $appointment['doctor_name'],
                             'specialty' => $appointment['specialty'],
                             'token_status' => $appointment['token_status'],
-                            'office_floor' => $appointment['office_floor'],       // NEW
-                            'office_room_number' => $appointment['office_room_number'], // NEW
-                            'total_patients' => $total_patients_result['total_patients'], // NEW
-                            'patients_left' => max(0, $patients_left) // NEW (ensure it's not negative)
+                            'office_floor' => $appointment['office_floor'],
+                            'office_room_number' => $appointment['office_room_number'],
+                            'total_patients' => $total_patients_result['total_patients'],
+                            'patients_left' => max(0, $patients_left)
                         ];
                     }
                     $current_token_stmt->close();
@@ -436,9 +500,6 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     $response = ['success' => true, 'tokens' => $tokens, 'message' => "Live token status fetched successfully."];
                     break;
                 
-                // =======================================================
-                // === NEWLY ADDED APPOINTMENT ENDPOINTS (GET)         ===
-                // =======================================================
                 case 'get_appointments':
                     $appointments = [
                         'upcoming' => [],
@@ -451,10 +512,11 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                                 a.token_number, 
                                 a.status,
                                 doc_user.name as doctor_name,
-                                d.specialty
+                                sp.name AS specialty
                             FROM appointments a
                             JOIN users doc_user ON a.doctor_id = doc_user.id
                             JOIN doctors d ON doc_user.id = d.user_id
+                            LEFT JOIN specialities sp ON d.specialty_id = sp.id
                             WHERE a.user_id = ?
                             ORDER BY a.appointment_date DESC";
                     
@@ -472,7 +534,6 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                         }
                     }
                     $stmt->close();
-                    // Sort upcoming appointments in ascending order
                     usort($appointments['upcoming'], function($a, $b) {
                         return strtotime($a['appointment_date']) - strtotime($b['appointment_date']);
                     });
@@ -480,39 +541,37 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     $response = ['success' => true, 'data' => $appointments];
                     break;
                 
-                // START: UPDATED CODE BLOCK
                 case 'get_doctors':
                     $specialty_filter = $_GET['specialty'] ?? '';
-                    $name_search = $_GET['name_search'] ?? ''; // Get the name search parameter
-                    
-                    $sql = "SELECT 
-                                d.user_id as id, 
-                                u.name, 
-                                d.specialty,
+                    $name_search = $_GET['name_search'] ?? '';
+
+                    $sql = "SELECT
+                                d.user_id as id,
+                                u.name,
+                                sp.name AS specialty,
                                 u.profile_picture
                             FROM doctors d
                             JOIN users u ON d.user_id = u.id
+                            LEFT JOIN specialities sp ON d.specialty_id = sp.id
                             WHERE d.is_available = 1 AND u.is_active = 1";
-                
+
                     $params = [];
                     $types = "";
 
-                    // Add condition for name search
                     if (!empty($name_search)) {
                         $sql .= " AND u.name LIKE ?";
                         $params[] = '%' . $name_search . '%';
                         $types .= "s";
                     }
-                
-                    // Add condition for specialty filter
+
                     if (!empty($specialty_filter)) {
-                        $sql .= " AND d.specialty = ?";
+                        $sql .= " AND sp.name = ?";
                         $params[] = $specialty_filter;
                         $types .= "s";
                     }
-                    
+
                     $sql .= " ORDER BY u.name ASC";
-                    
+
                     $stmt = $conn->prepare($sql);
                     if (!empty($params)) {
                         $stmt->bind_param($types, ...$params);
@@ -520,16 +579,55 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     $stmt->execute();
                     $doctors = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     $stmt->close();
-                    
+
                     $response = ['success' => true, 'data' => $doctors];
                     break;
-                // END: UPDATED CODE BLOCK
                 
                 case 'get_doctor_slots':
-                    // For this example, we will return static slots. 
-                    // You could expand this to read from the `doctors.slots` JSON column.
-                    $mock_slots = ["09:00 AM - 10:00 AM", "10:00 AM - 11:00 AM", "11:00 AM - 12:00 PM", "02:00 PM - 03:00 PM"];
-                    $response = ['success' => true, 'data' => $mock_slots];
+                    $doctor_id = (int)($_GET['doctor_id'] ?? 0);
+                    $date = $_GET['date'] ?? '';
+
+                    if (empty($doctor_id) || empty($date)) {
+                        throw new Exception("Doctor ID and date are required.");
+                    }
+
+                    // Define all possible slots for a doctor's schedule
+                    $all_possible_slots = [
+                        "09:00 AM - 10:00 AM", 
+                        "10:00 AM - 11:00 AM", 
+                        "11:00 AM - 12:00 PM", 
+                        "02:00 PM - 03:00 PM",
+                        "03:00 PM - 04:00 PM"
+                    ];
+
+                    // Find which slots are already booked for that doctor on that date
+                    $stmt = $conn->prepare("
+                        SELECT appointment_date 
+                        FROM appointments 
+                        WHERE doctor_id = ? 
+                        AND DATE(appointment_date) = ? 
+                        AND status = 'scheduled'
+                    ");
+                    $stmt->bind_param("is", $doctor_id, $date);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+
+                    $booked_slots = [];
+                    while ($row = $result->fetch_assoc()) {
+                        $booked_hour = (int)date('H', strtotime($row['appointment_date']));
+                        // Determine which slot the booked hour falls into
+                        if ($booked_hour >= 9 && $booked_hour < 10) $booked_slots[] = "09:00 AM - 10:00 AM";
+                        else if ($booked_hour >= 10 && $booked_hour < 11) $booked_slots[] = "10:00 AM - 11:00 AM";
+                        else if ($booked_hour >= 11 && $booked_hour < 12) $booked_slots[] = "11:00 AM - 12:00 PM";
+                        else if ($booked_hour >= 14 && $booked_hour < 15) $booked_slots[] = "02:00 PM - 03:00 PM";
+                        else if ($booked_hour >= 15 && $booked_hour < 16) $booked_slots[] = "03:00 PM - 04:00 PM";
+                    }
+                    $stmt->close();
+                    
+                    // Return only the slots that are not in the booked list
+                    $available_slots = array_diff($all_possible_slots, $booked_slots);
+
+                    $response = ['success' => true, 'data' => array_values($available_slots)]; // Re-index array
                     break;
                 
                 case 'get_available_tokens':
@@ -540,7 +638,9 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                         throw new Exception("Doctor ID and date are required.");
                     }
                     
-                    $stmt = $conn->prepare("SELECT token_number FROM appointments WHERE doctor_id = ? AND DATE(appointment_date) = ?");
+                    // ===== THIS IS THE FIX =====
+                    // Only select tokens from appointments that are currently scheduled.
+                    $stmt = $conn->prepare("SELECT token_number FROM appointments WHERE doctor_id = ? AND DATE(appointment_date) = ? AND status = 'scheduled'");
                     $stmt->bind_param("is", $doctor_id, $date);
                     $stmt->execute();
                     $result = $stmt->get_result();
@@ -551,11 +651,10 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     }
                     $stmt->close();
                     
-                    $response = ['success' => true, 'data' => ['total' => 20, 'booked' => $booked_tokens]]; // Assuming 20 tokens per slot
+                    $response = ['success' => true, 'data' => ['total' => 20, 'booked' => $booked_tokens]];
                     break;
             }
         }
-        // Handle POST requests for performing actions
         elseif (isset($_POST['action'])) {
             switch ($_POST['action']) {
                 case 'mark_read':
@@ -675,26 +774,35 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     }
                     break;
                 
-                // =======================================================
-                // === NEWLY ADDED APPOINTMENT ENDPOINTS (POST)        ===
-                // =======================================================
                 case 'book_appointment':
                     $doctor_id = (int)($_POST['doctorId'] ?? 0);
                     $date = $_POST['date'] ?? '';
-                    $slot = $_POST['slot'] ?? ''; // e.g., "09:00 AM - 10:00 AM"
                     $token = (int)($_POST['token'] ?? 0);
                 
-                    if (empty($doctor_id) || empty($date) || empty($slot) || empty($token)) {
-                        throw new Exception("All appointment details are required.");
+                    // Validate that the essential details are present
+                    if (empty($doctor_id) || empty($date) || empty($token)) {
+                        throw new Exception("Doctor, date, and token are required.");
                     }
                     
-                    // Combine date and the start of the slot to create a DATETIME
-                    $time_start = explode(' - ', $slot)[0];
-                    $appointment_datetime_str = "$date $time_start";
-                    $appointment_datetime = date('Y-m-d H:i:s', strtotime($appointment_datetime_str));
+                    // --- NEW VALIDATION: Check if user already has a booking with this doctor on this day ---
+                    $stmt_user_check = $conn->prepare("
+                        SELECT id FROM appointments 
+                        WHERE user_id = ? AND doctor_id = ? AND DATE(appointment_date) = ? AND status = 'scheduled'
+                    ");
+                    $stmt_user_check->bind_param("iis", $user_id, $doctor_id, $date);
+                    $stmt_user_check->execute();
+                    if ($stmt_user_check->get_result()->num_rows > 0) {
+                        $stmt_user_check->close();
+                        throw new Exception("You already have an appointment scheduled with this doctor on this day.");
+                    }
+                    $stmt_user_check->close();
+                    // --- END OF NEW VALIDATION ---
+                    
+                    // Set a fixed time for the appointment datetime
+                    $appointment_datetime = date('Y-m-d H:i:s', strtotime("$date 09:00:00"));
                 
-                    // Check if this token is already booked for this doctor on this day
-                    $stmt_check = $conn->prepare("SELECT id FROM appointments WHERE doctor_id = ? AND DATE(appointment_date) = ? AND token_number = ?");
+                    // Check if the token is already booked for that doctor on that date
+                    $stmt_check = $conn->prepare("SELECT id FROM appointments WHERE doctor_id = ? AND DATE(appointment_date) = ? AND token_number = ? AND status = 'scheduled'");
                     $stmt_check->bind_param("isi", $doctor_id, $date, $token);
                     $stmt_check->execute();
                     if ($stmt_check->get_result()->num_rows > 0) {
@@ -702,10 +810,18 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     }
                     $stmt_check->close();
                 
+                    // Insert the new appointment with the fixed time
                     $stmt_insert = $conn->prepare("INSERT INTO appointments (user_id, doctor_id, appointment_date, token_number, status) VALUES (?, ?, ?, ?, 'scheduled')");
                     $stmt_insert->bind_param("iisi", $user_id, $doctor_id, $appointment_datetime, $token);
                 
                     if ($stmt_insert->execute()) {
+                        $stmt_doctor = $conn->prepare("SELECT name FROM users WHERE id = ?");
+                        $stmt_doctor->bind_param("i", $doctor_id);
+                        $stmt_doctor->execute();
+                        $doctor_name = $stmt_doctor->get_result()->fetch_assoc()['name'];
+                        $stmt_doctor->close();
+                        log_user_activity($conn, $user_id, 'booked_appointment', "Booked an appointment with Dr. {$doctor_name} for {$date}.");
+                        
                         $response = ['success' => true, 'message' => 'Appointment booked successfully!'];
                     } else {
                         throw new Exception("Failed to book the appointment. Please try again.");
@@ -720,12 +836,12 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                         throw new Exception("Appointment ID is required.");
                     }
                 
-                    // Check if the appointment belongs to the current user and is in a cancellable state
                     $stmt = $conn->prepare("UPDATE appointments SET status = 'cancelled' WHERE id = ? AND user_id = ? AND status = 'scheduled'");
                     $stmt->bind_param("ii", $appointment_id, $user_id);
                     
                     if ($stmt->execute()) {
                         if ($stmt->affected_rows > 0) {
+                            log_user_activity($conn, $user_id, 'cancelled_appointment', "Cancelled appointment ID: {$appointment_id}.");
                             $response = ['success' => true, 'message' => 'Appointment cancelled successfully.'];
                         } else {
                             throw new Exception("Could not cancel this appointment. It may have already started or does not exist.");
@@ -749,7 +865,6 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
 
 // --- Standard Page Load Data Preparation ---
 $user_details = [];
-// THIS IS THE UPDATED LINE
 $stmt = $conn->prepare("SELECT username, name, email, phone, date_of_birth, gender, profile_picture FROM users WHERE id = ?");
 if ($stmt) {
     $stmt->bind_param("i", $user_id);
