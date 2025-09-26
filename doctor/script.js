@@ -10,9 +10,187 @@ document.addEventListener("DOMContentLoaded", function() {
     let patientListCache = null;
 
     // ===================================================================
+    // --- NEW HELPER FUNCTIONS for Profile Page ---
+    // ===================================================================
+
+    /**
+     * Populates a select dropdown with options from an API endpoint.
+     * @param {string} endpoint The API endpoint to fetch data from (e.g., 'api.php?action=get_specialities').
+     * @param {string} selectId The ID of the <select> element to populate.
+     * @param {string} placeholder The text to show for the default option.
+     * @param {string|number} selectedValue The value that should be pre-selected.
+     */
+    async function populateSelectDropdown(endpoint, selectId, placeholder, selectedValue) {
+        const selectElement = document.getElementById(selectId);
+        if (!selectElement) return;
+
+        try {
+            const response = await fetch(endpoint);
+            const result = await response.json();
+            if (result.success) {
+                selectElement.innerHTML = `<option value="">-- ${placeholder} --</option>`;
+                result.data.forEach(item => {
+                    const isSelected = item.id == selectedValue ? 'selected' : '';
+                    selectElement.innerHTML += `<option value="${item.id}" ${isSelected}>${item.name}</option>`;
+                });
+            } else {
+                selectElement.innerHTML = `<option value="">Error loading data</option>`;
+            }
+        } catch (error) {
+            console.error(`Failed to fetch data for ${selectId}:`, error);
+            selectElement.innerHTML = `<option value="">Error loading data</option>`;
+        }
+    }
+
+    /**
+     * Validates a single form field and displays an error message if needed.
+     * @param {HTMLElement} field The input/select element to validate.
+     * @returns {boolean} True if the field is valid, false otherwise.
+     */
+    function validateField(field) {
+        const errorElement = field.parentElement.querySelector('.validation-error');
+        let message = '';
+
+        // Check for required fields
+        if (field.required && !field.value.trim()) {
+            message = 'This field is required.';
+        }
+        // Check for pattern mismatch (like for the phone number)
+        else if (field.pattern && field.value && !new RegExp(field.pattern).test(field.value)) {
+             message = field.parentElement.querySelector('.validation-error').textContent || 'Invalid format.';
+        }
+        // Special check for date of birth year
+        else if (field.id === 'profile-dob' && field.value) {
+            const year = field.value.split('-')[0];
+            if (year.length > 4) {
+                message = 'Please enter a valid 4-digit year.';
+            }
+        }
+        
+        if (message && errorElement) {
+            errorElement.textContent = message;
+            return false;
+        } else if (errorElement) {
+            errorElement.textContent = '';
+            return true;
+        }
+        return true;
+    }
+
+
+    // ===================================================================
+    // --- Dashboard Page Logic ---
+    // ===================================================================
+    async function loadDashboardData() {
+        const appointmentsValue = document.getElementById('stat-appointments-value');
+        const admissionsValue = document.getElementById('stat-admissions-value');
+        const dischargesValue = document.getElementById('stat-discharges-value');
+        const appointmentsTbody = document.getElementById('dashboard-appointments-tbody');
+        const inpatientsTbody = document.getElementById('dashboard-inpatients-tbody');
+
+        if (appointmentsTbody) appointmentsTbody.innerHTML = `<tr><td colspan="5" class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>`;
+        if (inpatientsTbody) inpatientsTbody.innerHTML = `<tr><td colspan="3" class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>`;
+
+        try {
+            const response = await fetch('api.php?action=get_dashboard_data');
+            const result = await response.json();
+
+            if (result.success) {
+                const data = result.data;
+                
+                if (appointmentsValue) appointmentsValue.textContent = data.stats.today_appointments || 0;
+                if (admissionsValue) admissionsValue.textContent = data.stats.active_admissions || 0;
+                if (dischargesValue) dischargesValue.textContent = data.stats.pending_discharges || 0;
+
+                if (appointmentsTbody) {
+                    appointmentsTbody.innerHTML = ''; 
+                    if (data.appointments.length > 0) {
+                        data.appointments.forEach(appt => {
+                            const time = new Date(appt.appointment_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                                <td data-label="Token">${appt.token_number || 'N/A'}</td>
+                                <td data-label="Patient Name">${appt.patient_name}</td>
+                                <td data-label="Time">${time}</td>
+                                <td data-label="Status"><span class="status ${appt.status.toLowerCase()}">${appt.status}</span></td>
+                                <td data-label="Action"><button class="action-btn"><i class="fas fa-play-circle"></i> Start</button></td>
+                            `;
+                            appointmentsTbody.appendChild(tr);
+                        });
+                    } else {
+                        appointmentsTbody.innerHTML = `<tr><td colspan="5" style="text-align: center;">No appointments scheduled for today.</td></tr>`;
+                    }
+                }
+                
+                if (inpatientsTbody) {
+                    inpatientsTbody.innerHTML = '';
+                    if (data.inpatients.length > 0) {
+                        data.inpatients.forEach(patient => {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                                <td data-label="Patient Name">${patient.patient_name}</td>
+                                <td data-label="Room/Bed">${patient.room_bed}</td>
+                                <td data-label="Action"><button class="action-btn view-record" data-id="${patient.patient_id}"><i class="fas fa-file-medical"></i> View</button></td>
+                            `;
+                            inpatientsTbody.appendChild(tr);
+                        });
+                    } else {
+                        inpatientsTbody.innerHTML = `<tr><td colspan="3" style="text-align: center;">No active in-patients.</td></tr>`;
+                    }
+                }
+            } else {
+                 console.error("Dashboard Error:", result.message);
+                 if (appointmentsTbody) appointmentsTbody.innerHTML = `<tr><td colspan="5" class="loading-placeholder" style="color:var(--danger-color);">Failed to load data.</td></tr>`;
+                 if (inpatientsTbody) inpatientsTbody.innerHTML = `<tr><td colspan="3" class="loading-placeholder" style="color:var(--danger-color);">Failed to load data.</td></tr>`;
+            }
+        } catch (error) {
+            console.error("Failed to fetch dashboard data:", error);
+        }
+    }
+
+    // ===================================================================
+    // --- Quick Actions Logic ---
+    // ===================================================================
+    const quickAdmitBtn = document.getElementById('quick-action-admit');
+    const quickPrescribeBtn = document.getElementById('quick-action-prescribe');
+    const quickLabBtn = document.getElementById('quick-action-lab');
+    const quickDischargeBtn = document.getElementById('quick-action-discharge');
+
+    if (quickAdmitBtn) {
+        quickAdmitBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            openAdmitPatientModal(); 
+        });
+    }
+
+    if (quickPrescribeBtn) {
+        quickPrescribeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('create-prescription-btn').click();
+        });
+    }
+
+    if (quickLabBtn) {
+        quickLabBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('place-lab-order-btn').click();
+        });
+    }
+
+    if (quickDischargeBtn) {
+        quickDischargeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const dischargeNavLink = document.querySelector('.nav-link[data-page="discharge"]');
+            if (dischargeNavLink) {
+                dischargeNavLink.click();
+            }
+        });
+    }
+
+    // ===================================================================
     // --- My Patients Page Logic ---
     // ===================================================================
-    let allPatientsData = []; // Cache for client-side filtering
+    let allPatientsData = []; 
 
     async function loadMyPatients() {
         const tableBody = document.querySelector('#patients-table tbody');
@@ -25,7 +203,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
             tableBody.innerHTML = '';
             if (result.success && result.data.length > 0) {
-                allPatientsData = result.data; // Cache the data
+                allPatientsData = result.data; 
                 renderPatientsTable(allPatientsData);
             } else {
                 tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 2rem;">No patients found.</td></tr>`;
@@ -68,146 +246,224 @@ document.addEventListener("DOMContentLoaded", function() {
         renderPatientsTable(filteredPatients);
     }
 
-// ===================================================================
-// --- Lab Orders Page Logic ---
-// ===================================================================
-async function loadLabOrders() {
-    // Note the updated table ID
-    const tableBody = document.querySelector('#lab-orders-table tbody');
-    if (!tableBody) return;
-    tableBody.innerHTML = `<tr><td colspan="6" class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading lab orders...</td></tr>`;
+    // ===================================================================
+    // --- Lab Orders Page Logic ---
+    // ===================================================================
+    let allLabOrdersData = []; // Global variable to hold all lab order data
 
-    try {
-        const response = await fetch('api.php?action=get_lab_orders');
-        const result = await response.json();
+    /**
+     * Renders the lab orders table with a given dataset.
+     * @param {Array} ordersToRender The array of lab order objects to display.
+     */
+    function renderLabOrdersTable(ordersToRender) {
+        const tableBody = document.querySelector('#lab-orders-table tbody');
+        tableBody.innerHTML = ''; // Clear the table first
 
-        tableBody.innerHTML = '';
-        if (result.success && result.data.length > 0) {
-            result.data.forEach(order => {
-               const tr = document.createElement('tr');
-
-               // Show a "View" button only if the order is completed
-               let actionButtonHtml = `<button class="action-btn" disabled><i class="fas fa-spinner"></i> In Progress</button>`;
-               if (order.status.toLowerCase() === 'completed') {
-                   actionButtonHtml = `<button class="action-btn view-lab-report" data-id="${order.id}"><i class="fas fa-file-alt"></i> View Report</button>`;
-               }
-
-               tr.innerHTML = `
-                   <td data-label="Order ID">ORD-${order.id}</td>
-                   <td data-label="Patient">${order.patient_name}</td>
-                   <td data-label="Test Name">${order.test_name}</td>
-                   <td data-label="Order Date">${new Date(order.ordered_at).toLocaleDateString()}</td>
-                   <td data-label="Status"><span class="status ${order.status.toLowerCase()}">${order.status}</span></td>
-                   <td data-label="Actions">${actionButtonHtml}</td>
-               `;
-               tableBody.appendChild(tr);
-            });
-        } else {
-            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No lab orders found.</td></tr>`;
-        }
-
-    } catch (error) {
-        console.error("Error loading lab orders: ", error);
-        tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger-color);">Failed to load lab orders.</td></tr>`;
-    }
-}
-
-// --- Create Lab Order Modal Logic ---
-const placeLabOrderBtn = document.getElementById('place-lab-order-btn');
-const labOrderModal = document.getElementById('lab-order-modal-overlay');
-
-if (placeLabOrderBtn && labOrderModal) {
-    const testRowsContainer = document.getElementById('test-rows-container');
-    const addTestRowBtn = document.getElementById('add-test-row-btn');
-
-    // Function to add a new input row for a test
-    function addTestRow() {
-        const row = document.createElement('div');
-        row.className = 'medication-row'; // Re-use style from prescription modal
-        row.innerHTML = `
-            <div class="form-group" style="flex-grow: 1;">
-                <label>Test Name</label>
-                <input type="text" class="test-name-input" placeholder="e.g., Complete Blood Count" required>
-            </div>
-            <button type="button" class="remove-med-row-btn">&times;</button>
-        `;
-        testRowsContainer.appendChild(row);
-    }
-
-    // Open the modal and prepare it
-    placeLabOrderBtn.addEventListener('click', async () => {
-        const form = document.getElementById('lab-order-form');
-        form.reset();
-        testRowsContainer.innerHTML = '';
-        addTestRow(); // Add the first row
-
-        // Populate patient dropdown (uses the global patientListCache)
-        const patientSelect = document.getElementById('lab-order-patient-select');
-        patientSelect.innerHTML = '<option value="">Loading...</option>';
-        if (!patientListCache) { 
-            const response = await fetch('api.php?action=get_patients_for_dropdown');
-            const result = await response.json();
-            if (result.success) patientListCache = result.data;
-        }
-        patientSelect.innerHTML = '<option value="">-- Choose a patient --</option>';
-        patientListCache.forEach(p => {
-            patientSelect.innerHTML += `<option value="${p.id}">${p.display_user_id} - ${p.name}</option>`;
-        });
-
-        openModalById('lab-order-modal-overlay');
-    });
-
-    // Add more test rows when the "Add" button is clicked
-    addTestRowBtn.addEventListener('click', addTestRow);
-
-    // Remove a test row when the 'x' is clicked
-    testRowsContainer.addEventListener('click', (e) => {
-        if (e.target.classList.contains('remove-med-row-btn')) {
-            e.target.closest('.medication-row').remove();
-            if (testRowsContainer.children.length === 0) {
-                addTestRow(); // Ensure at least one row is always present
-            }
-        }
-    });
-
-    // Handle form submission
-    document.getElementById('lab-order-form').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const patientId = document.getElementById('lab-order-patient-select').value;
-        const testNameInputs = document.querySelectorAll('.test-name-input');
-        const testNames = Array.from(testNameInputs).map(input => input.value.trim()).filter(name => name);
-
-        if (!patientId || testNames.length === 0) {
-            alert('Please select a patient and enter at least one test name.');
+        if (ordersToRender.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No matching lab orders found.</td></tr>`;
             return;
         }
 
-        // Send the data to the server
-        const response = await fetch('api.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'create_lab_order',
-                patient_id: patientId,
-                test_names: testNames
-            })
-        });
-        const result = await response.json();
+        ordersToRender.forEach(order => {
+           const tr = document.createElement('tr');
+           let actionButtonHtml = `<button class="action-btn" disabled><i class="fas fa-spinner"></i> In Progress</button>`;
+           if (order.status.toLowerCase() === 'completed') {
+               actionButtonHtml = `<button class="action-btn view-lab-report" data-id="${order.id}"><i class="fas fa-file-alt"></i> View Report</button>`;
+           }
 
-        if (result.success) {
-            alert(result.message);
-            labOrderModal.classList.remove('active');
-            loadLabOrders(); // Refresh the table with the new order
-        } else {
-            alert(`Error: ${result.message}`);
+           tr.innerHTML = `
+               <td data-label="Order ID">ORD-${order.id}</td>
+               <td data-label="Patient">${order.patient_name}</td>
+               <td data-label="Test Name">${order.test_name}</td>
+               <td data-label="Order Date">${new Date(order.ordered_at).toLocaleDateString()}</td>
+               <td data-label="Status"><span class="status ${order.status.toLowerCase()}">${order.status}</span></td>
+               <td data-label="Actions">${actionButtonHtml}</td>
+           `;
+           tableBody.appendChild(tr);
+        });
+    }
+
+    /**
+     * Fetches lab orders from the API and renders them.
+     */
+    async function loadLabOrders() {
+        const tableBody = document.querySelector('#lab-orders-table tbody');
+        if (!tableBody) return;
+        tableBody.innerHTML = `<tr><td colspan="6" class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading lab orders...</td></tr>`;
+
+        try {
+            const response = await fetch('api.php?action=get_lab_orders');
+            const result = await response.json();
+
+            if (result.success) {
+                allLabOrdersData = result.data; // Store the full dataset
+                renderLabOrdersTable(allLabOrdersData); // Render the initial full table
+            } else {
+                tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No lab orders found.</td></tr>`;
+            }
+        } catch (error) {
+            console.error("Error loading lab orders: ", error);
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger-color);">Failed to load lab orders.</td></tr>`;
         }
-    });
-}
+    }
+    
+    /**
+     * Filters and re-renders the lab orders table based on search and status filters.
+     */
+    function filterLabOrders() {
+        const searchTerm = document.getElementById('lab-search').value.toLowerCase();
+        const statusFilter = document.getElementById('lab-status-filter').value;
+
+        const filteredData = allLabOrdersData.filter(order => {
+            const searchMatch = order.patient_name.toLowerCase().includes(searchTerm) ||
+                                order.test_name.toLowerCase().includes(searchTerm);
+            
+            const statusMatch = (statusFilter === 'all') || (order.status.toLowerCase() === statusFilter);
+
+            return searchMatch && statusMatch;
+        });
+
+        renderLabOrdersTable(filteredData);
+    }
+
+    // Attach event listeners for the lab order filters
+    const labSearchInput = document.getElementById('lab-search');
+    const labStatusFilter = document.getElementById('lab-status-filter');
+    if (labSearchInput) labSearchInput.addEventListener('input', filterLabOrders);
+    if (labStatusFilter) labStatusFilter.addEventListener('change', filterLabOrders);
+
+
+    // --- Place New Lab Order Modal Logic ---
+    const placeLabOrderBtn = document.getElementById('place-lab-order-btn');
+    if (placeLabOrderBtn) {
+        const testRowsContainer = document.getElementById('test-rows-container');
+        const addTestRowBtn = document.getElementById('add-test-row-btn');
+        let patientSearchTimeout;
+
+        function addTestRow() {
+            const row = document.createElement('div');
+            row.className = 'medication-row'; 
+            row.innerHTML = `
+                <div class="form-group" style="flex-grow: 1;">
+                    <label>Test Name</label>
+                    <input type="text" class="test-name-input" placeholder="e.g., Complete Blood Count" required>
+                </div>
+                <button type="button" class="remove-med-row-btn">&times;</button>
+            `;
+            testRowsContainer.appendChild(row);
+        }
+
+        // Open Modal and Prepare Form
+        placeLabOrderBtn.addEventListener('click', () => {
+            const form = document.getElementById('lab-order-form');
+            form.reset();
+            testRowsContainer.innerHTML = '';
+            addTestRow();
+            
+            // Clear previous search results and values
+            document.getElementById('lab-order-patient-search').value = '';
+            document.getElementById('lab-order-patient-id').value = '';
+            document.getElementById('lab-order-patient-results').innerHTML = '';
+            document.getElementById('lab-order-patient-results').classList.remove('active');
+
+            openModalById('lab-order-modal-overlay');
+        });
+        
+        // Handle Patient Search Input
+        const labPatientSearchInput = document.getElementById('lab-order-patient-search');
+        const labPatientResultsDiv = document.getElementById('lab-order-patient-results');
+        const labPatientIdInput = document.getElementById('lab-order-patient-id');
+
+        if (labPatientSearchInput) {
+            labPatientSearchInput.addEventListener('input', () => {
+                const searchTerm = labPatientSearchInput.value.trim();
+                labPatientResultsDiv.innerHTML = '';
+                labPatientResultsDiv.classList.remove('active');
+                
+                if (searchTerm.length < 2) return;
+
+                clearTimeout(patientSearchTimeout);
+                patientSearchTimeout = setTimeout(async () => {
+                    const response = await fetch(`api.php?action=search_patients&term=${encodeURIComponent(searchTerm)}`);
+                    const result = await response.json();
+
+                    if (result.success && result.data.length > 0) {
+                        result.data.forEach(patient => {
+                            const item = document.createElement('div');
+                            item.className = 'search-result-item';
+                            item.textContent = `${patient.name} (${patient.display_user_id})`;
+                            item.dataset.patientId = patient.id;
+                            item.dataset.patientName = patient.name;
+                            labPatientResultsDiv.appendChild(item);
+                        });
+                        labPatientResultsDiv.classList.add('active');
+                    }
+                }, 300);
+            });
+
+            labPatientResultsDiv.addEventListener('click', (e) => {
+                if (e.target.classList.contains('search-result-item')) {
+                    labPatientIdInput.value = e.target.dataset.patientId;
+                    labPatientSearchInput.value = e.target.dataset.patientName;
+                    labPatientResultsDiv.classList.remove('active');
+                }
+            });
+        }
+
+
+        if (addTestRowBtn) addTestRowBtn.addEventListener('click', addTestRow);
+
+        if (testRowsContainer) {
+            testRowsContainer.addEventListener('click', (e) => {
+                if (e.target.classList.contains('remove-med-row-btn')) {
+                    e.target.closest('.medication-row').remove();
+                    if (testRowsContainer.children.length === 0) {
+                        addTestRow();
+                    }
+                }
+            });
+        }
+        
+        // Handle Form Submission
+        const labOrderForm = document.getElementById('lab-order-form');
+        if (labOrderForm) {
+            labOrderForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const patientId = document.getElementById('lab-order-patient-id').value; // Get ID from hidden input
+                const testNameInputs = document.querySelectorAll('.test-name-input');
+                const testNames = Array.from(testNameInputs).map(input => input.value.trim()).filter(name => name);
+        
+                if (!patientId || testNames.length === 0) {
+                    alert('Please select a patient and enter at least one test name.');
+                    return;
+                }
+        
+                const response = await fetch('api.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'create_lab_order',
+                        patient_id: patientId,
+                        test_names: testNames
+                    })
+                });
+                const result = await response.json();
+        
+                if (result.success) {
+                    alert(result.message);
+                    document.getElementById('lab-order-modal-overlay').classList.remove('active');
+                    loadLabOrders();
+                } else {
+                    alert(`Error: ${result.message}`);
+                }
+            });
+        }
+    }
     
     // ===================================================================
     // --- Admissions Page Logic ---
     // ===================================================================
-    let allAdmissionsData = []; // Cache for client-side filtering
+    let allAdmissionsData = [];
 
     async function loadAdmissions() {
         const tableBody = document.querySelector('#admissions-table tbody');
@@ -256,31 +512,24 @@ if (placeLabOrderBtn && labOrderModal) {
         });
     }
 
-    // Function to handle the "Admit Patient" modal opening
     async function openAdmitPatientModal() {
         const form = document.getElementById('admit-patient-form');
         form.reset();
-
-        const patientSelect = document.getElementById('patient-select-admit');
+    
+        // Reset the new search fields instead of the old dropdown
+        document.getElementById('patient-search-admit').value = '';
+        document.getElementById('patient-id-admit').value = '';
+        const resultsDiv = document.getElementById('patient-search-results-admit');
+        resultsDiv.innerHTML = '';
+        resultsDiv.classList.remove('active');
+    
         const bedSelect = document.getElementById('bed-select-admit');
-        patientSelect.innerHTML = '<option value="">Loading...</option>';
-        bedSelect.innerHTML = '<option value="">Loading...</option>';
+        bedSelect.innerHTML = '<option value="">Loading beds...</option>';
         
         openModalById('admit-patient-modal-overlay');
-
+    
+        // The logic to fetch all patients is removed; we now only fetch available beds.
         try {
-            // Re-use patient cache logic
-            if (!patientListCache) {
-                const response = await fetch('api.php?action=get_patients_for_dropdown');
-                const result = await response.json();
-                if (result.success) patientListCache = result.data;
-            }
-            patientSelect.innerHTML = '<option value="">-- Choose a patient --</option>';
-            patientListCache.forEach(p => {
-                patientSelect.innerHTML += `<option value="${p.id}">${p.display_user_id} - ${p.name}</option>`;
-            });
-
-            // Fetch available beds
             const bedsResponse = await fetch('api.php?action=get_available_accommodations');
             const bedsResult = await bedsResponse.json();
             if (bedsResult.success) {
@@ -292,16 +541,15 @@ if (placeLabOrderBtn && labOrderModal) {
                  bedSelect.innerHTML = '<option value="">Could not load beds</option>';
             }
         } catch (error) {
-            console.error('Failed to populate modal:', error);
-            patientSelect.innerHTML = '<option value="">Error loading patients</option>';
+            console.error('Failed to populate modal beds:', error);
             bedSelect.innerHTML = '<option value="">Error loading beds</option>';
         }
     }
     
     // ===================================================================
-    // --- Prescriptions Page Logic (NEW / REFACTORED) ---
+    // --- Prescriptions Page Logic ---
     // ===================================================================
-    let allPrescriptionsData = []; // Cache for client-side filtering
+    let allPrescriptionsData = [];
 
     async function loadPrescriptions() {
         const tableBody = document.querySelector('#prescriptions-table tbody');
@@ -313,7 +561,7 @@ if (placeLabOrderBtn && labOrderModal) {
             const result = await response.json();
 
             if (result.success) {
-                allPrescriptionsData = result.data; // Cache the data
+                allPrescriptionsData = result.data;
                 renderPrescriptionsTable(allPrescriptionsData);
             } else {
                 tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">No prescriptions found.</td></tr>`;
@@ -341,11 +589,57 @@ if (placeLabOrderBtn && labOrderModal) {
                 <td data-label="Status"><span class="status ${rx.status.toLowerCase()}">${rx.status}</span></td>
                 <td data-label="Actions">
                     <button class="action-btn view-prescription" data-id="${rx.id}"><i class="fas fa-eye"></i> View</button>
-                    <button class="action-btn" data-id="${rx.id}"><i class="fas fa-share-square"></i> Share</button>
+                    <button class="action-btn print-prescription" data-id="${rx.id}"><i class="fas fa-print"></i> Print</button>
                 </td>
             `;
             tableBody.appendChild(tr);
         });
+    }
+
+    async function openViewPrescriptionModal(prescriptionId) {
+        try {
+            const response = await fetch(`api.php?action=get_prescription_details&id=${prescriptionId}`);
+            const result = await response.json();
+
+            if (result.success) {
+                const rx = result.data;
+                
+                // Populate modal fields
+                document.getElementById('rx-patient-name').textContent = rx.patient_name;
+                document.getElementById('rx-patient-id').textContent = rx.patient_display_id;
+                document.getElementById('rx-date').textContent = new Date(rx.prescription_date).toLocaleDateString();
+                document.getElementById('rx-notes-content').textContent = rx.notes || 'No specific notes provided.';
+
+                const medicationList = document.getElementById('rx-medication-list');
+                medicationList.innerHTML = ''; // Clear previous items
+                
+                if (rx.items.length > 0) {
+                    rx.items.forEach(item => {
+                        const row = `
+                            <tr>
+                                <td>
+                                    <div class="med-name">${item.name}</div>
+                                    <div class="med-details">${item.dosage} - ${item.frequency} (Qty: ${item.quantity_prescribed})</div>
+                                </td>
+                            </tr>
+                        `;
+                        medicationList.innerHTML += row;
+                    });
+                } else {
+                    medicationList.innerHTML = '<tr><td>No medications listed.</td></tr>';
+                }
+
+                document.getElementById('print-prescription-btn').dataset.id = prescriptionId;
+
+                openModalById('prescription-view-modal-overlay');
+
+            } else {
+                alert(`Error: ${result.message}`);
+            }
+        } catch (error) {
+            console.error('Failed to fetch prescription details:', error);
+            alert('Could not load prescription details.');
+        }
     }
 
     function filterPrescriptions() {
@@ -364,16 +658,12 @@ if (placeLabOrderBtn && labOrderModal) {
         renderPrescriptionsTable(filteredData);
     }
     
-    // --- Create Prescription Modal Logic (NEW / REFACTORED) ---
     const createPrescriptionBtn = document.getElementById('create-prescription-btn');
-    const prescriptionModal = document.getElementById('prescription-modal-overlay');
-    
     if (createPrescriptionBtn) {
         const rowsContainer = document.getElementById('medication-rows-container');
         const addRowBtn = document.getElementById('add-medication-row-btn');
         let searchTimeout;
     
-        // Function to create and return the HTML for a new medication row
         function createMedicationRowHtml() {
             return `
                 <div class="medication-row">
@@ -400,150 +690,173 @@ if (placeLabOrderBtn && labOrderModal) {
             `;
         }
     
-        // Function to add a new row to the container
         function addMedicationRow() {
-            rowsContainer.insertAdjacentHTML('beforeend', createMedicationRowHtml());
+            if (rowsContainer) rowsContainer.insertAdjacentHTML('beforeend', createMedicationRowHtml());
         }
     
-        // 1. Open Modal and set up the initial state
         createPrescriptionBtn.addEventListener('click', async () => {
             const form = document.getElementById('prescription-form');
             form.reset();
-            rowsContainer.innerHTML = ''; // Clear previous rows
-            addMedicationRow(); // Add the first row automatically
+            if (rowsContainer) rowsContainer.innerHTML = ''; 
+            addMedicationRow();
             
-            const patientSelect = document.getElementById('patient-select-presc');
-            patientSelect.innerHTML = '<option value="">Loading...</option>';
+            // Clear patient search when opening
+            document.getElementById('patient-search-presc').value = '';
+            document.getElementById('patient-id-presc').value = '';
+            document.getElementById('patient-search-results-presc').innerHTML = '';
+            document.getElementById('patient-search-results-presc').classList.remove('active');
+            
             openModalById('prescription-modal-overlay');
-    
-            if (!patientListCache) { // Use the global patient cache
-                const response = await fetch('api.php?action=get_patients_for_dropdown');
-                const result = await response.json();
-                if (result.success) patientListCache = result.data;
-            }
-            patientSelect.innerHTML = '<option value="">-- Choose a patient --</option>';
-            patientListCache.forEach(p => {
-                patientSelect.innerHTML += `<option value="${p.id}">${p.display_user_id} - ${p.name}</option>`;
-            });
         });
     
-        // 2. Add a new medication row when the button is clicked
-        addRowBtn.addEventListener('click', addMedicationRow);
+        if(addRowBtn) addRowBtn.addEventListener('click', addMedicationRow);
     
-        // 3. Use event delegation for actions within the rows container
-        rowsContainer.addEventListener('click', (e) => {
-            // Handle removing a row
-            if (e.target.classList.contains('remove-med-row-btn')) {
-                e.target.closest('.medication-row').remove();
-                if (rowsContainer.children.length === 0) {
-                    addMedicationRow(); // Always ensure at least one row exists
+        if(rowsContainer) {
+            rowsContainer.addEventListener('click', (e) => {
+                if (e.target.classList.contains('remove-med-row-btn')) {
+                    e.target.closest('.medication-row').remove();
+                    if (rowsContainer.children.length === 0) {
+                        addMedicationRow();
+                    }
                 }
-            }
-    
-            // Handle selecting a medicine from the search results
-            if (e.target.classList.contains('search-result-item')) {
-                const row = e.target.closest('.medication-row');
-                row.querySelector('.medicine-id-input').value = e.target.dataset.medId;
-                row.querySelector('.medicine-name-search').value = e.target.dataset.medName;
-                row.querySelector('.search-results-dropdown').classList.remove('active');
-            }
-        });
-    
-        // 4. Handle the search input using event delegation
-        rowsContainer.addEventListener('input', (e) => {
-            if (e.target.classList.contains('medicine-name-search')) {
-                const inputField = e.target;
-                const resultsDropdown = inputField.nextElementSibling;
-                clearTimeout(searchTimeout);
-    
-                const term = inputField.value.trim();
-                if (term.length < 2) {
-                    resultsDropdown.classList.remove('active');
+        
+                if (e.target.classList.contains('search-result-item')) {
+                    const row = e.target.closest('.medication-row');
+                    row.querySelector('.medicine-id-input').value = e.target.dataset.medId;
+                    row.querySelector('.medicine-name-search').value = e.target.dataset.medName;
+                    row.querySelector('.search-results-dropdown').classList.remove('active');
+                }
+            });
+        
+            rowsContainer.addEventListener('input', (e) => {
+                if (e.target.classList.contains('medicine-name-search')) {
+                    const inputField = e.target;
+                    const resultsDropdown = inputField.nextElementSibling;
+                    clearTimeout(searchTimeout);
+        
+                    const term = inputField.value.trim();
+                    if (term.length < 2) {
+                        resultsDropdown.classList.remove('active');
+                        return;
+                    }
+        
+                    searchTimeout = setTimeout(async () => {
+                        const response = await fetch(`api.php?action=search_medicines&term=${encodeURIComponent(term)}`);
+                        const result = await response.json();
+                        resultsDropdown.innerHTML = '';
+                        if (result.success && result.data.length > 0) {
+                            result.data.forEach(med => {
+                                const item = document.createElement('div');
+                                item.className = 'search-result-item';
+                                item.innerHTML = `${med.name} <small>(Stock: ${med.quantity})</small>`;
+                                item.dataset.medId = med.id;
+                                item.dataset.medName = med.name;
+                                resultsDropdown.appendChild(item);
+                            });
+                            resultsDropdown.classList.add('active');
+                        } else {
+                            resultsDropdown.classList.remove('active');
+                        }
+                    }, 300);
+                }
+            });
+        }
+        
+        const prescriptionForm = document.getElementById('prescription-form');
+        if (prescriptionForm) {
+            prescriptionForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const saveButton = document.getElementById('modal-save-btn-presc');
+                
+                const prescriptionData = {
+                    patient_id: document.getElementById('patient-id-presc').value,
+                    notes: document.getElementById('notes-presc').value,
+                    items: []
+                };
+        
+                document.querySelectorAll('.medication-row').forEach(row => {
+                    const medicineId = row.querySelector('.medicine-id-input').value;
+                    if (medicineId) {
+                        prescriptionData.items.push({
+                            medicine_id: medicineId,
+                            dosage: row.querySelector('.dosage-input').value,
+                            frequency: row.querySelector('.frequency-input').value,
+                            quantity: row.querySelector('.quantity-input').value,
+                        });
+                    }
+                });
+        
+                if (!prescriptionData.patient_id || prescriptionData.items.length === 0) {
+                    alert('Please select a patient and add at least one valid medication.');
                     return;
                 }
-    
-                searchTimeout = setTimeout(async () => {
-                    const response = await fetch(`api.php?action=search_medicines&term=${encodeURIComponent(term)}`);
-                    const result = await response.json();
-                    resultsDropdown.innerHTML = '';
-                    if (result.success && result.data.length > 0) {
-                        result.data.forEach(med => {
-                            const item = document.createElement('div');
-                            item.className = 'search-result-item';
-                            item.innerHTML = `${med.name} <small>(Stock: ${med.quantity})</small>`;
-                            item.dataset.medId = med.id;
-                            item.dataset.medName = med.name;
-                            resultsDropdown.appendChild(item);
-                        });
-                        resultsDropdown.classList.add('active');
-                    } else {
-                        resultsDropdown.classList.remove('active');
-                    }
-                }, 300);
-            }
-        });
-    
-        // Hide search results dropdowns when clicking elsewhere
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.med-search-group')) {
-                document.querySelectorAll('.search-results-dropdown').forEach(d => d.classList.remove('active'));
-            }
-        });
-    
-        // 5. Handle the final form submission
-        document.getElementById('prescription-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            const saveButton = document.getElementById('modal-save-btn-presc');
-            
-            const prescriptionData = {
-                patient_id: document.getElementById('patient-select-presc').value,
-                notes: document.getElementById('notes-presc').value,
-                items: []
-            };
-    
-            // Gather data from each medication row
-            document.querySelectorAll('.medication-row').forEach(row => {
-                const medicineId = row.querySelector('.medicine-id-input').value;
-                if (medicineId) { // Only add rows where a medicine has been selected
-                    prescriptionData.items.push({
-                        medicine_id: medicineId,
-                        dosage: row.querySelector('.dosage-input').value,
-                        frequency: row.querySelector('.frequency-input').value,
-                        quantity: row.querySelector('.quantity-input').value,
+        
+                saveButton.disabled = true;
+                saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
+        
+                try {
+                    const response = await fetch('api.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'add_prescription', ...prescriptionData })
                     });
+                    const result = await response.json();
+                    if (result.success) {
+                        alert(result.message);
+                        document.getElementById('prescription-modal-overlay').classList.remove('active');
+                        loadPrescriptions();
+                    } else {
+                        alert(`Error: ${result.message}`);
+                    }
+                } catch (error) {
+                    console.error('Error creating prescription:', error);
+                    alert('A network error occurred.');
+                } finally {
+                    saveButton.disabled = false;
+                    saveButton.innerHTML = `Save Prescription`;
                 }
             });
-    
-            if (!prescriptionData.patient_id || prescriptionData.items.length === 0) {
-                alert('Please select a patient and add at least one valid medication.');
-                return;
-            }
-    
-            saveButton.disabled = true;
-            saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
-    
-            try {
-                const response = await fetch('api.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'add_prescription', ...prescriptionData })
+
+            // Patient search logic for prescription form
+            const prescPatientSearch = document.getElementById('patient-search-presc');
+            const prescPatientResults = document.getElementById('patient-search-results-presc');
+            const prescPatientId = document.getElementById('patient-id-presc');
+            
+            if(prescPatientSearch) {
+                prescPatientSearch.addEventListener('input', () => {
+                     const term = prescPatientSearch.value.trim();
+                     if (term.length < 2) {
+                        prescPatientResults.classList.remove('active');
+                        return;
+                     }
+                     clearTimeout(searchTimeout);
+                     searchTimeout = setTimeout(async () => {
+                        const res = await fetch(`api.php?action=search_patients&term=${encodeURIComponent(term)}`);
+                        const result = await res.json();
+                        prescPatientResults.innerHTML = '';
+                        if(result.success && result.data.length > 0){
+                            result.data.forEach(p => {
+                                const item = document.createElement('div');
+                                item.className = 'search-result-item';
+                                item.textContent = `${p.name} (${p.display_user_id})`;
+                                item.dataset.patientId = p.id;
+                                item.dataset.patientName = p.name;
+                                prescPatientResults.appendChild(item);
+                            });
+                            prescPatientResults.classList.add('active');
+                        }
+                     }, 300);
                 });
-                const result = await response.json();
-                if (result.success) {
-                    alert(result.message);
-                    prescriptionModal.classList.remove('active');
-                    loadPrescriptions(); // Refresh the main table
-                } else {
-                    alert(`Error: ${result.message}`);
-                }
-            } catch (error) {
-                console.error('Error creating prescription:', error);
-                alert('A network error occurred.');
-            } finally {
-                saveButton.disabled = false;
-                saveButton.innerHTML = `Save Prescription`;
+
+                prescPatientResults.addEventListener('click', (e) => {
+                    if(e.target.classList.contains('search-result-item')) {
+                        prescPatientId.value = e.target.dataset.patientId;
+                        prescPatientSearch.value = e.target.dataset.patientName;
+                        prescPatientResults.classList.remove('active');
+                    }
+                });
             }
-        });
+        }
     }
 
 
@@ -595,8 +908,7 @@ if (placeLabOrderBtn && labOrderModal) {
                 initializeMessenger();
             }
             if (pageId === 'profile') {
-                const auditLogTab = document.querySelector('.profile-tab-link[data-tab="audit-log"]');
-                if(auditLogTab && auditLogTab.classList.contains('active')) {
+                if(document.querySelector('.profile-tab-link[data-tab="audit-log"]').classList.contains('active')) {
                    loadAuditLog();
                 }
             }
@@ -644,12 +956,19 @@ if (placeLabOrderBtn && labOrderModal) {
     // ===================================================================
     async function loadAppointments(period = 'today') {
         const listContainer = document.querySelector(`#${period}-tab .appointment-list`);
+        const dateFilter = document.getElementById('appointment-date-filter');
         if (!listContainer) return;
 
         listContainer.innerHTML = `<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading appointments...</div>`;
 
+        // Build the API URL with the date if it's selected
+        let apiUrl = `api.php?action=get_appointments&period=${period}`;
+        if (dateFilter.value) {
+            apiUrl += `&date=${dateFilter.value}`;
+        }
+
         try {
-            const response = await fetch(`api.php?action=get_appointments&period=${period}`);
+            const response = await fetch(apiUrl);
             const result = await response.json();
 
             if (result.success) {
@@ -661,6 +980,18 @@ if (placeLabOrderBtn && labOrderModal) {
             console.error(`Error loading ${period} appointments:`, error);
             listContainer.innerHTML = `<div class="message-placeholder" style="color: var(--danger-color);">Could not connect to the server.</div>`;
         }
+    }
+
+    // Add this event listener for the date filter
+    const dateFilterInput = document.getElementById('appointment-date-filter');
+    if(dateFilterInput) {
+        dateFilterInput.addEventListener('change', () => {
+            // When a date is selected, find the active tab and reload its appointments
+            const activeTab = document.querySelector('.appointments-page .tab-link.active');
+            if (activeTab) {
+                loadAppointments(activeTab.dataset.tab);
+            }
+        });
     }
 
     function renderAppointments(appointments, container) {
@@ -689,7 +1020,7 @@ if (placeLabOrderBtn && labOrderModal) {
                 </div>
                 <div class="appointment-actions">
                     <button class="action-btn"><i class="fas fa-file-medical"></i> View Record</button>
-                    ${appt.status === 'scheduled' ? '<button class="action-btn"><i class="fas fa-play-circle"></i> Start</button>' : ''}
+                    ${appt.status.toLowerCase() === 'scheduled' ? '<button class="action-btn"><i class="fas fa-play-circle"></i> Start</button>' : ''}
                 </div>
             `;
             container.appendChild(item);
@@ -867,42 +1198,46 @@ if (placeLabOrderBtn && labOrderModal) {
     }
 
     async function loadConversations(selectConversationId = null) {
-        const listContainer = messengerPage.querySelector('.conversation-list');
-        listContainer.innerHTML = `<div class="conversation-search"><input type="text" placeholder="Search users..."></div><div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading...</div>`;
+        const listItemsContainer = document.getElementById('conversation-list-items');
+        if (!listItemsContainer) return;
+
+        // Only show loading inside the items container
+        listItemsContainer.innerHTML = `<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading...</div>`;
 
         try {
             const response = await fetch('api.php?action=get_conversations');
             const result = await response.json();
             
-            const placeholder = listContainer.querySelector('.loading-placeholder');
-            if (placeholder) placeholder.remove();
+            listItemsContainer.innerHTML = ''; // Clear the container
 
             if (result.success && result.data.length > 0) {
                 result.data.forEach(convo => renderConversation(convo));
                 
                 if (selectConversationId) {
-                    const newConvoEl = listContainer.querySelector(`.conversation-item[data-conversation-id='${selectConversationId}']`);
+                    const newConvoEl = listItemsContainer.querySelector(`.conversation-item[data-conversation-id='${selectConversationId}']`);
                     if (newConvoEl) newConvoEl.click();
                 }
 
             } else {
-                listContainer.insertAdjacentHTML('beforeend', '<p style="padding: 1rem; text-align: center;">No conversations yet.</p>');
+                listItemsContainer.innerHTML = '<p style="padding: 1rem; text-align: center;">No conversations yet.</p>';
             }
         } catch (error) {
             console.error('Error loading conversations:', error);
-            listContainer.insertAdjacentHTML('beforeend', '<p style="padding: 1rem; text-align: center; color: var(--danger-color);">Could not load conversations.</p>');
+            listItemsContainer.innerHTML = '<p style="padding: 1rem; text-align: center; color: var(--danger-color);">Could not load conversations.</p>';
         }
     }
 
     function renderConversation(convo) {
-        const listContainer = messengerPage.querySelector('.conversation-list');
+        const listItemsContainer = document.getElementById('conversation-list-items');
+        if (!listItemsContainer) return;
+
         const lastMessageTime = convo.last_message_time ? new Date(convo.last_message_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
         
         const conversationHtml = `
             <div class="conversation-item" 
-                 data-conversation-id="${convo.conversation_id}" 
-                 data-other-user-id="${convo.other_user_id}"
-                 data-other-user-name="${convo.other_user_name}">
+                data-conversation-id="${convo.conversation_id}" 
+                data-other-user-id="${convo.other_user_id}"
+                data-other-user-name="${convo.other_user_name}">
                 <i class="fas ${getIconForRole(convo.other_user_role)} user-avatar"></i>
                 <div class="user-details">
                     <div class="user-name">${convo.other_user_name}</div>
@@ -914,7 +1249,7 @@ if (placeLabOrderBtn && labOrderModal) {
                 </div>
             </div>
         `;
-        listContainer.insertAdjacentHTML('beforeend', conversationHtml);
+        listItemsContainer.insertAdjacentHTML('beforeend', conversationHtml);
     }
     
     async function loadMessages(conversationId) {
@@ -959,38 +1294,41 @@ if (placeLabOrderBtn && labOrderModal) {
     }
     
     async function searchUsers(term) {
-        const listContainer = messengerPage.querySelector('.conversation-list');
-        const searchBarHtml = listContainer.querySelector('.conversation-search').outerHTML;
-        listContainer.innerHTML = searchBarHtml + `<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Searching...</div>`;
+        const listItemsContainer = document.getElementById('conversation-list-items');
+        if (!listItemsContainer) return;
+
+        // Don't touch the search bar, just the results area
+        listItemsContainer.innerHTML = `<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Searching...</div>`;
 
         try {
             const response = await fetch(`api.php?action=searchUsers&term=${encodeURIComponent(term)}`);
             const result = await response.json();
             
-            const placeholder = listContainer.querySelector('.loading-placeholder');
-            if (placeholder) placeholder.remove();
+            listItemsContainer.innerHTML = ''; // Clear the container
 
             if (result.success && result.data.length > 0) {
                 result.data.forEach(user => {
+                    // This HTML now includes the data-conversation-id
                     const searchResultHtml = `
                         <div class="conversation-item" 
-                             data-other-user-id="${user.id}"
-                             data-other-user-name="${user.name}">
+                            data-conversation-id="${user.conversation_id || ''}"
+                            data-other-user-id="${user.id}"
+                            data-other-user-name="${user.name}">
                             <i class="fas ${getIconForRole(user.role)} user-avatar"></i>
                             <div class="user-details">
                                 <div class="user-name">${user.name} <small>(${user.role})</small></div>
-                                <div class="last-message">Click to start a new conversation.</div>
+                                <div class="last-message">${user.conversation_id ? '' : 'Click to start a new conversation.'}</div>
                             </div>
                         </div>
                     `;
-                    listContainer.insertAdjacentHTML('beforeend', searchResultHtml);
+                    listItemsContainer.insertAdjacentHTML('beforeend', searchResultHtml);
                 });
             } else {
-                listContainer.insertAdjacentHTML('beforeend', '<p style="padding: 1rem; text-align: center;">No users found.</p>');
+                listItemsContainer.innerHTML = '<p style="padding: 1rem; text-align: center;">No users found.</p>';
             }
         } catch (error) {
             console.error('Error searching users:', error);
-            listContainer.insertAdjacentHTML('beforeend', '<p style="padding: 1rem; text-align: center; color: var(--danger-color);">Search failed.</p>');
+            listItemsContainer.innerHTML = '<p style="padding: 1rem; text-align: center; color: var(--danger-color);">Search failed.</p>';
         }
     }
 
@@ -1008,32 +1346,73 @@ if (placeLabOrderBtn && labOrderModal) {
     }
 
     // ===================================================================
-    // --- Profile Settings Page Logic (Existing) ---
+    // --- Profile Settings Page Logic (REVISED) ---
     // ===================================================================
     const personalInfoForm = document.getElementById('personal-info-form');
     if (personalInfoForm) {
+        const profilePage = document.getElementById('profile-page');
+        
+        let profileDataLoaded = false;
+        
+        const loadProfileDropdowns = () => {
+             if (profilePage.classList.contains('active') && !profileDataLoaded) {
+                 profileDataLoaded = true;
+                 fetch('api.php?action=get_doctor_details')
+                     .then(res => res.json())
+                     .then(result => {
+                         if (result.success) {
+                             populateSelectDropdown('api.php?action=get_specialities', 'profile-specialty', 'Select a Specialty', result.data.specialty_id);
+                             populateSelectDropdown('api.php?action=get_departments', 'profile-department', 'Select a Department', result.data.department_id);
+                             document.getElementById('profile-qualifications').value = result.data.qualifications || '';
+                         }
+                     }).catch(console.error);
+             }
+        };
+
+        const profileNavLink = document.querySelector('.nav-link[data-page="profile"]');
+        if (profileNavLink) {
+            profileNavLink.addEventListener('click', () => {
+                profileDataLoaded = false; 
+                loadProfileDropdowns(); 
+            });
+        }
+        
+        const observer = new MutationObserver(loadProfileDropdowns);
+        observer.observe(profilePage, { attributes: true, attributeFilter: ['class'] });
+
         personalInfoForm.addEventListener('submit', async function(e) {
             e.preventDefault();
+            
+            let isFormValid = true;
+            this.querySelectorAll('input[required], select[required]').forEach(field => {
+                if (!validateField(field)) isFormValid = false;
+            });
+            if (!validateField(this.querySelector('#profile-phone'))) isFormValid = false;
+            if (!validateField(this.querySelector('#profile-dob'))) isFormValid = false;
+    
+            if (!isFormValid) {
+                alert('Please correct the errors before saving.');
+                return;
+            }
             
             const saveButton = this.querySelector('button[type="submit"]');
             const originalButtonText = saveButton.innerHTML;
             saveButton.disabled = true;
             saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
-
+    
             const formData = new FormData(this);
             formData.append('action', 'update_personal_info');
-
+    
             try {
-                const response = await fetch('api.php', {
-                    method: 'POST',
-                    body: formData
-                });
+                const response = await fetch('api.php', { method: 'POST', body: formData });
                 const result = await response.json();
-
+    
                 if (result.success) {
                     alert('Profile updated successfully!');
                     const newName = formData.get('name');
-                    const newSpecialty = formData.get('specialty');
+                    const specialtySelect = document.getElementById('profile-specialty');
+                    const newSpecialty = specialtySelect.options[specialtySelect.selectedIndex].text;
+                    
                     document.querySelector('.user-profile-widget .profile-info strong').textContent = `Dr. ${newName}`;
                     document.querySelector('.user-profile-widget .profile-info span').textContent = newSpecialty;
                     document.querySelector('.welcome-message h2').textContent = `Welcome back, Dr. ${newName}!`;
@@ -1050,10 +1429,84 @@ if (placeLabOrderBtn && labOrderModal) {
         });
     }
 
-    const profilePage = document.getElementById('profile-page');
-    if (profilePage) {
-        const profileTabs = profilePage.querySelectorAll('.profile-tab-link');
-        const profileTabContents = profilePage.querySelectorAll('.profile-tab-content');
+    // --- NEW: Security Form (Password Update) Logic ---
+    const securityForm = document.getElementById('security-form');
+    if (securityForm) {
+        securityForm.addEventListener('submit', async function(e) {
+            e.preventDefault(); // This is the crucial line that prevents the redirect
+
+            const newPassword = document.getElementById('new-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+
+            // --- Basic Client-Side Validation ---
+            if (newPassword.length < 8) {
+                alert('New password must be at least 8 characters long.');
+                return;
+            }
+            if (newPassword !== confirmPassword) {
+                alert('New password and confirmation do not match.');
+                return;
+            }
+
+            const saveButton = this.querySelector('button[type="submit"]');
+            const originalButtonText = saveButton.innerHTML;
+            saveButton.disabled = true;
+            saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Updating...`;
+
+            const formData = new FormData(this);
+            formData.append('action', 'updatePassword'); // Tell the API what to do
+
+            try {
+                const response = await fetch('api.php', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('Password updated successfully!');
+                    this.reset(); // Clear the form fields
+                } else {
+                    // Display the specific error message from the server
+                    alert(`Error: ${result.message || 'An unknown error occurred.'}`);
+                }
+            } catch (error) {
+                console.error('Error updating password:', error);
+                alert('A network error occurred. Please try again.');
+            } finally {
+                // Restore the button to its original state
+                saveButton.disabled = false;
+                saveButton.innerHTML = originalButtonText;
+            }
+        });
+    }
+
+
+// --- NEW: Password visibility toggle logic ---
+document.querySelectorAll('.toggle-password').forEach(icon => {
+    icon.addEventListener('click', function() {
+        // Find the password input field next to the icon
+        const passwordInput = this.previousElementSibling;
+        
+        // Check the current type of the input field
+        const isPassword = passwordInput.getAttribute('type') === 'password';
+        
+        // Change the type and the icon
+        if (isPassword) {
+            passwordInput.setAttribute('type', 'text');
+            this.classList.remove('fa-eye-slash');
+            this.classList.add('fa-eye');
+        } else {
+            passwordInput.setAttribute('type', 'password');
+            this.classList.remove('fa-eye');
+            this.classList.add('fa-eye-slash');
+        }
+    });
+});
+    const profilePageEl = document.getElementById('profile-page');
+    if (profilePageEl) {
+        const profileTabs = profilePageEl.querySelectorAll('.profile-tab-link');
+        const profileTabContents = profilePageEl.querySelectorAll('.profile-tab-content');
         
         profileTabs.forEach(tab => {
             tab.addEventListener('click', function(e) {
@@ -1080,7 +1533,7 @@ if (placeLabOrderBtn && labOrderModal) {
             return;
         }
 
-        tableBody.innerHTML = `<tr><td colspan="4" class="loading-placeholder" style="text-align:center; padding: 2rem;"><i class="fas fa-spinner fa-spin"></i> Loading activity log...</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="4" class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading activity log...</td></tr>`;
 
         try {
             const response = await fetch('api.php?action=get_audit_log');
@@ -1132,10 +1585,10 @@ if (placeLabOrderBtn && labOrderModal) {
     }
 
     // ===================================================================
-    // --- NEW / UPDATED: Bed Management Page Logic ---
+    // --- Bed Management Page Logic ---
     // ===================================================================
     const occupancyPage = document.getElementById('bed-management-page');
-    let allOccupancyData = []; // Store all bed and room data
+    let allOccupancyData = []; 
     let isOccupancyManagerInitialized = false;
 
     async function initializeOccupancyManagement() {
@@ -1193,7 +1646,7 @@ if (placeLabOrderBtn && labOrderModal) {
             locations.rooms.forEach(room => {
                 const option = document.createElement('option');
                 option.value = `room-${room.id}`;
-                option.textContent = room.name;
+                option.textContent = `Room ${room.name}`;
                 roomGroup.appendChild(option);
             });
             filter.appendChild(roomGroup);
@@ -1211,7 +1664,7 @@ if (placeLabOrderBtn && labOrderModal) {
 
         locationsToRender.forEach(loc => {
             let patientInfoHtml = '';
-            let identifier = (loc.type === 'bed') ? `${loc.location_name} - ${loc.bed_number}` : loc.bed_number;
+            let identifier = (loc.type === 'bed') ? `${loc.location_name} - Bed ${loc.bed_number}` : `Room ${loc.bed_number}`;
             
             if (loc.status === 'occupied' && loc.patient_name) {
                 patientInfoHtml = `<div class="patient-info"><i class="fas fa-user-circle"></i><span>${loc.patient_name} (${loc.patient_display_id || 'N/A'})</span></div>`;
@@ -1229,7 +1682,7 @@ if (placeLabOrderBtn && labOrderModal) {
                      data-status="${loc.status}"
                      title="Click to edit status">
                     <div class="bed-id">${identifier}</div>
-                    <div class="bed-details">${loc.location_name}</div>
+                    <div class="bed-details">${loc.type === 'bed' ? loc.location_name : 'Private Room'}</div>
                     ${patientInfoHtml}
                 </div>
             `;
@@ -1308,7 +1761,6 @@ if (placeLabOrderBtn && labOrderModal) {
                 if (result.success) {
                     isOccupancyManagerInitialized = false; 
                     await initializeOccupancyManagement(); 
-                    filterAndRenderLocations();
                     document.getElementById('edit-bed-modal-overlay').classList.remove('active');
                 } else {
                     alert(`Error: ${result.message || 'Could not update status.'}`);
@@ -1323,7 +1775,6 @@ if (placeLabOrderBtn && labOrderModal) {
         });
     }
 
-    // --- My Patients Page Filter Listeners ---
     const patientSearchInput = document.getElementById('patient-search');
     const patientStatusFilter = document.getElementById('patient-status-filter');
 
@@ -1332,7 +1783,6 @@ if (placeLabOrderBtn && labOrderModal) {
         patientStatusFilter.addEventListener('change', filterPatients);
     }
     
-    // --- Admissions Page Event Listeners ---
     const admissionsPage = document.getElementById('admissions-page');
     if (admissionsPage) {
         document.getElementById('admit-patient-btn').addEventListener('click', openAdmitPatientModal);
@@ -1340,7 +1790,6 @@ if (placeLabOrderBtn && labOrderModal) {
         document.getElementById('admit-patient-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const saveButton = document.getElementById('modal-save-btn-admit');
-            const originalButtonText = saveButton.innerHTML;
             saveButton.disabled = true;
             saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Admitting...`;
 
@@ -1354,7 +1803,7 @@ if (placeLabOrderBtn && labOrderModal) {
                 if (result.success) {
                     alert('Patient admitted successfully!');
                     document.getElementById('admit-patient-modal-overlay').classList.remove('active');
-                    loadAdmissions(); // Refresh the table
+                    loadAdmissions();
                 } else {
                     alert(`Error: ${result.message || 'An unknown error occurred.'}`);
                 }
@@ -1371,27 +1820,77 @@ if (placeLabOrderBtn && labOrderModal) {
             const searchTerm = e.target.value.toLowerCase();
             const filteredData = allAdmissionsData.filter(adm => 
                 adm.patient_name.toLowerCase().includes(searchTerm) ||
-                adm.display_user_id.toLowerCase().includes(searchTerm)
+                (adm.display_user_id && adm.display_user_id.toLowerCase().includes(searchTerm))
             );
             renderAdmissionsTable(filteredData);
         });
     }
 
-    // --- Prescriptions Page Event Listeners ---
-    const prescriptionsPage = document.getElementById('prescriptions-page');
-    if (prescriptionsPage) {
-        document.getElementById('prescription-search').addEventListener('input', filterPrescriptions);
-        document.getElementById('prescription-date-filter').addEventListener('change', filterPrescriptions);
+    // --- New Patient Search Logic for Admit Patient Modal ---
+    const admitPatientSearch = document.getElementById('patient-search-admit');
+    const admitPatientResults = document.getElementById('patient-search-results-admit');
+    const admitPatientId = document.getElementById('patient-id-admit');
+    let admitSearchTimeout;
 
-        // Connect the save button in the modal to the form submit logic
-        const saveButton = document.getElementById('modal-save-btn-presc');
-        saveButton.textContent = 'Save Prescription'; // Change from "Preview"
-        saveButton.addEventListener('click', () => {
-            document.getElementById('prescription-form').requestSubmit();
+    if (admitPatientSearch) {
+        // Listen for user typing in the search box
+        admitPatientSearch.addEventListener('input', () => {
+             const term = admitPatientSearch.value.trim();
+             admitPatientResults.innerHTML = '';
+             admitPatientResults.classList.remove('active');
+
+             if (term.length < 2) return; // Don't search for less than 2 characters
+
+             clearTimeout(admitSearchTimeout);
+             admitSearchTimeout = setTimeout(async () => {
+                // Use the existing 'search_patients' API action
+                const res = await fetch(`api.php?action=search_patients&term=${encodeURIComponent(term)}`);
+                const result = await res.json();
+                
+                if (result.success && result.data.length > 0) {
+                    result.data.forEach(p => {
+                        const item = document.createElement('div');
+                        item.className = 'search-result-item';
+                        item.textContent = `${p.name} (${p.display_user_id})`;
+                        item.dataset.patientId = p.id;
+                        item.dataset.patientName = p.name;
+                        admitPatientResults.appendChild(item);
+                    });
+                    admitPatientResults.classList.add('active');
+                }
+             }, 300); // Wait 300ms after typing to search
+        });
+
+        // Listen for a click on one of the search results
+        admitPatientResults.addEventListener('click', (e) => {
+            if (e.target.classList.contains('search-result-item')) {
+                admitPatientId.value = e.target.dataset.patientId; // Set the hidden ID input
+                admitPatientSearch.value = e.target.dataset.patientName; // Set the visible search input
+                admitPatientResults.classList.remove('active'); // Hide the results dropdown
+            }
         });
     }
 
-    // --- Appointments Page Event Listeners ---
+    const prescriptionsPage = document.getElementById('prescriptions-page');
+    if (prescriptionsPage) {
+        prescriptionsPage.addEventListener('click', function(e) {
+            const viewButton = e.target.closest('.view-prescription');
+            const printButton = e.target.closest('.print-prescription'); // New
+
+            if (viewButton) {
+                const prescriptionId = viewButton.dataset.id;
+                openViewPrescriptionModal(prescriptionId);
+            } else if (printButton) { // New else-if block
+                const prescriptionId = printButton.dataset.id;
+                if(prescriptionId) {
+                    window.open(`api.php?action=download_prescription&id=${prescriptionId}`, '_blank');
+                }
+            }
+        });
+        document.getElementById('prescription-search').addEventListener('input', filterPrescriptions);
+        document.getElementById('prescription-date-filter').addEventListener('change', filterPrescriptions);
+    }
+
     const appointmentsPage = document.getElementById('appointments-page');
     if (appointmentsPage) {
         const tabs = appointmentsPage.querySelectorAll('.tab-link');
@@ -1399,21 +1898,33 @@ if (placeLabOrderBtn && labOrderModal) {
 
         tabs.forEach(tab => {
             tab.addEventListener('click', function() {
-                // Update active tab styles
                 tabs.forEach(t => t.classList.remove('active'));
                 this.classList.add('active');
 
                 const period = this.dataset.tab;
 
-                // Show the correct tab content div
                 tabContents.forEach(content => {
                     content.style.display = content.id === `${period}-tab` ? 'block' : 'none';
                 });
-
-                // Load data for the selected tab
                 loadAppointments(period);
             });
         });
     }
 
-}); // End of DOMContentLoaded
+    loadDashboardData();
+
+});
+
+// Add this new event listener for the modal's print button
+const prescriptionViewModal = document.getElementById('prescription-view-modal-overlay');
+if (prescriptionViewModal) {
+    prescriptionViewModal.addEventListener('click', function(e) {
+        const printBtn = e.target.closest('#print-prescription-btn');
+        if (printBtn) {
+            const prescriptionId = printBtn.dataset.id;
+            if (prescriptionId) {
+                window.open(`api.php?action=download_prescription&id=${prescriptionId}`, '_blank');
+            }
+        }
+    });
+}

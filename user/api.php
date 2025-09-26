@@ -497,6 +497,7 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     $current_token_stmt->close();
                     $total_patients_stmt->close();
                     
+
                     $response = ['success' => true, 'tokens' => $tokens, 'message' => "Live token status fetched successfully."];
                     break;
                 
@@ -541,6 +542,7 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     $response = ['success' => true, 'data' => $appointments];
                     break;
                 
+
                 // ==========================================================
                 // === NEWLY ADDED CASE TO FETCH SPECIALTIES ===
                 // ==========================================================

@@ -388,7 +388,7 @@ require_once 'api.php';
                                 <th>Patient Name</th>
                                 <th>Location</th>
                                 <th>Admitted On</th>
-                                <th>Status</th>
+                                <th>Discharged On</th> <th>Status</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -882,14 +882,30 @@ require_once 'api.php';
                     <div id="assign-patient-section">
                         <h4>Assign Patient</h4>
                         <div class="form-group">
-                            <label for="bed-assign-patient-id">Select Patient</label>
-                            <select id="bed-assign-patient-id" name="patient_id" required>
-                                </select>
+                            <label for="bed-assign-patient-search">Select Patient</label>
+                            <div class="patient-search-container">
+                                <input type="text" id="bed-assign-patient-search" placeholder="Search by name or ID..." autocomplete="off">
+                                <input type="hidden" id="bed-assign-patient-id" name="patient_id" required>
+                                <div id="bed-assign-patient-results" class="search-results-list"></div>
+                            </div>
+                            <div id="bed-assign-selected-patient" class="selected-item-display" style="display:none;">
+                                <strong>Selected:</strong>
+                                <span id="bed-assign-selected-patient-name"></span>
+                                <button type="button" class="clear-selection-btn" id="bed-assign-clear-patient-btn" title="Change Patient">&times;</button>
+                            </div>
                         </div>
                         <div class="form-group">
-                            <label for="bed-assign-doctor-id">Assign Doctor</label>
-                            <select id="bed-assign-doctor-id" name="doctor_id" required>
-                                </select>
+                            <label for="bed-assign-doctor-search">Assign Doctor</label>
+                            <div class="patient-search-container">
+                                <input type="text" id="bed-assign-doctor-search" placeholder="Search by name or ID..." autocomplete="off">
+                                <input type="hidden" id="bed-assign-doctor-id" name="doctor_id" required>
+                                <div id="bed-assign-doctor-results" class="search-results-list"></div>
+                            </div>
+                            <div id="bed-assign-selected-doctor" class="selected-item-display" style="display:none;">
+                                <strong>Selected:</strong>
+                                <span id="bed-assign-selected-doctor-name"></span>
+                                <button type="button" class="clear-selection-btn" id="bed-assign-clear-doctor-btn" title="Change Doctor">&times;</button>
+                            </div>
                         </div>
                     </div>
 
@@ -934,9 +950,20 @@ require_once 'api.php';
                     </div>
 
                     <div class="form-group">
-                        <label for="lab-doctor-id">Requesting Doctor (Optional)</label>
-                        <select id="lab-doctor-id" name="doctor_id">
-                            </select>
+                        <label for="lab-doctor-search">Requesting Doctor (Optional)</label>
+                        <div class="patient-search-container">
+                            <input type="text" id="lab-doctor-search" placeholder="Search by doctor name or ID..." autocomplete="off">
+                            
+                            <input type="hidden" id="lab-doctor-id" name="doctor_id">
+                            
+                            <div id="doctor-search-results" class="search-results-list"></div>
+                        </div>
+                        
+                        <div id="selected-doctor-display" class="selected-item-display" style="display:none;">
+                            <strong>Selected:</strong>
+                            <span id="selected-doctor-name"></span>
+                            <button type="button" id="clear-selected-doctor-btn" class="clear-selection-btn" title="Change Doctor">&times;</button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="lab-status">Status</label>

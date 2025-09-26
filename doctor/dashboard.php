@@ -45,7 +45,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                 </ul>
             </nav>
             <div class="sidebar-footer">
-                 <a href="../logout" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
+                 <a href="../logout.php" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
             </div>
         </aside>
 
@@ -99,33 +99,51 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         <p>Here’s a summary of your activities and patient status for today. Stay organized and efficient.</p>
                     </div>
                     <div class="stat-cards-container">
-                        <div class="stat-card appointments"><div class="icon"><i class="fas fa-calendar-check"></i></div><div class="info"><div class="value">12</div><div class="label">Today's Appointments</div></div></div>
-                        <div class="stat-card admissions"><div class="icon"><i class="fas fa-procedures"></i></div><div class="info"><div class="value">3</div><div class="label">Active Admissions</div></div></div>
-                        <div class="stat-card discharges"><div class="icon"><i class="fas fa-walking"></i></div><div class="info"><div class="value">2</div><div class="label">Pending Discharges</div></div></div>
+                        <div class="stat-card appointments">
+                            <div class="icon"><i class="fas fa-calendar-check"></i></div>
+                            <div class="info">
+                                <div class="value" id="stat-appointments-value">--</div>
+                                <div class="label">Today's Appointments</div>
+                            </div>
+                        </div>
+                        <div class="stat-card admissions">
+                            <div class="icon"><i class="fas fa-procedures"></i></div>
+                            <div class="info">
+                                <div class="value" id="stat-admissions-value">--</div>
+                                <div class="label">Active Admissions</div>
+                            </div>
+                        </div>
+                        <div class="stat-card discharges">
+                            <div class="icon"><i class="fas fa-walking"></i></div>
+                            <div class="info">
+                                <div class="value" id="stat-discharges-value">--</div>
+                                <div class="label">Pending Discharges</div>
+                            </div>
+                        </div>
                     </div>
                     <div class="dashboard-grid">
                         <div class="grid-card" style="grid-column: 1 / -1;">
                             <h3><i class="fas fa-user-clock"></i> Today's Appointment Queue</h3>
                             <table class="data-table">
                                 <thead><tr><th>Token</th><th>Patient Name</th><th>Time</th><th>Status</th><th>Action</th></tr></thead>
-                                <tbody>
+                                <tbody id="dashboard-appointments-tbody">
                                     </tbody>
                             </table>
                         </div>
                         <div class="grid-card">
                              <h3><i class="fas fa-bolt"></i> Quick Actions</h3>
-                             <div class="quick-actions-container">
-                                 <a href="#" class="action-card" id="quick-action-admit"><i class="fas fa-notes-medical"></i><span>Admit Patient</span></a>
-                                 <a href="#" class="action-card" id="quick-action-prescribe"><i class="fas fa-file-medical"></i><span>New Prescription</span></a>
-                                 <a href="#" class="action-card" id="quick-action-lab"><i class="fas fa-vial"></i><span>Place Lab Order</span></a>
-                                 <a href="#" class="action-card"><i class="fas fa-sign-out-alt"></i><span>Initiate Discharge</span></a>
-                             </div>
+                            <div class="quick-actions-container">
+                                <a href="#" class="action-card" id="quick-action-admit"><i class="fas fa-notes-medical"></i><span>Admit Patient</span></a>
+                                <a href="#" class="action-card" id="quick-action-prescribe"><i class="fas fa-file-medical"></i><span>New Prescription</span></a>
+                                <a href="#" class="action-card" id="quick-action-lab"><i class="fas fa-vial"></i><span>Place Lab Order</span></a>
+                                <a href="#" class="action-card" id="quick-action-discharge"><i class="fas fa-sign-out-alt"></i><span>Initiate Discharge</span></a>
+                            </div>
                         </div>
                         <div class="grid-card">
                             <h3><i class="fas fa-bed"></i> Current In-Patients</h3>
                             <table class="data-table">
                                 <thead><tr><th>Patient Name</th><th>Room/Bed</th><th>Action</th></tr></thead>
-                                <tbody>
+                                <tbody id="dashboard-inpatients-tbody">
                                     </tbody>
                             </table>
                         </div>
@@ -137,7 +155,11 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                  <div class="content-panel">
                     <div class="page-header"><h3><i class="fas fa-calendar-check"></i> Manage Appointments</h3></div>
                     <div class="tabs"><button class="tab-link active" data-tab="today">Today's</button><button class="tab-link" data-tab="upcoming">Upcoming</button><button class="tab-link" data-tab="past">Past</button></div>
-                    <div class="filters"><input type="text" class="search-bar" placeholder="Search by patient name..."><select class="status-filter"><option value="all">All Statuses</option><option value="confirmed">Confirmed</option><option value="completed">Completed</option><option value="canceled">Canceled</option></select></div>
+                    <div class="filters">
+    <input type="text" class="search-bar" placeholder="Search by patient name...">
+    <input type="date" id="appointment-date-filter" class="date-filter" max=<?php echo date('Y-m-d'); ?>> 
+    <select class="status-filter"><option value="all">All Statuses</option><option value="confirmed">Confirmed</option><option value="completed">Completed</option><option value="canceled">Canceled</option></select>
+</div>
                     <div id="today-tab" class="appointment-tab active">
                         <div class="appointment-list">
                             </div>
@@ -237,9 +259,13 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         <div class="conversation-search">
                             <input type="text" placeholder="Search by name or ID...">
                         </div>
-                        <div class="loading-placeholder" style="padding: 2rem; text-align: center;">
-                            <i class="fas fa-spinner fa-spin"></i> Loading conversations...
+                        
+                        <div id="conversation-list-items">
+                            <div class="loading-placeholder" style="padding: 2rem; text-align: center;">
+                                <i class="fas fa-spinner fa-spin"></i> Loading conversations...
+                            </div>
                         </div>
+
                     </div>
                     <div class="chat-window">
                         <div class="chat-header">
@@ -335,12 +361,11 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     <div class="profile-tabs">
                         <button class="profile-tab-link active" data-tab="personal-info"><i class="fas fa-user-edit"></i> Personal Information</button>
                         <button class="profile-tab-link" data-tab="security"><i class="fas fa-shield-alt"></i> Security</button>
-                        <button class="profile-tab-link" data-tab="notifications"><i class="fas fa-bell"></i> Notifications</button>
                         <button class="profile-tab-link" data-tab="audit-log"><i class="fas fa-history"></i> Audit Log</button>
                     </div>
 
                     <div id="personal-info-tab" class="profile-tab-content active">
-                        <form id="personal-info-form" class="settings-form">
+                        <form id="personal-info-form" class="settings-form" novalidate>
                             <h4>Edit Your Personal Details</h4>
                             <div class="profile-picture-editor">
                                  <img src="<?php echo $profile_picture_path; ?>" alt="Doctor Avatar" class="editable-profile-picture">
@@ -352,7 +377,8 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label for="profile-name">Full Name</label>
-                                    <input type="text" id="profile-name" name="name" value="<?php echo htmlspecialchars($full_name, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="text" id="profile-name" name="name" value="<?php echo htmlspecialchars($full_name, ENT_QUOTES, 'UTF-8'); ?>" required>
+                                    <small class="validation-error"></small>
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-username">Username</label>
@@ -360,15 +386,18 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-email">Email Address</label>
-                                    <input type="email" id="profile-email" name="email" value="<?php echo htmlspecialchars($email, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="email" id="profile-email" name="email" value="<?php echo htmlspecialchars($email, ENT_QUOTES, 'UTF-8'); ?>" required>
+                                    <small class="validation-error"></small>
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-phone">Phone Number</label>
-                                    <input type="tel" id="profile-phone" name="phone" value="<?php echo htmlspecialchars($phone, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="tel" id="profile-phone" name="phone" value="<?php echo htmlspecialchars($phone, ENT_QUOTES, 'UTF-8'); ?>" pattern="^\+91\d{10}$" maxlength="13" required>
+                                    <small class="validation-error">Format: +91 followed by 10 digits.</small>
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-dob">Date of Birth</label>
-                                    <input type="date" id="profile-dob" name="date_of_birth" value="<?php echo htmlspecialchars($date_of_birth, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="date" id="profile-dob" name="date_of_birth" value="<?php echo htmlspecialchars($date_of_birth, ENT_QUOTES, 'UTF-8'); ?>" max="<?php echo date('Y-m-d'); ?>">
+                                    <small class="validation-error"></small>
                                 </div>
                                 <div class="form-group">
                                     <label for="profile-gender">Gender</label>
@@ -378,11 +407,29 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                                         <option value="Other" <?php if($gender == 'Other') echo 'selected'; ?>>Other</option>
                                     </select>
                                 </div>
+
                                 <div class="form-group">
                                     <label for="profile-specialty">Specialty</label>
-                                    <input type="text" id="profile-specialty" name="specialty" value="<?php echo htmlspecialchars($specialty, ENT_QUOTES, 'UTF-8'); ?>" readonly>
+                                    <select id="profile-specialty" name="specialty_id" required>
+                                        <option value="">-- Loading Specialties --</option>
+                                    </select>
+                                    <small class="validation-error"></small>
                                 </div>
+
                                 <div class="form-group">
+                                    <label for="profile-department">Department</label>
+                                    <select id="profile-department" name="department_id">
+                                        <option value="">-- Loading Departments --</option>
+                                    </select>
+                                    <small class="validation-error"></small>
+                                </div>
+
+                                <div class="form-group full-width">
+                                    <label for="profile-qualifications">Qualifications</label>
+                                    <input type="text" id="profile-qualifications" name="qualifications" value="<?php echo htmlspecialchars($qualifications ?? '', ENT_QUOTES, 'UTF-8'); ?>" placeholder="e.g., MBBS, MD, FRCS">
+                                    <small class="validation-error"></small>
+                                </div>
+                                 <div class="form-group">
                                     <label for="profile-id">Doctor ID</label>
                                     <input type="text" id="profile-id" name="display_id" value="<?php echo htmlspecialchars($display_user_id, ENT_QUOTES, 'UTF-8'); ?>" readonly>
                                 </div>
@@ -424,58 +471,6 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                             </div>
                         </form>
                     </div>
-
-                    <div id="notifications-tab" class="profile-tab-content">
-                        <form id="notifications-form" class="settings-form">
-                            <h4>Manage Email Notifications</h4>
-                            <p class="form-description">Control which email notifications you want to receive from MedSync.</p>
-                            <div class="notification-options">
-                                <div class="notification-item">
-                                    <div class="label-group">
-                                        <label for="notif-appointment">Appointment Alerts</label>
-                                        <span>For new bookings, changes, and cancellations.</span>
-                                    </div>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="notif-appointment" name="appointment_alerts" checked>
-                                        <span class="slider"></span>
-                                    </label>
-                                </div>
-                                <div class="notification-item">
-                                    <div class="label-group">
-                                        <label for="notif-discharge">Discharge Updates</label>
-                                        <span>When a discharge you initiated moves to the next stage.</span>
-                                    </div>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="notif-discharge" name="discharge_updates" checked>
-                                        <span class="slider"></span>
-                                    </label>
-                                </div>
-                                <div class="notification-item">
-                                    <div class="label-group">
-                                        <label for="notif-lab">Lab Result Availability</label>
-                                        <span>When new lab results for your patients are ready.</span>
-                                    </div>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="notif-lab" name="lab_results">
-                                        <span class="slider"></span>
-                                    </label>
-                                </div>
-                                <div class="notification-item">
-                                    <div class="label-group">
-                                        <label for="notif-system">System Announcements</label>
-                                        <span>For important updates, maintenance, and new features.</span>
-                                    </div>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="notif-system" name="system_announcements" checked>
-                                        <span class="slider"></span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="form-actions">
-                                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Preferences</button>
-                            </div>
-                        </form>
-                    </div>
                     
                     <div id="audit-log-tab" class="profile-tab-content">
                          <div class="settings-form">
@@ -509,10 +504,12 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     <form id="prescription-form">
                         <div class="form-grid">
                             <div class="form-group full-width">
-                                <label for="patient-select-presc">Select Patient</label>
-                                <select id="patient-select-presc" name="patient_id" required>
-                                    <option value="">-- Choose a patient --</option>
-                                </select>
+                                <label for="patient-search-presc">Select Patient</label>
+                                <div class="med-search-group">
+                                    <input type="hidden" id="patient-id-presc" name="patient_id" required>
+                                    <input type="text" id="patient-search-presc" placeholder="Search by Patient Name or ID..." autocomplete="off" required>
+                                    <div class="search-results-dropdown" id="patient-search-results-presc"></div>
+                                </div>
                             </div>
                         </div>
 
@@ -531,14 +528,37 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         </div>
                     </form>
                 </div>
-                <div class="modal-footer"><button class="btn btn-secondary" data-modal-id="prescription-modal-overlay">Cancel</button><button class="btn btn-primary" id="modal-save-btn-presc">Save Prescription</button></div>
+                <div class="modal-footer"><button class="btn btn-secondary" data-modal-id="prescription-modal-overlay">Cancel</button><button type="submit" form="prescription-form" class="btn btn-primary" id="modal-save-btn-presc">Save Prescription</button></div>
             </div>
         </div>
 
         <div class="modal-overlay" id="admit-patient-modal-overlay">
             <div class="modal-container">
                 <div class="modal-header"><h4>Admit New Patient</h4><button class="modal-close-btn" data-modal-id="admit-patient-modal-overlay">&times;</button></div>
-                <div class="modal-body"><form id="admit-patient-form"><div class="form-grid"><div class="form-group full-width"><label for="patient-select-admit">Select Patient</label><select id="patient-select-admit" name="patient_id" required><option value="">-- Choose an existing patient --</option></select></div><div class="form-group full-width"><label for="bed-select-admit">Assign Bed</label><select id="bed-select-admit" name="accommodation_id" required><option value="">-- Select an available bed --</option></select></div><div class="form-group full-width"><label for="admission-notes">Admission Notes</label><textarea id="admission-notes" name="notes" placeholder="Reason for admission, initial observations, etc."></textarea></div></div></form></div>
+                <div class="modal-body">
+                    <form id="admit-patient-form">
+                        <div class="form-grid">
+                            <div class="form-group full-width">
+                                <label for="patient-search-admit">Select Patient</label>
+                                <div class="med-search-group"> 
+                                    <input type="hidden" id="patient-id-admit" name="patient_id" required>
+                                    <input type="text" id="patient-search-admit" placeholder="Search by Patient Name or ID..." autocomplete="off" required>
+                                    <div class="search-results-dropdown" id="patient-search-results-admit"></div>
+                                </div>
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="bed-select-admit">Assign Bed</label>
+                                <select id="bed-select-admit" name="accommodation_id" required>
+                                    <option value="">-- Select an available bed --</option>
+                                </select>
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="admission-notes">Admission Notes</label>
+                                <textarea id="admission-notes" name="notes" placeholder="Reason for admission, initial observations, etc."></textarea>
+                            </div>
+                        </div>
+                    </form>
+                </div>
                 <div class="modal-footer"><button class="btn btn-secondary" data-modal-id="admit-patient-modal-overlay">Cancel</button><button class="btn btn-primary" id="modal-save-btn-admit" type="submit" form="admit-patient-form">Confirm Admission</button></div>
             </div>
         </div>
@@ -561,12 +581,14 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     <form id="lab-order-form">
                         <div class="form-grid">
                             <div class="form-group full-width">
-                                <label for="lab-order-patient-select">Select Patient</label>
-                                <select id="lab-order-patient-select" name="patient_id" required>
-                                    <option value="">-- Choose a patient --</option>
-                                </select>
+                                <label for="lab-order-patient-search">Select Patient</label>
+                                <div class="med-search-group">
+                                    <input type="hidden" id="lab-order-patient-id" name="patient_id" required>
+                                    <input type="text" id="lab-order-patient-search" placeholder="Search by Patient Name or ID..." autocomplete="off" required>
+                                    <div class="search-results-dropdown" id="lab-order-patient-results"></div>
+                                </div>
                             </div>
-                        </div>
+                            </div>
 
                         <div id="test-rows-container" style="margin-top: 1rem;">
                             </div>
@@ -669,15 +691,15 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         <div class="rx-hospital-details">
                             <img src="../images/logo.png" alt="MedSync Logo" class="rx-logo">
                             <div>
-                                <strong>MedSync Hospital</strong><br>
-                                123 Health St, Wellness City<br>
-                                medsync.hospital@email.com
+                                <strong>MedSync </strong><br>
+                                Kerala, India<br>
+                                medsync.calysta@gmail.com
                             </div>
                         </div>
                         <div class="rx-doctor-details">
                             <strong>Dr. <?php echo htmlspecialchars($full_name, ENT_QUOTES, 'UTF-8'); ?></strong><br>
                             <?php echo htmlspecialchars($specialty, ENT_QUOTES, 'UTF-8'); ?><br>
-                            Reg. No: MS-DOC-12345
+                            Reg. No: <?php echo htmlspecialchars($display_user_id, ENT_QUOTES, 'UTF-8'); ?>
                         </div>
                     </div>
                     <div class="rx-patient-details">

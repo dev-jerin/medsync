@@ -743,6 +743,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+
     // ==========================================================
     // === ADD THIS NEW FUNCTION TO POPULATE THE FILTER       ===
     // ==========================================================
@@ -775,6 +776,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const doctorListContainer = document.getElementById('doctor-list');
         const nameSearch = document.getElementById('doctor-search-name').value;
         const specialtyFilter = document.getElementById('doctor-search-specialty')?.value || '';
+
 
         doctorListContainer.innerHTML = '<p>Loading doctors...</p>';
         
@@ -1112,6 +1114,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`api.php?${params.toString()}`);
             if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
             const result = await response.json();
+
 
             if (!result.success) throw new Error(result.message);
             

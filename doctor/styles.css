@@ -1312,7 +1312,7 @@ input:checked + .slider:before {
 }
 .rx-body {
     display: flex;
-    gap: 1rem;
+    /* gap: 1rem; */ /* <<< THIS WAS THE CAUSE OF THE SPACE */
     margin-top: 1rem;
 }
 .rx-symbol {

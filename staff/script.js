@@ -783,19 +783,27 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
 
+        // UPDATED: This function now handles the richer data from the API
         function renderAuditLog(data, tableBody) {
             if (data.length === 0) {
                 tableBody.innerHTML = `<tr><td colspan="3" style="text-align: center;">No recent activity found.</td></tr>`;
                 return;
             }
 
-            tableBody.innerHTML = data.map(log => `
-                <tr>
-                    <td data-label="Date & Time">${new Date(log.created_at).toLocaleString()}</td>
-                    <td data-label="Action"><span class="log-action-update">${log.action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span></td>
-                    <td data-label="Details">${log.details}</td>
-                </tr>
-            `).join('');
+            tableBody.innerHTML = data.map(log => {
+                // Prepend target user info to the details if it exists
+                const details = log.target_user_display_id
+                    ? `Target: <strong>${log.target_user_name} (${log.target_user_display_id})</strong>. ${log.details}`
+                    : log.details;
+
+                return `
+                    <tr>
+                        <td data-label="Date & Time">${new Date(log.created_at).toLocaleString()}</td>
+                        <td data-label="Action"><span class="log-action-update">${log.action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span></td>
+                        <td data-label="Details">${details}</td>
+                    </tr>
+                `;
+            }).join('');
         }
 
         const personalInfoForm = document.getElementById('personal-info-form');
@@ -965,7 +973,10 @@ document.addEventListener("DOMContentLoaded", function() {
                 </td>
                 <td data-label="Actions">
                     <button class="action-btn edit-user-btn"><i class="fas fa-edit"></i> Edit</button> 
-                    <button class="action-btn danger remove-user-btn"><i class="fas fa-trash-alt"></i> Deactivate</button>
+                    ${user.active == 1
+                        ? `<button class="action-btn danger remove-user-btn"><i class="fas fa-trash-alt"></i> Deactivate</button>`
+                        : `<button class="action-btn reactivate-user-btn"><i class="fas fa-check-circle"></i> Reactivate</button>`
+                    }
                 </td>
             </tr>
         `).join('');
@@ -1081,6 +1092,20 @@ document.addEventListener("DOMContentLoaded", function() {
                         if (confirmed) {
                            const formData = new FormData();
                            formData.append('action', 'removeUser');
+                           formData.append('id', userData.id);
+                           formData.append('csrf_token', csrfToken);
+                           handleUserFormSubmit(formData);
+                        }
+                    });
+            }
+            if(e.target.closest('.reactivate-user-btn')) {
+                const row = e.target.closest('tr');
+                const userData = JSON.parse(row.dataset.user);
+                showConfirmation('Reactivate User', `Are you sure you want to reactivate ${userData.name}? Their account will become active.`)
+                    .then(confirmed => {
+                        if (confirmed) {
+                           const formData = new FormData();
+                           formData.append('action', 'reactivateUser');
                            formData.append('id', userData.id);
                            formData.append('csrf_token', csrfToken);
                            handleUserFormSubmit(formData);
@@ -1596,23 +1621,112 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
     
+    // REPLACE the old openAssignModal function with this one
     function openAssignModal(entity) {
         const modal = document.getElementById('bed-assign-modal');
         const form = document.getElementById('bed-assign-form');
         form.reset();
 
+        // --- Helper function to clear search selections ---
+        const clearSelection = (type) => {
+            document.getElementById(`bed-assign-selected-${type}`).style.display = 'none';
+            document.getElementById(`bed-assign-${type}-search`).style.display = 'block';
+            document.getElementById(`bed-assign-${type}-search`).value = '';
+            document.getElementById(`bed-assign-${type}-id`).value = '';
+        };
+
+        // Clear previous selections
+        clearSelection('patient');
+        clearSelection('doctor');
+
         const type = entity.type;
         const number = entity.number;
-        
+
         document.getElementById('bed-assign-modal-title').textContent = `Manage Occupancy for ${type.charAt(0).toUpperCase() + type.slice(1)} ${number}`;
         document.getElementById('bed-assign-id').value = entity.id;
         document.getElementById('bed-assign-type').value = type;
         document.getElementById('bed-assign-current-status').textContent = entity.status.charAt(0).toUpperCase() + entity.status.slice(1);
-        
+
         const assignSection = document.getElementById('assign-patient-section');
         const dischargeSection = document.getElementById('discharge-patient-section');
         const submitBtn = document.getElementById('bed-assign-submit-btn');
         const dischargeBtn = document.getElementById('bed-discharge-btn');
+        
+        // --- Logic for searching patients ---
+        const patientSearchInput = document.getElementById('bed-assign-patient-search');
+        const patientResultsContainer = document.getElementById('bed-assign-patient-results');
+        let patientDebounce;
+
+        const patientSearchHandler = () => {
+            clearTimeout(patientDebounce);
+            patientDebounce = setTimeout(async () => {
+                const query = patientSearchInput.value;
+                if (query.length < 2) {
+                    patientResultsContainer.style.display = 'none';
+                    return;
+                }
+                const response = await fetch(`api.php?fetch=search_patients&query=${encodeURIComponent(query)}`);
+                const result = await response.json();
+                if (result.success) {
+                    patientResultsContainer.innerHTML = result.data.map(p =>
+                        `<div class="search-result-item" data-id="${p.id}" data-name="${p.name} (${p.display_user_id})">${p.name} (${p.display_user_id})</div>`
+                    ).join('');
+                    patientResultsContainer.style.display = 'block';
+                }
+            }, 300);
+        };
+        patientSearchInput.addEventListener('input', patientSearchHandler);
+
+        patientResultsContainer.addEventListener('click', (e) => {
+            const item = e.target.closest('.search-result-item');
+            if (item) {
+                document.getElementById('bed-assign-patient-id').value = item.dataset.id;
+                document.getElementById('bed-assign-selected-patient-name').textContent = item.dataset.name;
+                document.getElementById('bed-assign-selected-patient').style.display = 'flex';
+                patientSearchInput.style.display = 'none';
+                patientResultsContainer.style.display = 'none';
+            }
+        });
+        
+        document.getElementById('bed-assign-clear-patient-btn').addEventListener('click', () => clearSelection('patient'));
+        
+        // --- Logic for searching doctors ---
+        const doctorSearchInput = document.getElementById('bed-assign-doctor-search');
+        const doctorResultsContainer = document.getElementById('bed-assign-doctor-results');
+        let doctorDebounce;
+
+        const doctorSearchHandler = () => {
+            clearTimeout(doctorDebounce);
+            doctorDebounce = setTimeout(async () => {
+                const query = doctorSearchInput.value;
+                if (query.length < 2) {
+                    doctorResultsContainer.style.display = 'none';
+                    return;
+                }
+                const response = await fetch(`api.php?fetch=active_doctors&search=${encodeURIComponent(query)}`);
+                const result = await response.json();
+                if (result.success) {
+                    doctorResultsContainer.innerHTML = result.data.map(d =>
+                        `<div class="search-result-item" data-id="${d.id}" data-name="${d.name} (${d.display_user_id})">${d.name} (${d.display_user_id})</div>`
+                    ).join('');
+                    doctorResultsContainer.style.display = 'block';
+                }
+            }, 300);
+        };
+        doctorSearchInput.addEventListener('input', doctorSearchHandler);
+
+        doctorResultsContainer.addEventListener('click', (e) => {
+            const item = e.target.closest('.search-result-item');
+            if (item) {
+                document.getElementById('bed-assign-doctor-id').value = item.dataset.id;
+                document.getElementById('bed-assign-selected-doctor-name').textContent = item.dataset.name;
+                document.getElementById('bed-assign-selected-doctor').style.display = 'flex';
+                doctorSearchInput.style.display = 'none';
+                doctorResultsContainer.style.display = 'none';
+            }
+        });
+
+        document.getElementById('bed-assign-clear-doctor-btn').addEventListener('click', () => clearSelection('doctor'));
 
         if (entity.status === 'available' || entity.status === 'cleaning' || entity.status === 'reserved') {
             assignSection.style.display = 'block';
@@ -1620,25 +1734,11 @@ document.addEventListener("DOMContentLoaded", function() {
             submitBtn.style.display = 'inline-flex';
             submitBtn.textContent = 'Assign Patient';
             dischargeBtn.style.display = 'none';
-
-            const patientSelect = document.getElementById('bed-assign-patient-id');
-            patientSelect.innerHTML = '<option value="">-- Select Patient --</option>';
-            bedManagementData.available_patients.forEach(p => {
-                patientSelect.innerHTML += `<option value="${p.id}">${p.name} (${p.display_user_id})</option>`;
-            });
-
-            const doctorSelect = document.getElementById('bed-assign-doctor-id');
-            doctorSelect.innerHTML = '<option value="">-- Select Doctor --</option>';
-            bedManagementData.available_doctors.forEach(d => {
-                doctorSelect.innerHTML += `<option value="${d.id}">${d.name}</option>`;
-            });
-
         } else if (entity.status === 'occupied') {
             assignSection.style.display = 'none';
             dischargeSection.style.display = 'block';
             submitBtn.style.display = 'none';
             dischargeBtn.style.display = 'inline-flex';
-            
             document.getElementById('bed-assign-patient-name').textContent = `${entity.patient_name} (${entity.patient_display_id})`;
             document.getElementById('bed-assign-doctor-name').textContent = entity.doctor_name || 'N/A';
         }
@@ -1761,7 +1861,8 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!tableBody) return;
 
         if (admissions.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">No admissions found matching your criteria.</td></tr>`;
+            // Update colspan to 6 to account for the new column
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No admissions found matching your criteria.</td></tr>`;
             return;
         }
 
@@ -1771,6 +1872,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 : '<span class="status admitted">Admitted</span>';
             
             const admissionDate = new Date(adm.admission_date).toLocaleDateString('en-CA');
+            // ADD THIS LINE to format the discharge date or show 'N/A'
+            const dischargeDate = adm.discharge_date ? new Date(adm.discharge_date).toLocaleDateString('en-CA') : 'N/A';
             const location = adm.location ? `${adm.location_type} ${adm.location}` : 'N/A';
 
             return `
@@ -1779,7 +1882,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     <td data-label="Patient Name">${adm.patient_name} (${adm.patient_display_id})</td>
                     <td data-label="Location">${location}</td>
                     <td data-label="Admitted On">${admissionDate}</td>
-                    <td data-label="Status">${status}</td>
+                    <td data-label="Discharged On">${dischargeDate}</td> <td data-label="Status">${status}</td>
                 </tr>
             `;
         }).join('');
@@ -1863,6 +1966,26 @@ document.addEventListener("DOMContentLoaded", function() {
 
         document.getElementById('clear-selected-patient-btn').addEventListener('click', clearSelectedPatient);
         document.getElementById('add-finding-btn').addEventListener('click', () => createFindingRow());
+        
+        // --- START: Add these listeners for the new doctor search ---
+        const doctorSearchInput = document.getElementById('lab-doctor-search');
+        const doctorSearchResults = document.getElementById('doctor-search-results');
+        let labDoctorSearchDebounce;
+
+        doctorSearchInput.addEventListener('input', () => {
+             clearTimeout(labDoctorSearchDebounce);
+             labDoctorSearchDebounce = setTimeout(() => handleLabDoctorSearch(doctorSearchInput.value), 300);
+        });
+        
+        doctorSearchResults.addEventListener('click', (e) => {
+            const item = e.target.closest('.search-result-item');
+            if(item) {
+                selectLabDoctor(item.dataset.id, item.dataset.name);
+            }
+        });
+
+        document.getElementById('clear-selected-doctor-btn').addEventListener('click', clearSelectedLabDoctor);
+        // --- END: Add these listeners for the new doctor search ---
 
         fetchAndRenderLabOrders(searchInput.value, statusFilter.value);
         labOrdersInitialized = true;
@@ -1924,9 +2047,10 @@ document.addEventListener("DOMContentLoaded", function() {
         const title = document.getElementById('lab-modal-title');
         form.reset();
         clearSelectedPatient();
+        clearSelectedLabDoctor();
         document.getElementById('current-attachment-info').innerHTML = '';
         document.getElementById('lab-findings-container').innerHTML = '';
-
+    
         const createFindingRow = (finding = { parameter: '', result: '', range: '' }) => {
             const row = document.createElement('div');
             row.className = 'form-grid finding-row';
@@ -1941,25 +2065,7 @@ document.addEventListener("DOMContentLoaded", function() {
             `;
             document.getElementById('lab-findings-container').appendChild(row);
         };
-
-        if (!labFormData || !labFormData.doctors) {
-            try {
-                const response = await fetch('api.php?fetch=lab_form_data');
-                const result = await response.json();
-                if (!result.success) throw new Error(result.message);
-                labFormData = result.data;
-            } catch (error) {
-                alert('Failed to load doctor list: ' + error.message);
-                return;
-            }
-        }
-        
-        const doctorSelect = document.getElementById('lab-doctor-id');
-        doctorSelect.innerHTML = '<option value="">-- Select Doctor (Optional) --</option>';
-        labFormData.doctors.forEach(d => {
-            doctorSelect.innerHTML += `<option value="${d.id}">${d.name}</option>`;
-        });
-        
+    
         if (mode === 'add') {
             title.textContent = 'Add Walk-in Lab Order';
             document.getElementById('lab-form-action').value = 'addLabOrder';
@@ -1970,17 +2076,20 @@ document.addEventListener("DOMContentLoaded", function() {
             document.getElementById('lab-order-id').value = data.id;
             
             if(data.patient_id && data.patient_name) {
-                selectPatient(data.patient_id, data.patient_name);
+                selectPatient(data.patient_id, `${data.patient_name} (${data.patient_display_id})`);
             }
-
-            doctorSelect.value = data.doctor_id || '';
+    
+            if (data.doctor_id && data.doctor_name) {
+                selectLabDoctor(data.doctor_id, data.doctor_name);
+            }
+    
             document.getElementById('lab-status').value = data.status || 'pending';
             document.getElementById('lab-test-name').value = data.test_name;
             document.getElementById('lab-test-date').value = data.test_date;
             document.getElementById('lab-cost').value = parseFloat(data.cost || 0).toFixed(2);
             
             document.getElementById('lab-summary').value = '';
-
+    
             try {
                 const details = JSON.parse(data.result_details);
                 if (details && typeof details === 'object') {
@@ -1994,13 +2103,13 @@ document.addEventListener("DOMContentLoaded", function() {
             } catch (e) {
                 document.getElementById('lab-summary').value = data.result_details || '';
             }
-
+    
             if (data.attachment_path) {
                 document.getElementById('current-attachment-info').innerHTML = 
                 `Current Report: <a href="report/${data.attachment_path}" target="_blank">View Report</a>`;
             }
         }
-
+    
         modal.classList.add('show');
     }
     
@@ -2050,6 +2159,56 @@ document.addEventListener("DOMContentLoaded", function() {
         document.getElementById('lab-patient-search').style.display = 'block';
         document.getElementById('selected-patient-display').style.display = 'none';
     }
+
+    // --- START: New functions for Doctor Search in Lab Modal ---
+    async function handleLabDoctorSearch(query) {
+        const resultsContainer = document.getElementById('doctor-search-results');
+        if (query.length < 2) {
+            resultsContainer.innerHTML = '';
+            resultsContainer.style.display = 'none';
+            return;
+        }
+    
+        resultsContainer.innerHTML = '<div class="search-result-item">Searching...</div>';
+        resultsContainer.style.display = 'block';
+    
+        try {
+            // This uses the 'active_doctors' endpoint which you already have!
+            const response = await fetch(`api.php?fetch=active_doctors&search=${encodeURIComponent(query)}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            
+            if(result.data.length === 0) {
+                 resultsContainer.innerHTML = '<div class="search-result-item">No doctors found.</div>';
+            } else {
+                resultsContainer.innerHTML = result.data.map(d => `
+                    <div class="search-result-item" data-id="${d.id}" data-name="${d.name} (${d.display_user_id})">
+                        ${d.name} (${d.display_user_id})
+                    </div>
+                `).join('');
+            }
+        } catch (error) {
+             resultsContainer.innerHTML = `<div class="search-result-item" style="color:red">Search failed.</div>`;
+        }
+    }
+    
+    function selectLabDoctor(id, name) {
+        document.getElementById('lab-doctor-id').value = id;
+        document.getElementById('selected-doctor-name').textContent = name;
+        document.getElementById('doctor-search-results').style.display = 'none';
+        document.getElementById('lab-doctor-search').style.display = 'none';
+        document.getElementById('selected-doctor-display').style.display = 'flex';
+    }
+    
+    function clearSelectedLabDoctor() {
+        document.getElementById('lab-doctor-id').value = '';
+        document.getElementById('selected-doctor-name').textContent = '';
+        document.getElementById('lab-doctor-search').value = '';
+        document.getElementById('doctor-search-results').style.display = 'none';
+        document.getElementById('lab-doctor-search').style.display = 'block';
+        document.getElementById('selected-doctor-display').style.display = 'none';
+    }
+    // --- END: New functions for Doctor Search in Lab Modal ---
 
     async function handleLabOrderFormSubmit(e) {
         e.preventDefault();
@@ -2525,10 +2684,10 @@ document.addEventListener("DOMContentLoaded", function() {
                     : `<button class="action-btn view-prescription-btn"><i class="fas fa-eye"></i> View</button>`;
 
                 return `
-                    <tr data-prescription-id="${p.id}" data-patient-name="${p.patient_name} (${p.patient_display_id})" data-doctor-name="${p.doctor_name}">
+                    <tr data-prescription-id="${p.id}" data-patient-name="${p.patient_name} (${p.patient_display_id})" data-doctor-name="${p.doctor_name} (${p.doctor_display_id})">
                         <td data-label="Presc. ID">PRES-${String(p.id).padStart(4, '0')}</td>
                         <td data-label="Patient Name">${p.patient_name} (${p.patient_display_id})</td>
-                        <td data-label="Doctor Name">${p.doctor_name}</td>
+                        <td data-label="Doctor Name">${p.doctor_name} (${p.doctor_display_id})</td>
                         <td data-label="Date">${p.prescription_date}</td>
                         <td data-label="Status"><span class="status ${statusClass}">${p.status}</span></td>
                         <td data-label="Actions">${actions}</td>

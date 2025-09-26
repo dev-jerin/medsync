@@ -48,7 +48,7 @@ if (isset($_SESSION['user_id'])) {
     <main class="auth-page">
         <div class="auth-container">
             <div class="auth-panel">
-                <img src="https://images.unsplash.com/photo-1551601651-2a8555f1a136?q=80&w=2147&auto=format&fit=crop" alt="A friendly male doctor smiling in a modern clinic" class="auth-image">
+                <img src="../images/register-img.jpg" alt="A friendly male doctor smiling in a modern clinic" class="auth-image">
                 <div class="auth-panel-overlay">
                     <h2>Join a Healthier Future</h2>
                     <p>Register with MedSync to manage your health with ease and efficiency.</p>

@@ -87,7 +87,16 @@ function checkAndFinalizeDischarge($conn, $admission_id) {
                 $stmt_acc->execute();
                 $stmt_acc->close();
             }
-             log_activity($conn, $_SESSION['user_id'], 'finalize_discharge', $admission_data['patient_id'], "All clearances met. Patient from admission #{$admission_id} discharged.");
+            
+            // Get patient info for a more detailed log message
+            $stmt_p_info = $conn->prepare("SELECT name, display_user_id FROM users WHERE id = ?");
+            $stmt_p_info->bind_param("i", $admission_data['patient_id']);
+            $stmt_p_info->execute();
+            $patient_details = $stmt_p_info->get_result()->fetch_assoc();
+            $stmt_p_info->close();
+            $patient_log_info = $patient_details ? "'{$patient_details['name']}' ({$patient_details['display_user_id']})" : "ID {$admission_data['patient_id']}";
+
+            log_activity($conn, $_SESSION['user_id'], 'finalize_discharge', $admission_data['patient_id'], "Finalized discharge for patient {$patient_log_info} (Admission #{$admission_id}).");
         }
     }
 }
@@ -187,10 +196,11 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $response = ['success' => true, 'data' => $stats];
                     break;
                 
+                // This is the NEW code
                 case 'active_doctors':
                     $search_query = $_GET['search'] ?? '';
                     $sql = "
-                        SELECT u.id, u.name 
+                        SELECT u.id, u.name, u.display_user_id
                         FROM users u 
                         JOIN doctors d ON u.id = d.user_id 
                         WHERE u.is_active = 1
@@ -199,10 +209,11 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $types = "";
 
                     if (!empty($search_query)) {
-                        $sql .= " AND u.name LIKE ?";
+                        $sql .= " AND (u.name LIKE ? OR u.display_user_id LIKE ?)"; // Search by name OR ID
                         $search_term = "%{$search_query}%";
                         $params[] = $search_term;
-                        $types .= "s";
+                        $params[] = $search_term;
+                        $types .= "ss";
                     }
                     $sql .= " ORDER BY u.name ASC LIMIT 10";
                     
@@ -325,8 +336,23 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     break;
 
                 case 'audit_log':
+                    // UPDATED: Joined with users table to get target user details for a richer log display
                     $stmt = $conn->prepare("
-                        SELECT action, details, created_at FROM activity_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT 50
+                        SELECT
+                            al.action,
+                            al.details,
+                            al.created_at,
+                            target_user.display_user_id AS target_user_display_id,
+                            target_user.name AS target_user_name
+                        FROM
+                            activity_logs al
+                        LEFT JOIN
+                            users AS target_user ON al.target_user_id = target_user.id
+                        WHERE
+                            al.user_id = ?
+                        ORDER BY
+                            al.created_at DESC
+                        LIMIT 50
                     ");
                     $stmt->bind_param("i", $user_id);
                     $stmt->execute();
@@ -716,7 +742,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $sql = "
                         SELECT 
                             p.id, patient.name AS patient_name, patient.display_user_id AS patient_display_id,
-                            doctor.name AS doctor_name, p.prescription_date, p.status
+                            doctor.name AS doctor_name, doctor.display_user_id AS doctor_display_id, p.prescription_date, p.status
                         FROM prescriptions p
                         JOIN users patient ON p.patient_id = patient.id
                         JOIN users doctor ON p.doctor_id = doctor.id
@@ -1117,7 +1143,8 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $stmt_doctor->close();
                         }
                         
-                        log_activity($conn, $user_id, 'create_user', $new_user_id, "Staff member created a new {$role_name}: {$username}");
+                        // UPDATED: More descriptive log message
+                        log_activity($conn, $user_id, 'create_user', $new_user_id, "Created new {$role_name} '{$name}' ({$display_user_id}).");
 
                         $conn->commit();
                         $transaction_active = false;
@@ -1177,7 +1204,13 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $stmt_doctor->close();
                         }
 
-                        log_activity($conn, $user_id, 'update_user', $target_user_id, "Staff updated profile for user '{$name}' (ID: {$target_user_id}).");
+                        // UPDATED: Fetch display_user_id for a better log message
+                        $stmt_get_id = $conn->prepare("SELECT display_user_id FROM users WHERE id = ?");
+                        $stmt_get_id->bind_param("i", $target_user_id);
+                        $stmt_get_id->execute();
+                        $target_display_id = $stmt_get_id->get_result()->fetch_assoc()['display_user_id'];
+                        $stmt_get_id->close();
+                        log_activity($conn, $user_id, 'update_user', $target_user_id, "Updated profile for user '{$name}' ({$target_display_id}).");
 
                         $conn->commit();
                         $transaction_active = false;
@@ -1191,7 +1224,8 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 case 'removeUser':
                     $target_user_id = (int)$_POST['id'];
                     
-                    $stmt_role_check = $conn->prepare("SELECT r.role_name, u.username FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?");
+                    // UPDATED: Also fetch display_user_id for logging
+                    $stmt_role_check = $conn->prepare("SELECT r.role_name, u.username, u.display_user_id FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?");
                     $stmt_role_check->bind_param("i", $target_user_id);
                     $stmt_role_check->execute();
                     $target_user = $stmt_role_check->get_result()->fetch_assoc();
@@ -1205,9 +1239,37 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $stmt->bind_param("i", $target_user_id);
                     $stmt->execute();
 
-                    log_activity($conn, $user_id, 'deactivate_user', $target_user_id, "Staff deactivated user: {$target_user['username']}");
+                    // UPDATED: More descriptive log message
+                    log_activity($conn, $user_id, 'deactivate_user', $target_user_id, "Deactivated user '{$target_user['username']}' ({$target_user['display_user_id']}).");
 
                     $response = ['success' => true, 'message' => 'User has been deactivated.'];
+                    break;
+
+                case 'reactivateUser':
+                    if (empty($_POST['id'])) {
+                        throw new Exception('User ID is required.');
+                    }
+                    $target_user_id = (int)$_POST['id'];
+                    
+                    // Security check: ensure only patients and doctors can be reactivated by staff
+                    $stmt_role_check = $conn->prepare("SELECT r.role_name, u.username, u.display_user_id FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?");
+                    $stmt_role_check->bind_param("i", $target_user_id);
+                    $stmt_role_check->execute();
+                    $target_user = $stmt_role_check->get_result()->fetch_assoc();
+                    $stmt_role_check->close();
+                    
+                    if (!$target_user || !in_array($target_user['role_name'], ['user', 'doctor'])) {
+                        throw new Exception("You are not authorized to reactivate this user.");
+                    }
+
+                    // Set the user's status back to active
+                    $stmt = $conn->prepare("UPDATE users SET is_active = 1 WHERE id = ?");
+                    $stmt->bind_param("i", $target_user_id);
+                    $stmt->execute();
+
+                    log_activity($conn, $user_id, 'reactivate_user', $target_user_id, "Reactivated user '{$target_user['username']}' ({$target_user['display_user_id']}).");
+
+                    $response = ['success' => true, 'message' => 'User has been reactivated successfully.'];
                     break;
 
                 case 'updateMedicineStock':
@@ -1220,8 +1282,15 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $stmt = $conn->prepare("UPDATE medicines SET quantity = ? WHERE id = ?");
                     $stmt->bind_param("ii", $new_quantity, $medicine_id);
                     $stmt->execute();
-
-                    log_activity($conn, $user_id, 'update_inventory', null, "Updated medicine stock for ID {$medicine_id} to {$new_quantity}.");
+                    
+                    // UPDATED: Fetch medicine name for a more readable log
+                    $stmt_med_name = $conn->prepare("SELECT name FROM medicines WHERE id = ?");
+                    $stmt_med_name->bind_param("i", $medicine_id);
+                    $stmt_med_name->execute();
+                    $medicine_name = $stmt_med_name->get_result()->fetch_assoc()['name'] ?? 'Unknown Medicine';
+                    $stmt_med_name->close();
+                    
+                    log_activity($conn, $user_id, 'update_inventory', null, "Updated stock for '{$medicine_name}' to {$new_quantity} units.");
                     $response = ['success' => true, 'message' => 'Medicine stock updated successfully.'];
                     break;
                 
@@ -1235,8 +1304,9 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $stmt = $conn->prepare("UPDATE blood_inventory SET quantity_ml = ? WHERE blood_group = ?");
                     $stmt->bind_param("is", $new_quantity, $blood_group);
                     $stmt->execute();
-
-                    log_activity($conn, $user_id, 'update_inventory', null, "Updated blood stock for group {$blood_group} to {$new_quantity} ml.");
+                    
+                    // UPDATED: Slightly better wording
+                    log_activity($conn, $user_id, 'update_inventory', null, "Updated '{$blood_group}' blood stock to {$new_quantity} ml.");
                     $response = ['success' => true, 'message' => 'Blood stock updated successfully.'];
                     break;
 
@@ -1267,8 +1337,9 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $stmt_ward->execute();
                             $stmt_ward->close();
                         }
-
-                        log_activity($conn, $user_id, "add_{$type}", null, "Added {$type} {$number} with price {$price}");
+                        
+                        // UPDATED: More descriptive log
+                        log_activity($conn, $user_id, "add_{$type}", null, "Added new {$type} '{$number}' with price ₹{$price}.");
                         $response = ['success' => true, 'message' => ucfirst($type) . ' added successfully.'];
 
                         $conn->commit();
@@ -1333,25 +1404,37 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $new_doctor_id = empty($_POST['doctor_id']) ? null : (int)$_POST['doctor_id'];
 
                             if ($new_patient_id != $old_patient_id) {
-                                $old_patient_name = $old_patient_id ? $conn->query("SELECT name FROM users WHERE id = $old_patient_id")->fetch_assoc()['name'] : '';
-                                $new_patient_name = $new_patient_id ? $conn->query("SELECT name FROM users WHERE id = $new_patient_id")->fetch_assoc()['name'] : '';
                                 
                                 if ($old_patient_id) {
+                                    // UPDATED: Fetch full patient info for logging
+                                    $stmt_old_p = $conn->prepare("SELECT name, display_user_id FROM users WHERE id = ?");
+                                    $stmt_old_p->bind_param("i", $old_patient_id);
+                                    $stmt_old_p->execute();
+                                    $old_patient_info = $stmt_old_p->get_result()->fetch_assoc();
+                                    $stmt_old_p->close();
+
                                     $dis_stmt = $conn->prepare("UPDATE admissions SET discharge_date = NOW() WHERE accommodation_id = ? AND patient_id = ? AND discharge_date IS NULL");
                                     $dis_stmt->bind_param("ii", $id, $old_patient_id);
                                     $dis_stmt->execute();
                                     $dis_stmt->close();
-                                    log_activity($conn, $user_id, "discharge_patient", $old_patient_id, "Discharged patient '{$old_patient_name}' from {$type} '{$current_accommodation_number}'.");
+                                    log_activity($conn, $user_id, "discharge_patient", $old_patient_id, "Discharged patient '{$old_patient_info['name']}' ({$old_patient_info['display_user_id']}) from {$type} '{$current_accommodation_number}'.");
                                 }
                                 
                                 if ($new_patient_id) {
+                                    // UPDATED: Fetch full patient info for logging
+                                    $stmt_new_p = $conn->prepare("SELECT name, display_user_id FROM users WHERE id = ?");
+                                    $stmt_new_p->bind_param("i", $new_patient_id);
+                                    $stmt_new_p->execute();
+                                    $new_patient_info = $stmt_new_p->get_result()->fetch_assoc();
+                                    $stmt_new_p->close();
+
                                     $adm_stmt = $conn->prepare("INSERT INTO admissions (patient_id, doctor_id, accommodation_id, admission_date) VALUES (?, ?, ?, NOW())");
                                     $adm_stmt->bind_param("iii", $new_patient_id, $new_doctor_id, $id);
                                     $adm_stmt->execute();
                                     $adm_stmt->close();
                                     
                                     $updates[] = "status = 'occupied'";
-                                    log_activity($conn, $user_id, "admit_patient", $new_patient_id, "Admitted patient '{$new_patient_name}' to {$type} '{$current_accommodation_number}'.");
+                                    log_activity($conn, $user_id, "admit_patient", $new_patient_id, "Admitted patient '{$new_patient_info['name']}' ({$new_patient_info['display_user_id']}) to {$type} '{$current_accommodation_number}'.");
                                 } else {
                                      if(isset($_POST['status'])) {
                                         $updates[] = "status = ?";
@@ -1527,7 +1610,15 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                                 $stmt_notify->close();
                             }
                             
-                            log_activity($conn, $user_id, 'update_lab_order', $patient_id, "Updated lab order #{$lab_id} for test '{$test_name}'");
+                            // UPDATED: More descriptive log message
+                            $stmt_p_info = $conn->prepare("SELECT name, display_user_id FROM users WHERE id = ?");
+                            $stmt_p_info->bind_param("i", $patient_id);
+                            $stmt_p_info->execute();
+                            $patient_info = $stmt_p_info->get_result()->fetch_assoc();
+                            $stmt_p_info->close();
+                            $patient_log_details = $patient_info ? "'{$patient_info['name']}' ({$patient_info['display_user_id']})" : "ID {$patient_id}";
+                            log_activity($conn, $user_id, 'update_lab_order', $patient_id, "Updated lab order #{$lab_id} ('{$test_name}') for patient {$patient_log_details}.");
+
                             $response = ['success' => true, 'message' => 'Lab order updated successfully.'];
 
                         } else { // This is now for walk-in orders
@@ -1537,7 +1628,15 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $new_lab_id = $conn->insert_id;
                             $stmt->close();
                             
-                            log_activity($conn, $user_id, 'add_lab_order', $patient_id, "Added walk-in lab order #{$new_lab_id} for test '{$test_name}'");
+                            // UPDATED: More descriptive log message
+                            $stmt_p_info = $conn->prepare("SELECT name, display_user_id FROM users WHERE id = ?");
+                            $stmt_p_info->bind_param("i", $patient_id);
+                            $stmt_p_info->execute();
+                            $patient_info = $stmt_p_info->get_result()->fetch_assoc();
+                            $stmt_p_info->close();
+                            $patient_log_details = $patient_info ? "'{$patient_info['name']}' ({$patient_info['display_user_id']})" : "ID {$patient_id}";
+                            log_activity($conn, $user_id, 'add_lab_order', $patient_id, "Added walk-in lab order #{$new_lab_id} ('{$test_name}') for patient {$patient_log_details}.");
+
                             $response = ['success' => true, 'message' => 'Walk-in lab order added successfully.'];
                         }
 
@@ -1573,7 +1672,21 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         if ($file_to_delete && file_exists($upload_dir . $file_to_delete)) {
                             unlink($upload_dir . $file_to_delete);
                         }
-                        log_activity($conn, $user_id, 'delete_lab_order', $patient_id_for_log, "Deleted lab order #{$lab_id}");
+
+                        // UPDATED: More descriptive log message
+                        $patient_log_details = "ID {$patient_id_for_log}";
+                        if ($patient_id_for_log) {
+                            $stmt_p_info = $conn->prepare("SELECT name, display_user_id FROM users WHERE id = ?");
+                            $stmt_p_info->bind_param("i", $patient_id_for_log);
+                            $stmt_p_info->execute();
+                            $patient_info = $stmt_p_info->get_result()->fetch_assoc();
+                            $stmt_p_info->close();
+                            if ($patient_info) {
+                                 $patient_log_details = "'{$patient_info['name']}' ({$patient_info['display_user_id']})";
+                            }
+                        }
+                        log_activity($conn, $user_id, 'delete_lab_order', $patient_id_for_log, "Deleted lab order #{$lab_id} for patient {$patient_log_details}.");
+                        
                         $conn->commit();
                         $response = ['success' => true, 'message' => 'Lab order deleted successfully.'];
                     } else {
@@ -1628,14 +1741,16 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $stmt->execute();
 
                     if ($stmt->affected_rows > 0) {
-                        $stmt_patient = $conn->prepare("SELECT p.id, p.name FROM users p JOIN admissions a ON p.id = a.patient_id WHERE a.id = ?");
+                        // UPDATED: Fetch display_user_id for logging
+                        $stmt_patient = $conn->prepare("SELECT p.id, p.name, p.display_user_id FROM users p JOIN admissions a ON p.id = a.patient_id WHERE a.id = ?");
                         $stmt_patient->bind_param("i", $admission_id);
                         $stmt_patient->execute();
                         $patient_info = $stmt_patient->get_result()->fetch_assoc();
                         $stmt_patient->close();
 
                         checkAndFinalizeDischarge($conn, $admission_id);
-                        log_activity($conn, $user_id, 'process_discharge_clearance', $patient_info['id'] ?? null, "Processed {$current_step['clearance_step']} clearance for patient '{$patient_info['name']}'. Notes: {$notes}");
+                        // UPDATED: More descriptive log message
+                        log_activity($conn, $user_id, 'process_discharge_clearance', $patient_info['id'] ?? null, "Processed {$current_step['clearance_step']} clearance for patient '{$patient_info['name']}' ({$patient_info['display_user_id']}). Notes: {$notes}");
                         $conn->commit();
                         $transaction_active = false;
                         $response = ['success' => true, 'message' => 'Clearance processed successfully.'];
@@ -1702,8 +1817,9 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $stmt_insert->execute();
                         $new_invoice_id = $conn->insert_id;
                         $stmt_insert->close();
-
-                        log_activity($conn, $user_id, 'generate_invoice', $admission['patient_id'], "Generated invoice #{$new_invoice_id}. Amount: {$total_amount}");
+                        
+                        // UPDATED: Added more context to log
+                        log_activity($conn, $user_id, 'generate_invoice', $admission['patient_id'], "Generated invoice #{$new_invoice_id} for admission #{$admission_id}. Amount: ₹{$total_amount}.");
                         
                         $conn->commit();
                         $transaction_active = false;
@@ -1842,8 +1958,9 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $stmt_update_presc->bind_param("i", $prescription_id);
                         $stmt_update_presc->execute();
                         $stmt_update_presc->close();
-
-                        log_activity($conn, $staff_id, 'create_pharmacy_bill', $patient_id, "Created pharmacy bill #{$bill_id} for prescription #{$prescription_id}. Amount: {$total_amount}");
+                        
+                        // UPDATED: Added currency symbol for clarity
+                        log_activity($conn, $staff_id, 'create_pharmacy_bill', $patient_id, "Created pharmacy bill #{$bill_id} for prescription #{$prescription_id}. Amount: ₹{$total_amount}.");
 
                         $conn->commit();
                         $response = ['success' => true, 'message' => 'Bill created and medicine dispensed successfully.', 'bill_id' => $bill_id];
