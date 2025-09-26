@@ -1,21 +1,12 @@
 -- This is the complete and updated database schema for MedSync.
--- Version 2.1
--- This version includes improvements for data integrity, performance, and clarity.
--- Key changes include:
--- 1. Merged 'beds' and 'rooms' into a single 'accommodations' table.
--- 2. Replaced ENUM for user roles with a dedicated 'roles' table.
--- 3. Enforced foreign key for 'staff.assigned_department'.
--- 4. Added performance-enhancing indexes on frequently queried columns.
--- 5. Improved naming conventions for clarity (e.g., 'is_active', 'is_available').
--- 6. Integrated admission_id into prescriptions and transactions for better billing linkage.
--- 7. Added a cost column to lab_results.
+-- Version 2.3
+
 
 CREATE DATABASE IF NOT EXISTS `medsync` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE `medsync`;
 
 --
 -- Table structure for table `roles`
--- Description: Replaces the ENUM in the users table for better scalability.
 --
 CREATE TABLE `roles` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -32,6 +23,24 @@ INSERT INTO `roles` (`id`, `role_name`) VALUES
 (2, 'doctor'),
 (3, 'staff'),
 (4, 'admin');
+
+--
+-- Table structure for table `role_counters`
+--
+CREATE TABLE `role_counters` (
+  `role_prefix` char(1) NOT NULL,
+  `last_id` int(10) UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (`role_prefix`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Initialize role counters for user ID generation
+--
+INSERT INTO `role_counters` (`role_prefix`, `last_id`) VALUES
+('A', 0), -- Counter for Admins (starts at A0001)
+('D', 0), -- Counter for Doctors (starts at D0001)
+('S', 0), -- Counter for Staff (starts at S0001)
+('U', 0); -- Counter for Users/Patients (starts at U0001)
 
 --
 -- Table structure for table `users`
@@ -55,10 +64,17 @@ CREATE TABLE `users` (
   UNIQUE KEY `username` (`username`),
   UNIQUE KEY `email` (`email`),
   UNIQUE KEY `display_user_id` (`display_user_id`),
-  KEY `name` (`name`), -- Index for faster name searches
+  KEY `name` (`name`),
   KEY `fk_users_role` (`role_id`),
   CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`) ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Initialize an admin user (Change password after first login) - change it with real data
+--
+INSERT INTO `users` (`display_user_id`,`username`,`email`,`password`,`role_id`,`name`,`phone`,`is_active`) VALUES ('A0001','admin','admin@email.com','$2y$10$st0OkWHJKIYaSe7DxNNp2.X506p38taUUBSUT0y/pd2gfCGPDI/qO',4,'Admin','+910000000000',1);
+
+UPDATE `role_counters` SET `last_id` = 1 WHERE `role_prefix` = 'A';
 
 --
 -- Table structure for table `activity_logs`
@@ -82,23 +98,15 @@ CREATE TABLE `activity_logs` (
 --
 CREATE TABLE `departments` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `head_of_department_id` int(11) NULL DEFAULT NULL,
   `name` varchar(100) NOT NULL,
+  `head_of_department_id` int(11) NULL DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`),
-   KEY `fk_dept_head` (`head_of_department_id`),
+  KEY `fk_dept_head` (`head_of_department_id`),
   CONSTRAINT `fk_dept_head` FOREIGN KEY (`head_of_department_id`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Table structure for table `role_counters`
---
-CREATE TABLE `role_counters` (
-  `role_prefix` char(1) NOT NULL,
-  `last_id` int(10) UNSIGNED NOT NULL DEFAULT 0,
-  PRIMARY KEY (`role_prefix`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Table structure for table `specialities`
@@ -114,16 +122,33 @@ CREATE TABLE `specialities` (
 --
 -- Initialize specialities
 --
-INSERT INTO `specialities` (`id`, `name`) VALUES
-(1, 'Cardiology'),
-(2, 'Dermatology'),
-(3, 'Neurology'),
-(4, 'Orthopedics'),
-(5, 'Pediatrics');
+INSERT INTO `specialities` (`name`, `description`) VALUES
+('Anesthesiology', 'Focuses on perioperative care, developing anesthetic plans, and the administration of anesthetics.'),
+('Cardiology', 'Deals with disorders of the heart as well as some parts of the circulatory system.'),
+('Dermatology', 'Concerned with the diagnosis and treatment of diseases of the skin, hair, and nails.'),
+('Emergency Medicine', 'Focuses on the immediate decision making and action necessary to prevent death or any further disability.'),
+('Endocrinology', 'Deals with the diagnosis and treatment of diseases related to hormones.'),
+('Gastroenterology', 'Focuses on the digestive system and its disorders.'),
+('General Surgery', 'A surgical specialty that focuses on abdominal contents including esophagus, stomach, small intestine, large intestine, liver, pancreas, gallbladder, appendix and bile ducts, and often the thyroid gland.'),
+('Hematology', 'The study of blood, the blood-forming organs, and blood diseases.'),
+('Infectious Disease', 'Deals with the diagnosis and treatment of complex infections.'),
+('Nephrology', 'A specialty of medicine that concerns itself with the kidneys.'),
+('Neurology', 'Deals with disorders of the nervous system.'),
+('Obstetrics and Gynecology (OB/GYN)', 'Focuses on female reproductive health and childbirth.'),
+('Oncology', 'A branch of medicine that deals with the prevention, diagnosis, and treatment of cancer.'),
+('Ophthalmology', 'Deals with the diagnosis and treatment of eye disorders.'),
+('Orthopedics', 'The branch of surgery concerned with conditions involving the musculoskeletal system.'),
+('Otolaryngology (ENT)', 'A surgical subspecialty within medicine that deals with the surgical and medical management of conditions of the head and neck.'),
+('Pediatrics', 'The branch of medicine that involves the medical care of infants, children, and adolescents.'),
+('Psychiatry', 'The medical specialty devoted to the diagnosis, prevention, and treatment of mental disorders.'),
+('Pulmonology', 'A medical speciality that deals with diseases involving the respiratory tract.'),
+('Radiology', 'A medical specialty that uses medical imaging to diagnose and treat diseases within the bodies of animals and humans.'),
+('Rheumatology', 'A sub-specialty in internal medicine and pediatrics, devoted to the diagnosis and therapy of rheumatic diseases.'),
+('Urology', 'Focuses on surgical and medical diseases of the male and female urinary-tract system and the male reproductive organs.');
+
 --
 -- Table structure for table `doctors`
 --
-
 CREATE TABLE `doctors` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `user_id` int(11) NOT NULL,
@@ -137,6 +162,7 @@ CREATE TABLE `doctors` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `user_id` (`user_id`),
   KEY `fk_doctors_department` (`department_id`),
+  KEY `fk_doctors_specialty` (`specialty_id`),
   CONSTRAINT `doctors_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_doctors_department` FOREIGN KEY (`department_id`) REFERENCES `departments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_doctors_specialty` FOREIGN KEY (`specialty_id`) REFERENCES `specialities` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
@@ -199,6 +225,20 @@ CREATE TABLE `blood_inventory` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
+-- Insert initial blood groups
+--
+INSERT INTO `blood_inventory` (`blood_group`, `quantity_ml`, `low_stock_threshold_ml`) VALUES
+('A+', 15000, 5000),
+('A-', 8000, 3000),
+('B+', 12000, 5000),
+('B-', 7500, 3000),
+('AB+', 5000, 2000),
+('AB-', 3000, 1500),
+('O+', 20000, 7000),
+('O-', 10000, 4000);
+
+
+--
 -- Table structure for table `wards`
 --
 CREATE TABLE `wards` (
@@ -213,7 +253,6 @@ CREATE TABLE `wards` (
 
 --
 -- Table structure for table `accommodations`
--- Description: Merged table for 'beds' and 'rooms' to reduce redundancy.
 --
 CREATE TABLE `accommodations` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
@@ -280,7 +319,7 @@ CREATE TABLE `appointments` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Table structure for table `transactions` (UPDATED)
+-- Table structure for table `transactions`
 --
 CREATE TABLE `transactions` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -327,31 +366,38 @@ CREATE TABLE `system_settings` (
   PRIMARY KEY (`setting_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-INSERT INTO `system_settings` (`setting_key`, `setting_value`) VALUES ('gmail_app_password', 'sswyqzegdpyixbyw');
+--
+-- Initialize system settings for email (Change with real data)
+--
+INSERT INTO `system_settings` (`setting_key`, `setting_value`) VALUES 
+('system_email', 'your_email@gmail.com'), 
+('gmail_app_password', 'your_gmail_app_password') 
+ON DUPLICATE KEY UPDATE `setting_value` = VALUES(`setting_value`);
+
 
 --
--- Table structure for table `lab_results` (UPDATED)
+-- Table structure for table `lab_orders` (Previously lab_results)
 --
-CREATE TABLE `lab_orders` (    
+CREATE TABLE `lab_orders` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `patient_id` int(11) NOT NULL,
   `doctor_id` int(11) DEFAULT NULL,
-  `staff_id` int(11) DEFAULT NULL COMMENT 'Staff member who entered the result',
+  `staff_id` int(11) DEFAULT NULL COMMENT 'Staff member who processed the result',
   `ordered_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `test_name` varchar(255) NOT NULL,
   `test_date` date DEFAULT NULL,
-  `status` ENUM('ordered','pending', 'processing', 'completed') NOT NULL DEFAULT 'ordered',
+  `status` enum('ordered','pending','processing','completed') NOT NULL DEFAULT 'ordered',
   `result_details` text DEFAULT NULL,
-  `cost` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  `cost` decimal(10,2) NOT NULL DEFAULT 0.00,
   `attachment_path` varchar(255) DEFAULT NULL COMMENT 'Path to an uploaded file (e.g., PDF)',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `patient_id` (`patient_id`),
   KEY `doctor_id` (`doctor_id`),
   KEY `staff_id` (`staff_id`),
-  CONSTRAINT `fk_lab_results_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `fk_lab_results_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `fk_lab_results_staff` FOREIGN KEY (`staff_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+  CONSTRAINT `fk_lab_orders_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_lab_orders_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_lab_orders_staff` FOREIGN KEY (`staff_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -391,7 +437,7 @@ CREATE TABLE `messages` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Table structure for table `prescriptions` (UPDATED)
+-- Table structure for table `prescriptions`
 --
 CREATE TABLE `prescriptions` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -405,7 +451,7 @@ CREATE TABLE `prescriptions` (
   PRIMARY KEY (`id`),
   KEY `patient_id` (`patient_id`),
   KEY `doctor_id` (`doctor_id`),
-  KEY `prescription_date` (`prescription_date`), -- Index for faster date-based searches
+  KEY `prescription_date` (`prescription_date`),
   KEY `fk_prescription_admission` (`admission_id`),
   CONSTRAINT `fk_prescriptions_patient` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_prescriptions_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -432,28 +478,34 @@ CREATE TABLE `prescription_items` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Table structure for table `discharge_clearance`
--- Description: Manages automated discharge process steps (nursing, pharmacy, billing) and discharge summary data for PDF generation.
+--Table for automated discharge process
 --
 CREATE TABLE `discharge_clearance` (
-  `id` INT(11) NOT NULL AUTO_INCREMENT,
-  `admission_id` INT(11) NOT NULL,
-  `clearance_step` ENUM('nursing', 'pharmacy', 'billing') NOT NULL,
-  `is_cleared` TINYINT(1) NOT NULL DEFAULT 0,
-  `cleared_by_user_id` INT(11) DEFAULT NULL,
-  `cleared_at` TIMESTAMP NULL DEFAULT NULL,
-  `notes` TEXT DEFAULT NULL,
-  `discharge_date` DATE DEFAULT NULL COMMENT 'Date of discharge, used for summary PDF',
-  `summary_text` TEXT DEFAULT NULL COMMENT 'Narrative summary for discharge, used for PDF',
-  `doctor_id` INT(11) DEFAULT NULL COMMENT 'Doctor who authored the discharge summary',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `unique_clearance_step` (`admission_id`, `clearance_step`),
-  KEY `discharge_date` (`discharge_date`),
-  KEY `fk_discharge_clearance_doctor` (`doctor_id`),
-  CONSTRAINT `fk_clearance_admission` FOREIGN KEY (`admission_id`) REFERENCES `admissions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `fk_clearance_user` FOREIGN KEY (`cleared_by_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `fk_discharge_clearance_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+`id` INT(11) NOT NULL AUTO_INCREMENT,
+`admission_id` INT(11) NOT NULL,
+`clearance_step` ENUM('nursing', 'pharmacy', 'billing') NOT NULL,
+`is_cleared` TINYINT(1) NOT NULL DEFAULT 0,
+`cleared_by_user_id` INT(11) DEFAULT NULL,
+`cleared_at` TIMESTAMP NULL DEFAULT NULL,
+`notes` TEXT DEFAULT NULL,
+`discharge_date` DATE DEFAULT NULL COMMENT 'Date of discharge, used for summary
+PDF',
+`summary_text` TEXT DEFAULT NULL COMMENT 'Narrative summary for discharge, used for
+PDF',
+`doctor_id` INT(11) DEFAULT NULL COMMENT 'Doctor who authored the discharge
+summary',
+PRIMARY KEY (`id`),
+UNIQUE KEY `unique_clearance_step` (`admission_id`, `clearance_step`),
+KEY `discharge_date` (`discharge_date`),
+KEY `fk_discharge_clearance_doctor` (`doctor_id`),
+CONSTRAINT `fk_clearance_admission` FOREIGN KEY (`admission_id`) REFERENCES
+`admissions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+CONSTRAINT `fk_clearance_user` FOREIGN KEY (`cleared_by_user_id`) REFERENCES
+`users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+CONSTRAINT `fk_discharge_clearance_doctor` FOREIGN KEY (`doctor_id`) REFERENCES
+`users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 
 --
 -- Table structure for table `feedback`
