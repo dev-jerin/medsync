@@ -1,12 +1,6 @@
 -- This is the complete and updated database schema for MedSync.
 -- Version 2.3
--- This version includes a new 'specialities' table for better data integrity.
--- Key changes include:
--- 1. Added a 'specialities' table to store a normalized list of doctor specialities.
--- 2. Modified the 'doctors' table to use a 'specialty_id' foreign key.
--- 3. Renamed 'lab_results' to 'lab_orders' to better reflect its function.
--- 4. Added an 'ordered' status to the lab orders table.
--- 5. Added an 'ordered_at' timestamp to track when a doctor places an order.
+
 
 CREATE DATABASE IF NOT EXISTS `medsync` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE `medsync`;
@@ -29,6 +23,24 @@ INSERT INTO `roles` (`id`, `role_name`) VALUES
 (2, 'doctor'),
 (3, 'staff'),
 (4, 'admin');
+
+--
+-- Table structure for table `role_counters`
+--
+CREATE TABLE `role_counters` (
+  `role_prefix` char(1) NOT NULL,
+  `last_id` int(10) UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (`role_prefix`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Initialize role counters for user ID generation
+--
+INSERT INTO `role_counters` (`role_prefix`, `last_id`) VALUES
+('A', 0), -- Counter for Admins (starts at A0001)
+('D', 0), -- Counter for Doctors (starts at D0001)
+('S', 0), -- Counter for Staff (starts at S0001)
+('U', 0); -- Counter for Users/Patients (starts at U0001)
 
 --
 -- Table structure for table `users`
@@ -56,6 +68,13 @@ CREATE TABLE `users` (
   KEY `fk_users_role` (`role_id`),
   CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`) ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Initialize an admin user (Change password after first login) - change it with real data
+--
+INSERT INTO `users` (`display_user_id`,`username`,`email`,`password`,`role_id`,`name`,`phone`,`is_active`) VALUES ('A0001','admin','admin@email.com','$2y$10$st0OkWHJKIYaSe7DxNNp2.X506p38taUUBSUT0y/pd2gfCGPDI/qO',4,'Admin','+910000000000',1);
+
+UPDATE `role_counters` SET `last_id` = 1 WHERE `role_prefix` = 'A';
 
 --
 -- Table structure for table `activity_logs`
@@ -88,14 +107,6 @@ CREATE TABLE `departments` (
   CONSTRAINT `fk_dept_head` FOREIGN KEY (`head_of_department_id`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Table structure for table `role_counters`
---
-CREATE TABLE `role_counters` (
-  `role_prefix` char(1) NOT NULL,
-  `last_id` int(10) UNSIGNED NOT NULL DEFAULT 0,
-  PRIMARY KEY (`role_prefix`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Table structure for table `specialities`
@@ -111,12 +122,29 @@ CREATE TABLE `specialities` (
 --
 -- Initialize specialities
 --
-INSERT INTO `specialities` (`id`, `name`) VALUES
-(1, 'Cardiology'),
-(2, 'Dermatology'),
-(3, 'Neurology'),
-(4, 'Orthopedics'),
-(5, 'Pediatrics');
+INSERT INTO `specialities` (`name`, `description`) VALUES
+('Anesthesiology', 'Focuses on perioperative care, developing anesthetic plans, and the administration of anesthetics.'),
+('Cardiology', 'Deals with disorders of the heart as well as some parts of the circulatory system.'),
+('Dermatology', 'Concerned with the diagnosis and treatment of diseases of the skin, hair, and nails.'),
+('Emergency Medicine', 'Focuses on the immediate decision making and action necessary to prevent death or any further disability.'),
+('Endocrinology', 'Deals with the diagnosis and treatment of diseases related to hormones.'),
+('Gastroenterology', 'Focuses on the digestive system and its disorders.'),
+('General Surgery', 'A surgical specialty that focuses on abdominal contents including esophagus, stomach, small intestine, large intestine, liver, pancreas, gallbladder, appendix and bile ducts, and often the thyroid gland.'),
+('Hematology', 'The study of blood, the blood-forming organs, and blood diseases.'),
+('Infectious Disease', 'Deals with the diagnosis and treatment of complex infections.'),
+('Nephrology', 'A specialty of medicine that concerns itself with the kidneys.'),
+('Neurology', 'Deals with disorders of the nervous system.'),
+('Obstetrics and Gynecology (OB/GYN)', 'Focuses on female reproductive health and childbirth.'),
+('Oncology', 'A branch of medicine that deals with the prevention, diagnosis, and treatment of cancer.'),
+('Ophthalmology', 'Deals with the diagnosis and treatment of eye disorders.'),
+('Orthopedics', 'The branch of surgery concerned with conditions involving the musculoskeletal system.'),
+('Otolaryngology (ENT)', 'A surgical subspecialty within medicine that deals with the surgical and medical management of conditions of the head and neck.'),
+('Pediatrics', 'The branch of medicine that involves the medical care of infants, children, and adolescents.'),
+('Psychiatry', 'The medical specialty devoted to the diagnosis, prevention, and treatment of mental disorders.'),
+('Pulmonology', 'A medical speciality that deals with diseases involving the respiratory tract.'),
+('Radiology', 'A medical specialty that uses medical imaging to diagnose and treat diseases within the bodies of animals and humans.'),
+('Rheumatology', 'A sub-specialty in internal medicine and pediatrics, devoted to the diagnosis and therapy of rheumatic diseases.'),
+('Urology', 'Focuses on surgical and medical diseases of the male and female urinary-tract system and the male reproductive organs.');
 
 --
 -- Table structure for table `doctors`
@@ -129,6 +157,8 @@ CREATE TABLE `doctors` (
   `department_id` int(11) DEFAULT NULL,
   `is_available` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1 = Available, 0 = On Leave',
   `slots` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'JSON array of available time slots',
+  `office_floor` VARCHAR(50) NULL DEFAULT 'Ground Floor',
+  `office_room_number` VARCHAR(50) NULL DEFAULT 'N/A',
   PRIMARY KEY (`id`),
   UNIQUE KEY `user_id` (`user_id`),
   KEY `fk_doctors_department` (`department_id`),
@@ -193,6 +223,20 @@ CREATE TABLE `blood_inventory` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `blood_group` (`blood_group`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Insert initial blood groups
+--
+INSERT INTO `blood_inventory` (`blood_group`, `quantity_ml`, `low_stock_threshold_ml`) VALUES
+('A+', 15000, 5000),
+('A-', 8000, 3000),
+('B+', 12000, 5000),
+('B-', 7500, 3000),
+('AB+', 5000, 2000),
+('AB-', 3000, 1500),
+('O+', 20000, 7000),
+('O-', 10000, 4000);
+
 
 --
 -- Table structure for table `wards`
@@ -322,7 +366,14 @@ CREATE TABLE `system_settings` (
   PRIMARY KEY (`setting_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-INSERT INTO `system_settings` (`setting_key`, `setting_value`) VALUES ('gmail_app_password', 'sswyqzegdpyixbyw');
+--
+-- Initialize system settings for email (Change with real data)
+--
+INSERT INTO `system_settings` (`setting_key`, `setting_value`) VALUES 
+('system_email', 'your_email@gmail.com'), 
+('gmail_app_password', 'your_gmail_app_password') 
+ON DUPLICATE KEY UPDATE `setting_value` = VALUES(`setting_value`);
+
 
 --
 -- Table structure for table `lab_orders` (Previously lab_results)
@@ -430,17 +481,29 @@ CREATE TABLE `prescription_items` (
 --Table for automated discharge process
 --
 CREATE TABLE `discharge_clearance` (
-  `id` INT(11) NOT NULL AUTO_INCREMENT,
-  `admission_id` INT(11) NOT NULL,
-  `clearance_step` ENUM('nursing', 'pharmacy', 'billing') NOT NULL,
-  `is_cleared` TINYINT(1) NOT NULL DEFAULT 0,
-  `cleared_by_user_id` INT(11) DEFAULT NULL,
-  `cleared_at` TIMESTAMP NULL DEFAULT NULL,
-  `notes` TEXT DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `unique_clearance_step` (`admission_id`, `clearance_step`),
-  CONSTRAINT `fk_clearance_admission` FOREIGN KEY (`admission_id`) REFERENCES `admissions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `fk_clearance_user` FOREIGN KEY (`cleared_by_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+`id` INT(11) NOT NULL AUTO_INCREMENT,
+`admission_id` INT(11) NOT NULL,
+`clearance_step` ENUM('nursing', 'pharmacy', 'billing') NOT NULL,
+`is_cleared` TINYINT(1) NOT NULL DEFAULT 0,
+`cleared_by_user_id` INT(11) DEFAULT NULL,
+`cleared_at` TIMESTAMP NULL DEFAULT NULL,
+`notes` TEXT DEFAULT NULL,
+`discharge_date` DATE DEFAULT NULL COMMENT 'Date of discharge, used for summary
+PDF',
+`summary_text` TEXT DEFAULT NULL COMMENT 'Narrative summary for discharge, used for
+PDF',
+`doctor_id` INT(11) DEFAULT NULL COMMENT 'Doctor who authored the discharge
+summary',
+PRIMARY KEY (`id`),
+UNIQUE KEY `unique_clearance_step` (`admission_id`, `clearance_step`),
+KEY `discharge_date` (`discharge_date`),
+KEY `fk_discharge_clearance_doctor` (`doctor_id`),
+CONSTRAINT `fk_clearance_admission` FOREIGN KEY (`admission_id`) REFERENCES
+`admissions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+CONSTRAINT `fk_clearance_user` FOREIGN KEY (`cleared_by_user_id`) REFERENCES
+`users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+CONSTRAINT `fk_discharge_clearance_doctor` FOREIGN KEY (`doctor_id`) REFERENCES
+`users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 
