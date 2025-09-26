@@ -156,10 +156,10 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     <div class="page-header"><h3><i class="fas fa-calendar-check"></i> Manage Appointments</h3></div>
                     <div class="tabs"><button class="tab-link active" data-tab="today">Today's</button><button class="tab-link" data-tab="upcoming">Upcoming</button><button class="tab-link" data-tab="past">Past</button></div>
                     <div class="filters">
-    <input type="text" class="search-bar" placeholder="Search by patient name...">
-    <input type="date" id="appointment-date-filter" class="date-filter" max=<?php echo date('Y-m-d'); ?>> 
-    <select class="status-filter"><option value="all">All Statuses</option><option value="confirmed">Confirmed</option><option value="completed">Completed</option><option value="canceled">Canceled</option></select>
-</div>
+                        <input type="text" class="search-bar" placeholder="Search by patient name...">
+                        <input type="date" id="appointment-date-filter" class="date-filter" max="<?php echo date('Y-m-d'); ?>">
+                        <select class="status-filter"><option value="all">All Statuses</option><option value="confirmed">Confirmed</option><option value="completed">Completed</option><option value="canceled">Canceled</option></select>
+                    </div>
                     <div id="today-tab" class="appointment-tab active">
                         <div class="appointment-list">
                             </div>
@@ -606,9 +606,9 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
         </div>
         
         <div class="modal-overlay" id="lab-report-view-modal-overlay">
-            <div class="modal-container" style="max-width: 800px;">
+            <div class="modal-container" style="max-width: 850px;">
                 <div class="modal-header">
-                    <h4 id="lab-report-view-title">Lab Report</h4>
+                    <h4 id="lab-report-view-title">Laboratory Report</h4>
                     <div>
                         <button class="btn btn-secondary"><i class="fas fa-print"></i> Print</button>
                         <button class="btn btn-primary"><i class="fas fa-download"></i> Download PDF</button>
@@ -616,62 +616,131 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     </div>
                 </div>
                 <div class="modal-body" id="lab-report-content">
-                    <div class="report-view-header">
-                        <div><strong>Patient:</strong> <span id="report-patient-name"></span></div>
-                        <div><strong>Test:</strong> <span></span></div>
-                        <div><strong>Report ID:</strong> <span></span></div>
-                        <div><strong>Date:</strong> <span></span></div>
+                    
+                    <div class="report-header">
+                        <img src="../images/logo.png" alt="MedSync Logo" class="report-header-logo">
+                        <div class="report-hospital-details">
+                            <strong>MedSync Diagnostics</strong>
+                            <p>Kerala, India</p>
+                            <p>Phone: +91 45235 31245 | Email: labs@medsync.calysta.com</p>
+                        </div>
                     </div>
-                    <div class="report-view-body">
-                        <h5>Findings:</h5>
+
+                    <div class="report-info-grid">
+                        <div class="info-box">
+                            <h5 class="info-box-title">Patient Information</h5>
+                            <p><strong>Name:</strong> <span id="report-patient-name"></span></p>
+                            <p><strong>Patient ID:</strong> <span id="report-patient-id"></span></p>
+                            <p><strong>Age / Gender:</strong> <span id="report-patient-age-gender"></span></p>
+                        </div>
+                        <div class="info-box">
+                            <h5 class="info-box-title">Report Details</h5>
+                            <p><strong>Test Name:</strong> <span id="report-test-name"></span></p>
+                            <p><strong>Report ID:</strong> <span id="report-id"></span></p>
+                            <p><strong>Reported:</strong> <span id="report-reported-date"></span></p>
+                        </div>
+                    </div>
+
+                    <div class="report-section">
+                        <h5 class="report-section-title">Findings</h5>
                         <table class="findings-table">
-                            <thead><tr><th>Parameter</th><th>Result</th><th>Reference Range</th></tr></thead>
-                            <tbody>
-                            </tbody>
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Result</th>
+                                    <th>Units</th>
+                                    <th>Reference Range</th>
+                                    <th>Flag</th>
+                                </tr>
+                            </thead>
+                            <tbody id="report-findings-tbody">
+                                </tbody>
                         </table>
-                        <h5>Summary:</h5>
-                        <p></p>
                     </div>
+
+                    <div class="report-section">
+                        <h5 class="report-section-title">Interpretation / Notes</h5>
+                        <p id="report-summary-text" class="report-summary"></p>
+                    </div>
+
+                    <div class="report-signature-section">
+                        <p>-- End of Report --</p>
+                        <div class="signature-box">
+                            <p><strong>Verified By:</strong></p>
+                            <p id="report-verified-by">N/A</p>
+                            <small>Lab Technologist</small>
+                        </div>
+                    </div>
+
                 </div>
             </div>
         </div>
 
         <div class="modal-overlay" id="medical-record-modal-overlay">
-            <div class="modal-container">
+            <div class="modal-container" style="max-width: 900px;">
                 <div class="modal-header">
                     <h4 id="record-modal-title">Patient Medical Record</h4>
                     <button class="modal-close-btn" data-modal-id="medical-record-modal-overlay">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <div class="record-section patient-details-section">
-                        <h5>Patient Details</h5>
-                        <div class="details-grid">
-                            <div><strong>Name:</strong> <span id="record-patient-name">N/A</span></div>
-                            <div><strong>Patient ID:</strong> <span id="record-patient-id">N/A</span></div>
-                            <div><strong>Age:</strong> <span id="record-patient-age">N/A</span></div>
-                            <div><strong>Gender:</strong> <span id="record-patient-gender">N/A</span></div>
+                    <div id="medical-record-loader" class="loading-placeholder" style="display: none; padding: 4rem;">
+                        <i class="fas fa-spinner fa-spin"></i> Loading Patient Record...
+                    </div>
+                    <div id="medical-record-content">
+                        <div class="record-section patient-details-section">
+                            <h5><i class="fas fa-user-circle"></i> Patient Details</h5>
+                            <div class="details-grid">
+                                <div><strong>Name:</strong> <span id="record-patient-name">N/A</span></div>
+                                <div><strong>Patient ID:</strong> <span id="record-patient-id">N/A</span></div>
+                                <div><strong>Age:</strong> <span id="record-patient-age">N/A</span></div>
+                                <div><strong>Gender:</strong> <span id="record-patient-gender">N/A</span></div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="record-section">
-                        <h5><i class="fas fa-procedures"></i> Admission History</h5>
-                        <table class="record-history-table">
-                            <thead><tr><th>Adm. ID</th><th>Date</th><th>Reason</th></tr></thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                    <div class="record-section">
-                        <h5><i class="fas fa-file-prescription"></i> Prescription History</h5>
-                        <table class="record-history-table">
-                            <thead><tr><th>Rx ID</th><th>Date</th><th>Medication</th><th>Status</th></tr></thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                    <div class="record-section">
-                        <h5><i class="fas fa-vials"></i> Lab Results</h5>
-                        <table class="record-history-table">
-                            <thead><tr><th>Report ID</th><th>Test</th><th>Date</th><th>Action</th></tr></thead>
-                            <tbody></tbody>
-                        </table>
+                        
+                        <div class="record-section">
+                            <h5><i class="fas fa-notes-medical"></i> Clinical Encounters</h5>
+                            <div class="table-container" style="max-height: 200px; overflow-y: auto;">
+                                <table class="record-history-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Chief Complaint</th>
+                                            <th>Doctor</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="record-encounters-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="record-section">
+                            <h5><i class="fas fa-procedures"></i> Admission History</h5>
+                            <div class="table-container" style="max-height: 200px; overflow-y: auto;">
+                                <table class="record-history-table">
+                                    <thead><tr><th>Adm. ID</th><th>Date</th><th>Room/Bed</th><th>Status</th></tr></thead>
+                                    <tbody id="record-admissions-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="record-section">
+                            <h5><i class="fas fa-file-prescription"></i> Prescription History</h5>
+                            <div class="table-container" style="max-height: 200px; overflow-y: auto;">
+                                <table class="record-history-table">
+                                    <thead><tr><th>Rx ID</th><th>Date</th><th>Status</th><th>Action</th></tr></thead>
+                                    <tbody id="record-prescriptions-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="record-section">
+                            <h5><i class="fas fa-vials"></i> Lab Order History</h5>
+                            <div class="table-container" style="max-height: 200px; overflow-y: auto;">
+                                <table class="record-history-table">
+                                    <thead><tr><th>Order ID</th><th>Test</th><th>Date</th><th>Status</th><th>Action</th></tr></thead>
+                                    <tbody id="record-labs-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -756,6 +825,116 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                 <div class="modal-footer">
                     <button class="btn btn-secondary" data-modal-id="edit-bed-modal-overlay">Cancel</button>
                     <button class="btn btn-primary" id="save-location-changes-btn">Save Changes</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-overlay" id="encounter-modal-overlay">
+            <div class="modal-container" style="max-width: 1100px;">
+                <div class="modal-header">
+                    <h4 id="encounter-modal-title">Consultation for: Patient Name</h4>
+                    <button class="modal-close-btn" data-modal-id="encounter-modal-overlay">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="encounter-form">
+                        <input type="hidden" name="appointment_id" id="encounter-appointment-id">
+                        <input type="hidden" name="encounter_id" id="encounter-id">
+                        <input type="hidden" name="patient_id" id="encounter-patient-id">
+
+                        <div class="encounter-top-grid">
+                            <div class="form-group">
+                                <label for="encounter-chief-complaint">Chief Complaint</label>
+                                <textarea id="encounter-chief-complaint" name="chief_complaint" rows="4" placeholder="Reason for the visit..."></textarea>
+                            </div>
+                            <div class="vitals-grid">
+                                <div class="form-group">
+                                    <label for="vital-bp">BP (syst/diast)</label>
+                                    <input type="text" id="vital-bp" name="vitals[bp]" placeholder="e.g., 120/80">
+                                </div>
+                                <div class="form-group">
+                                    <label for="vital-hr">Heart Rate (bpm)</label>
+                                    <input type="number" id="vital-hr" name="vitals[hr]" placeholder="e.g., 72">
+                                </div>
+                                <div class="form-group">
+                                    <label for="vital-temp">Temp (°C)</label>
+                                    <input type="number" step="0.1" id="vital-temp" name="vitals[temp]" placeholder="e.g., 37.0">
+                                </div>
+                                <div class="form-group">
+                                    <label for="vital-rr">Resp. Rate</label>
+                                    <input type="number" id="vital-rr" name="vitals[rr]" placeholder="e.g., 16">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="soap-grid">
+                            <div class="form-group">
+                                <label>Subjective</label>
+                                <textarea name="soap_subjective" rows="6" placeholder="Patient's reported symptoms..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Objective</label>
+                                <textarea name="soap_objective" rows="6" placeholder="Doctor's observations, exam findings..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Assessment</label>
+                                <textarea name="soap_assessment" rows="6" placeholder="Diagnosis or differential diagnosis..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Plan</label>
+                                <textarea name="soap_plan" rows="6" placeholder="Treatment plan, tests, referrals..."></textarea>
+                            </div>
+                        </div>
+                        
+                        <div class="encounter-bottom-grid">
+                            <div class="form-group">
+                                <label for="encounter-diagnosis">Diagnosis (ICD-10)</label>
+                                <input type="text" id="encounter-diagnosis" name="diagnosis_icd10" placeholder="e.g., J02.9 - Acute pharyngitis, unspecified">
+                            </div>
+                            <div class="integrated-actions">
+                                <label>Integrated Actions</label>
+                                <div>
+                                    <button type="button" class="btn" id="encounter-new-prescription-btn"><i class="fas fa-file-prescription"></i> New Prescription</button>
+                                    <button type="button" class="btn" id="encounter-new-lab-btn"><i class="fas fa-vials"></i> Order Lab Test</button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" data-modal-id="encounter-modal-overlay">Cancel</button>
+                    <button type="submit" form="encounter-form" class="btn btn-primary" id="save-encounter-btn">Save Consultation</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-overlay" id="discharge-summary-modal-overlay">
+            <div class="modal-container">
+                <div class="modal-header">
+                    <h4 id="discharge-summary-modal-title">Discharge Summary</h4>
+                    <button class="modal-close-btn" data-modal-id="discharge-summary-modal-overlay">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="discharge-summary-form">
+                        <input type="hidden" id="summary-admission-id" name="admission_id">
+                        <div class="record-section patient-details-section">
+                            <div class="details-grid">
+                                <div><strong>Patient:</strong> <span id="summary-patient-name"></span></div>
+                                <div><strong>Adm. Date:</strong> <span id="summary-admission-date"></span></div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="summary-discharge-date">Discharge Date</label>
+                            <input type="date" id="summary-discharge-date" name="discharge_date" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="summary-text">Discharge Summary</label>
+                            <textarea id="summary-text" name="summary_text" rows="10" placeholder="Enter patient's condition at discharge, course of treatment, and follow-up instructions..." required></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" data-modal-id="discharge-summary-modal-overlay">Cancel</button>
+                    <button type="submit" form="discharge-summary-form" class="btn btn-primary" id="save-summary-btn">Save & Generate PDF</button>
                 </div>
             </div>
         </div>

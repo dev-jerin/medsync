@@ -113,7 +113,13 @@ document.addEventListener("DOMContentLoaded", function() {
                                 <td data-label="Patient Name">${appt.patient_name}</td>
                                 <td data-label="Time">${time}</td>
                                 <td data-label="Status"><span class="status ${appt.status.toLowerCase()}">${appt.status}</span></td>
-                                <td data-label="Action"><button class="action-btn"><i class="fas fa-play-circle"></i> Start</button></td>
+                                <td data-label="Action">
+                                    <button class="action-btn start-consultation-btn" 
+                                            data-appointment-id="${appt.id}" 
+                                            data-patient-name="${appt.patient_name}">
+                                        <i class="fas fa-play-circle"></i> Start
+                                    </button>
+                                </td>
                             `;
                             appointmentsTbody.appendChild(tr);
                         });
@@ -146,6 +152,314 @@ document.addEventListener("DOMContentLoaded", function() {
         } catch (error) {
             console.error("Failed to fetch dashboard data:", error);
         }
+    }
+    
+    // ===================================================================
+    // --- Patient Encounter Logic ---
+    // ===================================================================
+
+    // Use event delegation for the "Start" buttons
+    document.querySelector('.main-content').addEventListener('click', function(e) {
+        const startBtn = e.target.closest('.start-consultation-btn');
+        if (startBtn) {
+            const appointmentId = startBtn.dataset.appointmentId;
+            const patientName = startBtn.dataset.patientName;
+            openEncounterModal(appointmentId, patientName);
+        }
+    });
+
+    /**
+     * Opens and populates the consultation modal.
+     * @param {string} appointmentId The ID of the appointment.
+     * @param {string} patientName The name of the patient.
+     */
+    async function openEncounterModal(appointmentId, patientName) {
+        const modal = document.getElementById('encounter-modal-overlay');
+        const form = document.getElementById('encounter-form');
+        form.reset(); // Clear previous data
+
+        // Set initial state
+        document.getElementById('encounter-modal-title').textContent = `Consultation for: ${patientName}`;
+        modal.classList.add('active');
+        
+        try {
+            const response = await fetch(`api.php?action=get_encounter_details&appointment_id=${appointmentId}`);
+            const result = await response.json();
+
+            if (result.success) {
+                // Populate patient info
+                document.getElementById('encounter-appointment-id').value = appointmentId;
+                document.getElementById('encounter-patient-id').value = result.patient_data.patient_id;
+
+                // Populate form with existing encounter data if it exists
+                if (result.encounter_data) {
+                    const data = result.encounter_data;
+                    document.getElementById('encounter-id').value = data.id;
+                    form.elements['chief_complaint'].value = data.chief_complaint || '';
+                    form.elements['soap_subjective'].value = data.soap_subjective || '';
+                    form.elements['soap_objective'].value = data.soap_objective || '';
+                    form.elements['soap_assessment'].value = data.soap_assessment || '';
+                    form.elements['soap_plan'].value = data.soap_plan || '';
+                    form.elements['diagnosis_icd10'].value = data.diagnosis_icd10 || '';
+
+                    if (data.vitals) {
+                        form.elements['vitals[bp]'].value = data.vitals.bp || '';
+                        form.elements['vitals[hr]'].value = data.vitals.hr || '';
+                        form.elements['vitals[temp]'].value = data.vitals.temp || '';
+                        form.elements['vitals[rr]'].value = data.vitals.rr || '';
+                    }
+                }
+            } else {
+                alert(`Error: ${result.message}`);
+                modal.classList.remove('active');
+            }
+        } catch (error) {
+            console.error('Failed to load encounter details:', error);
+            alert('A network error occurred.');
+            modal.classList.remove('active');
+        }
+    }
+
+    // Handle saving the encounter form
+    document.getElementById('encounter-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const saveButton = document.getElementById('save-encounter-btn');
+        saveButton.disabled = true;
+        saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
+
+        const formData = new FormData(this);
+        formData.append('action', 'save_encounter');
+
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                document.getElementById('encounter-modal-overlay').classList.remove('active');
+                
+                loadDashboardData();
+                
+                const activeAppointmentTab = document.querySelector('.appointments-page .tab-link.active');
+                if (activeAppointmentTab) {
+                    loadAppointments(activeAppointmentTab.dataset.tab);
+                }
+
+                alert(result.message);
+            } else {
+                alert(`Error: ${result.message}`);
+            }
+
+        } catch (error) {
+            console.error('Save encounter error:', error);
+            alert('A network error occurred while saving.');
+        } finally {
+            saveButton.disabled = false;
+            saveButton.innerHTML = 'Save Consultation';
+        }
+    });
+
+    // Handle integrated action buttons inside the encounter modal
+    document.getElementById('encounter-new-prescription-btn').addEventListener('click', () => {
+        const patientId = document.getElementById('encounter-patient-id').value;
+        const patientName = document.getElementById('encounter-modal-title').textContent.replace('Consultation for: ', '');
+
+        if (!patientId) {
+            alert('Please save the consultation once before creating an order.');
+            return;
+        }
+
+        const createBtn = document.getElementById('create-prescription-btn');
+        if (createBtn) createBtn.click();
+
+        setTimeout(() => {
+            document.getElementById('patient-id-presc').value = patientId;
+            document.getElementById('patient-search-presc').value = patientName;
+        }, 100);
+    });
+
+    document.getElementById('encounter-new-lab-btn').addEventListener('click', () => {
+        const patientId = document.getElementById('encounter-patient-id').value;
+        const patientName = document.getElementById('encounter-modal-title').textContent.replace('Consultation for: ', '');
+
+        if (!patientId) {
+            alert('Please save the consultation once before creating an order.');
+            return;
+        }
+
+        const createBtn = document.getElementById('place-lab-order-btn');
+        if (createBtn) createBtn.click();
+
+        setTimeout(() => {
+            document.getElementById('lab-order-patient-id').value = patientId;
+            document.getElementById('lab-order-patient-search').value = patientName;
+        }, 100);
+    });
+
+    // ===================================================================
+    // --- Medical Record Modal Logic ---
+    // ===================================================================
+    document.querySelector('.main-content').addEventListener('click', function(e) {
+        const viewRecordBtn = e.target.closest('.view-record');
+        if (viewRecordBtn) {
+            const patientId = viewRecordBtn.dataset.id;
+            openMedicalRecordModal(patientId);
+        }
+    });
+
+    async function openMedicalRecordModal(patientId) {
+        const modal = document.getElementById('medical-record-modal-overlay');
+        const loader = document.getElementById('medical-record-loader');
+        const content = document.getElementById('medical-record-content');
+        
+        modal.classList.add('active');
+        loader.style.display = 'block';
+        content.style.display = 'none';
+
+        try {
+            const response = await fetch(`api.php?action=get_patient_medical_record&patient_id=${patientId}`);
+            const result = await response.json();
+
+            if (result.success) {
+                populateMedicalRecordModal(result.data);
+            } else {
+                alert(`Error: ${result.message}`);
+                modal.classList.remove('active');
+            }
+        } catch (error) {
+            console.error('Failed to load medical record:', error);
+            alert('A network error occurred.');
+            modal.classList.remove('active');
+        } finally {
+            loader.style.display = 'none';
+            content.style.display = 'block';
+        }
+    }
+
+    function populateMedicalRecordModal(data) {
+        // 1. Populate Patient Details (This part remains the same)
+        const details = data.details;
+        document.getElementById('record-patient-name').textContent = details.name || 'N/A';
+        document.getElementById('record-patient-id').textContent = details.display_user_id || 'N/A';
+        document.getElementById('record-patient-age').textContent = details.age || 'N/A';
+        document.getElementById('record-patient-gender').textContent = details.gender || 'N/A';
+
+        // 2. Populate Clinical Encounters (NEW SECTION)
+        const encountersTbody = document.getElementById('record-encounters-tbody');
+        encountersTbody.innerHTML = '';
+        if (data.encounters && data.encounters.length > 0) {
+            data.encounters.forEach(enc => {
+                // The 'view-encounter' class and 'data-appointment-id' are key for making this clickable
+                encountersTbody.innerHTML += `
+                    <tr class="clickable-row view-encounter" data-appointment-id="${enc.appointment_id}" title="Click to view details">
+                        <td>${new Date(enc.encounter_date).toLocaleDateString()}</td>
+                        <td>${enc.chief_complaint || 'N/A'}</td>
+                        <td>Dr. ${enc.doctor_name}</td>
+                        <td><button class="action-btn"><i class="fas fa-eye"></i> View</button></td>
+                    </tr>
+                `;
+            });
+        } else {
+            encountersTbody.innerHTML = '<tr><td colspan="4">No clinical encounters found.</td></tr>';
+        }
+
+        // 3. Populate Admissions History (This part remains mostly the same)
+        const admissionsTbody = document.getElementById('record-admissions-tbody');
+        admissionsTbody.innerHTML = '';
+        if (data.admissions.length > 0) {
+            data.admissions.forEach(adm => {
+                admissionsTbody.innerHTML += `
+                    <tr>
+                        <td>ADM-${adm.id}</td>
+                        <td>${new Date(adm.admission_date).toLocaleDateString()}</td>
+                        <td>${adm.room_bed || 'N/A'}</td>
+                        <td><span class="status ${adm.status.toLowerCase()}">${adm.status}</span></td>
+                    </tr>
+                `;
+            });
+        } else {
+            admissionsTbody.innerHTML = '<tr><td colspan="4">No admission history found.</td></tr>';
+        }
+
+        // 4. Populate Prescriptions History (MODIFIED to be clickable)
+        const prescriptionsTbody = document.getElementById('record-prescriptions-tbody');
+        prescriptionsTbody.innerHTML = '';
+        if (data.prescriptions.length > 0) {
+            data.prescriptions.forEach(rx => {
+                // Added 'view-prescription' class and data-id to the <tr>
+                prescriptionsTbody.innerHTML += `
+                    <tr class="clickable-row view-prescription" data-id="${rx.id}" title="Click to view details">
+                        <td>RX-${rx.id}</td>
+                        <td>${new Date(rx.prescription_date).toLocaleDateString()}</td>
+                        <td><span class="status ${rx.status.toLowerCase()}">${rx.status}</span></td>
+                        <td><button class="action-btn"><i class="fas fa-eye"></i> View</button></td>
+                    </tr>
+                `;
+            });
+        } else {
+            prescriptionsTbody.innerHTML = '<tr><td colspan="4">No prescription history found.</td></tr>';
+        }
+
+        // 5. Populate Labs History (MODIFIED to be clickable)
+        const labsTbody = document.getElementById('record-labs-tbody');
+        labsTbody.innerHTML = '';
+        if (data.labs.length > 0) {
+            data.labs.forEach(lab => {
+                let actionHtml = `<button class="action-btn" disabled>Pending</button>`;
+                let rowClass = '';
+                if (lab.status.toLowerCase() === 'completed') {
+                    // Added 'view-lab-report' class and data-id to the <tr>
+                    rowClass = 'clickable-row view-lab-report';
+                    actionHtml = `<button class="action-btn"><i class="fas fa-file-alt"></i> View</button>`;
+                }
+                labsTbody.innerHTML += `
+                    <tr class="${rowClass}" data-id="${lab.id}" title="Click to view details">
+                        <td>ORD-${lab.id}</td>
+                        <td>${lab.test_name}</td>
+                        <td>${new Date(lab.ordered_at).toLocaleDateString()}</td>
+                        <td><span class="status ${lab.status.toLowerCase()}">${lab.status}</span></td>
+                        <td>${actionHtml}</td>
+                    </tr>
+                `;
+            });
+        } else {
+            labsTbody.innerHTML = '<tr><td colspan="5">No lab order history found.</td></tr>';
+        }
+    }
+    
+    // Add an Event Listener for the Clicks within the Medical Record Modal
+    const medicalRecordModal = document.getElementById('medical-record-modal-overlay');
+    if (medicalRecordModal) {
+        medicalRecordModal.addEventListener('click', function(e) {
+            const viewPrescriptionRow = e.target.closest('.view-prescription');
+            const viewLabReportRow = e.target.closest('.view-lab-report');
+            const viewEncounterRow = e.target.closest('.view-encounter');
+
+            if (viewPrescriptionRow) {
+                const prescriptionId = viewPrescriptionRow.dataset.id;
+                // Reuse your existing function to open the prescription view modal
+                openViewPrescriptionModal(prescriptionId);
+            }
+
+            if (viewLabReportRow) {
+                const reportId = viewLabReportRow.dataset.id;
+                // Reuse your existing function to open the lab report modal
+                openViewLabReportModal(reportId);
+            }
+
+            if (viewEncounterRow) {
+                const appointmentId = viewEncounterRow.dataset.appointmentId;
+                const patientName = document.getElementById('record-patient-name').textContent;
+                if (appointmentId) {
+                    // Reuse your existing encounter modal to show the details
+                    openEncounterModal(appointmentId, patientName);
+                } else {
+                    alert('Details for this encounter are not available.');
+                }
+            }
+        });
     }
 
     // ===================================================================
@@ -249,15 +563,11 @@ document.addEventListener("DOMContentLoaded", function() {
     // ===================================================================
     // --- Lab Orders Page Logic ---
     // ===================================================================
-    let allLabOrdersData = []; // Global variable to hold all lab order data
+    let allLabOrdersData = [];
 
-    /**
-     * Renders the lab orders table with a given dataset.
-     * @param {Array} ordersToRender The array of lab order objects to display.
-     */
     function renderLabOrdersTable(ordersToRender) {
         const tableBody = document.querySelector('#lab-orders-table tbody');
-        tableBody.innerHTML = ''; // Clear the table first
+        tableBody.innerHTML = '';
 
         if (ordersToRender.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No matching lab orders found.</td></tr>`;
@@ -283,9 +593,6 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    /**
-     * Fetches lab orders from the API and renders them.
-     */
     async function loadLabOrders() {
         const tableBody = document.querySelector('#lab-orders-table tbody');
         if (!tableBody) return;
@@ -296,8 +603,8 @@ document.addEventListener("DOMContentLoaded", function() {
             const result = await response.json();
 
             if (result.success) {
-                allLabOrdersData = result.data; // Store the full dataset
-                renderLabOrdersTable(allLabOrdersData); // Render the initial full table
+                allLabOrdersData = result.data;
+                renderLabOrdersTable(allLabOrdersData);
             } else {
                 tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No lab orders found.</td></tr>`;
             }
@@ -307,9 +614,6 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
     
-    /**
-     * Filters and re-renders the lab orders table based on search and status filters.
-     */
     function filterLabOrders() {
         const searchTerm = document.getElementById('lab-search').value.toLowerCase();
         const statusFilter = document.getElementById('lab-status-filter').value;
@@ -326,7 +630,6 @@ document.addEventListener("DOMContentLoaded", function() {
         renderLabOrdersTable(filteredData);
     }
 
-    // Attach event listeners for the lab order filters
     const labSearchInput = document.getElementById('lab-search');
     const labStatusFilter = document.getElementById('lab-status-filter');
     if (labSearchInput) labSearchInput.addEventListener('input', filterLabOrders);
@@ -353,14 +656,12 @@ document.addEventListener("DOMContentLoaded", function() {
             testRowsContainer.appendChild(row);
         }
 
-        // Open Modal and Prepare Form
         placeLabOrderBtn.addEventListener('click', () => {
             const form = document.getElementById('lab-order-form');
             form.reset();
             testRowsContainer.innerHTML = '';
             addTestRow();
             
-            // Clear previous search results and values
             document.getElementById('lab-order-patient-search').value = '';
             document.getElementById('lab-order-patient-id').value = '';
             document.getElementById('lab-order-patient-results').innerHTML = '';
@@ -369,7 +670,6 @@ document.addEventListener("DOMContentLoaded", function() {
             openModalById('lab-order-modal-overlay');
         });
         
-        // Handle Patient Search Input
         const labPatientSearchInput = document.getElementById('lab-order-patient-search');
         const labPatientResultsDiv = document.getElementById('lab-order-patient-results');
         const labPatientIdInput = document.getElementById('lab-order-patient-id');
@@ -424,12 +724,11 @@ document.addEventListener("DOMContentLoaded", function() {
             });
         }
         
-        // Handle Form Submission
         const labOrderForm = document.getElementById('lab-order-form');
         if (labOrderForm) {
             labOrderForm.addEventListener('submit', async function(e) {
                 e.preventDefault();
-                const patientId = document.getElementById('lab-order-patient-id').value; // Get ID from hidden input
+                const patientId = document.getElementById('lab-order-patient-id').value;
                 const testNameInputs = document.querySelectorAll('.test-name-input');
                 const testNames = Array.from(testNameInputs).map(input => input.value.trim()).filter(name => name);
         
@@ -444,7 +743,8 @@ document.addEventListener("DOMContentLoaded", function() {
                     body: JSON.stringify({
                         action: 'create_lab_order',
                         patient_id: patientId,
-                        test_names: testNames
+                        test_names: testNames,
+                        encounter_id: document.getElementById('encounter-id').value
                     })
                 });
                 const result = await response.json();
@@ -504,8 +804,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 <td data-label="Adm. Date">${admissionDate}</td>
                 <td data-label="Status"><span class="status ${adm.status === 'Active' ? 'in-patient' : 'completed'}">${adm.status}</span></td>
                 <td data-label="Actions">
-                    <button class="action-btn" data-id="${adm.id}"><i class="fas fa-file-medical"></i> View</button>
-                    <button class="action-btn danger" data-id="${adm.id}"><i class="fas fa-sign-out-alt"></i> Discharge</button>
+                    <button class="action-btn view-record" data-id="${adm.patient_id}"><i class="fas fa-file-medical"></i> View Record</button>
                 </td>
             `;
             tableBody.appendChild(tr);
@@ -516,7 +815,6 @@ document.addEventListener("DOMContentLoaded", function() {
         const form = document.getElementById('admit-patient-form');
         form.reset();
     
-        // Reset the new search fields instead of the old dropdown
         document.getElementById('patient-search-admit').value = '';
         document.getElementById('patient-id-admit').value = '';
         const resultsDiv = document.getElementById('patient-search-results-admit');
@@ -528,7 +826,6 @@ document.addEventListener("DOMContentLoaded", function() {
         
         openModalById('admit-patient-modal-overlay');
     
-        // The logic to fetch all patients is removed; we now only fetch available beds.
         try {
             const bedsResponse = await fetch('api.php?action=get_available_accommodations');
             const bedsResult = await bedsResponse.json();
@@ -604,14 +901,13 @@ document.addEventListener("DOMContentLoaded", function() {
             if (result.success) {
                 const rx = result.data;
                 
-                // Populate modal fields
                 document.getElementById('rx-patient-name').textContent = rx.patient_name;
                 document.getElementById('rx-patient-id').textContent = rx.patient_display_id;
                 document.getElementById('rx-date').textContent = new Date(rx.prescription_date).toLocaleDateString();
                 document.getElementById('rx-notes-content').textContent = rx.notes || 'No specific notes provided.';
 
                 const medicationList = document.getElementById('rx-medication-list');
-                medicationList.innerHTML = ''; // Clear previous items
+                medicationList.innerHTML = '';
                 
                 if (rx.items.length > 0) {
                     rx.items.forEach(item => {
@@ -700,7 +996,6 @@ document.addEventListener("DOMContentLoaded", function() {
             if (rowsContainer) rowsContainer.innerHTML = ''; 
             addMedicationRow();
             
-            // Clear patient search when opening
             document.getElementById('patient-search-presc').value = '';
             document.getElementById('patient-id-presc').value = '';
             document.getElementById('patient-search-results-presc').innerHTML = '';
@@ -771,6 +1066,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 const prescriptionData = {
                     patient_id: document.getElementById('patient-id-presc').value,
                     notes: document.getElementById('notes-presc').value,
+                    encounter_id: document.getElementById('encounter-id').value,
                     items: []
                 };
         
@@ -817,7 +1113,6 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
             });
 
-            // Patient search logic for prescription form
             const prescPatientSearch = document.getElementById('patient-search-presc');
             const prescPatientResults = document.getElementById('patient-search-results-presc');
             const prescPatientId = document.getElementById('patient-id-presc');
@@ -870,7 +1165,6 @@ document.addEventListener("DOMContentLoaded", function() {
         overlay.classList.remove('active');
     }
 
-    // --- Sidebar Navigation ---
     navLinks.forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
@@ -885,7 +1179,6 @@ document.addEventListener("DOMContentLoaded", function() {
             navLinks.forEach(navLink => navLink.classList.remove('active'));
             link.classList.add('active');
             
-            // --- Page specific initializers ---
             if (pageId === 'bed-management') {
                 initializeOccupancyManagement();
             }
@@ -919,7 +1212,6 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     });
 
-    // --- Hamburger Menu Logic ---
     hamburgerBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
     overlay.addEventListener('click', closeMenu);
     document.addEventListener('click', (e) => {
@@ -930,7 +1222,6 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
     
-    // --- Theme Toggle Logic ---
     const themeToggle = document.getElementById('theme-toggle-checkbox');
     const currentTheme = localStorage.getItem('theme');
 
@@ -961,7 +1252,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
         listContainer.innerHTML = `<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading appointments...</div>`;
 
-        // Build the API URL with the date if it's selected
         let apiUrl = `api.php?action=get_appointments&period=${period}`;
         if (dateFilter.value) {
             apiUrl += `&date=${dateFilter.value}`;
@@ -982,11 +1272,9 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-    // Add this event listener for the date filter
     const dateFilterInput = document.getElementById('appointment-date-filter');
     if(dateFilterInput) {
         dateFilterInput.addEventListener('change', () => {
-            // When a date is selected, find the active tab and reload its appointments
             const activeTab = document.querySelector('.appointments-page .tab-link.active');
             if (activeTab) {
                 loadAppointments(activeTab.dataset.tab);
@@ -1019,21 +1307,25 @@ document.addEventListener("DOMContentLoaded", function() {
                     <span class="status ${appt.status.toLowerCase()}">${appt.status}</span>
                 </div>
                 <div class="appointment-actions">
-                    <button class="action-btn"><i class="fas fa-file-medical"></i> View Record</button>
-                    ${appt.status.toLowerCase() === 'scheduled' ? '<button class="action-btn"><i class="fas fa-play-circle"></i> Start</button>' : ''}
+                    <button class="action-btn view-record" data-id="${appt.user_id}"><i class="fas fa-file-medical"></i> View Record</button>
+                    ${appt.status.toLowerCase() === 'scheduled' ? 
+                        `<button class="action-btn start-consultation-btn" 
+                                 data-appointment-id="${appt.id}" 
+                                 data-patient-name="${appt.patient_name}">
+                            <i class="fas fa-play-circle"></i> Start
+                        </button>` 
+                    : ''}
                 </div>
             `;
             container.appendChild(item);
         });
     }
 
-    // Reusable open modal function
     function openModalById(modalId) {
         const modal = document.getElementById(modalId);
         if (modal) modal.classList.add('active');
     }
     
-    // Generic Modal Close button handler
     document.querySelectorAll('.modal-close-btn, .btn-secondary[data-modal-id]').forEach(btn => {
         btn.addEventListener('click', function() {
             const modalId = this.getAttribute('data-modal-id');
@@ -1060,44 +1352,104 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-    async function openViewLabReportModal(reportId) {
-        try {
-            const response = await fetch(`api.php?action=get_lab_report_details&id=${reportId}`);
-            if (!response.ok) throw new Error('Network error');
-            const result = await response.json();
+        // In script.js, find and replace the openViewLabReportModal function
 
-            if (result.success) {
-                const report = result.data;
-                document.getElementById('report-patient-name').textContent = report.patient_name;
-                document.querySelector('#lab-report-view-title').textContent = `Lab Report for ${report.patient_name}`;
-                document.querySelector('.report-view-header div:nth-child(2)').innerHTML = `<strong>Test:</strong> ${report.test_name}`;
-                document.querySelector('.report-view-header div:nth-child(3)').innerHTML = `<strong>Report ID:</strong> ORD-${report.id}`;
-                document.querySelector('.report-view-header div:nth-child(4)').innerHTML = `<strong>Date:</strong> ${new Date(report.ordered_at).toLocaleDateString()}`;
+        async function openViewLabReportModal(reportId) {
+            try {
+                const response = await fetch(`api.php?action=get_lab_report_details&id=${reportId}`); // Fetches report data
+                if (!response.ok) throw new Error('Network error');
+                const result = await response.json();
 
-                const findingsBody = document.querySelector('.findings-table tbody');
-                findingsBody.innerHTML = '';
-                if (report.result_details && Array.isArray(report.result_details.findings) && report.result_details.findings.length > 0) {
-                     report.result_details.findings.forEach(finding => {
-                        findingsBody.innerHTML += `<tr><td>${finding.parameter}</td><td>${finding.result}</td><td>${finding.range}</td></tr>`;
-                     });
+                if (result.success) {
+                    const report = result.data;
+                    const modal = document.getElementById('lab-report-view-modal-overlay');
+                    
+                    // --- Get the Download PDF Button ---
+                    const downloadPdfBtn = modal.querySelector('.btn-primary'); // Targets the download button
+                    const printBtn = modal.querySelector('.btn-secondary'); // Targets the print button
+                    
+                    // --- Fix the header alignment ---
+                    document.querySelector('#lab-report-view-title').textContent = `Laboratory Report for ${report.patient_name}`;
+                    
+                    // --- Populate all the data fields ---
+                    document.getElementById('report-patient-name').textContent = report.patient_name || 'N/A';
+                    document.getElementById('report-patient-id').textContent = report.patient_display_id || 'N/A';
+                    document.getElementById('report-patient-age-gender').textContent = `${report.patient_age || 'N/A'} / ${report.patient_gender || 'N/A'}`;
+                    document.getElementById('report-test-name').textContent = report.test_name || 'N/A';
+                    document.getElementById('report-id').textContent = `ORD-${report.id}`;
+                    document.getElementById('report-reported-date').textContent = new Date(report.ordered_at).toLocaleString();
+                    document.getElementById('report-verified-by').textContent = report.staff_name || 'Pending Verification';
+                    document.getElementById('report-summary-text').textContent = (report.result_details && report.result_details.summary) ? report.result_details.summary : 'No summary provided.';
+                    
+                    // --- Populate the Findings Table ---
+                    const findingsBody = document.getElementById('report-findings-tbody');
+                    findingsBody.innerHTML = '';
+                    if (report.result_details && Array.isArray(report.result_details.findings) && report.result_details.findings.length > 0) {
+                        report.result_details.findings.forEach(finding => {
+                            let flag = '';
+                            let resultClass = '';
+                            
+                            const resultValue = parseFloat(finding.result);
+                            if (!isNaN(resultValue)) {
+                                const rangeParts = (finding.range || '').split('-').map(p => parseFloat(p.trim()));
+                                if (rangeParts.length === 2 && !isNaN(rangeParts[0]) && !isNaN(rangeParts[1])) {
+                                    if (resultValue < rangeParts[0]) {
+                                        flag = 'L'; // Low
+                                        resultClass = 'abnormal-low';
+                                    } else if (resultValue > rangeParts[1]) {
+                                        flag = 'H'; // High
+                                        resultClass = 'abnormal-high';
+                                    }
+                                }
+                            }
+
+                            findingsBody.innerHTML += `
+                                <tr class="${resultClass}">
+                                    <td>${finding.parameter || 'N/A'}</td>
+                                    <td><strong>${finding.result || 'N/A'}</strong></td>
+                                    <td>${finding.units || 'N/A'}</td>
+                                    <td>${finding.range || 'N/A'}</td>
+                                    <td class="flag">${flag}</td>
+                                </tr>`;
+                        });
+                    } else {
+                        findingsBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">No detailed findings were entered.</td></tr>`;
+                    }
+
+                    // --- CORRECTED LOGIC for the PDF buttons ---
+                    if (report.attachment_path) {
+                        // If a PDF exists, enable the download button and link it
+                        downloadPdfBtn.style.display = 'inline-flex'; // Show the button
+                        downloadPdfBtn.disabled = false;
+                        downloadPdfBtn.onclick = () => window.open(`../${report.attachment_path}`, '_blank'); // The path to the PDF file
+                        
+                        // Disable the print button for the manual view
+                        printBtn.disabled = true;
+                        printBtn.title = "Print the downloaded PDF instead";
+
+                    } else {
+                        // If no PDF exists, hide the download button
+                        downloadPdfBtn.style.display = 'none'; // Hide the button
+                        downloadPdfBtn.disabled = true;
+                        downloadPdfBtn.onclick = null;
+
+                        // Enable the print button for the manual view
+                        printBtn.disabled = false;
+                        printBtn.title = "Print this report";
+                    }
+                    
+                    openModalById('lab-report-view-modal-overlay'); // Opens the modal
                 } else {
-                     findingsBody.innerHTML = `<tr><td colspan="3">No detailed findings were entered.</td></tr>`;
+                    alert(`Error: ${result.message}`);
                 }
-                
-                document.querySelector('.report-view-body p').textContent = (report.result_details && report.result_details.summary) ? report.result_details.summary : 'No summary provided.';
-                
-                openModalById('lab-report-view-modal-overlay');
-            } else {
-                alert(`Error: ${result.message}`);
+            } catch (error) {
+                console.error('Error fetching report details:', error);
+                alert('Could not fetch report details.');
             }
-        } catch (error) {
-            console.error('Error fetching report details:', error);
-            alert('Could not fetch report details.');
         }
-    }
     
     // ===================================================================
-    // --- Messenger Page Logic (Existing) ---
+    // --- Messenger Page Logic ---
     // ===================================================================
     const messengerPage = document.getElementById('messenger-page');
     let messengerInitialized = false;
@@ -1201,14 +1553,13 @@ document.addEventListener("DOMContentLoaded", function() {
         const listItemsContainer = document.getElementById('conversation-list-items');
         if (!listItemsContainer) return;
 
-        // Only show loading inside the items container
         listItemsContainer.innerHTML = `<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading...</div>`;
 
         try {
             const response = await fetch('api.php?action=get_conversations');
             const result = await response.json();
             
-            listItemsContainer.innerHTML = ''; // Clear the container
+            listItemsContainer.innerHTML = '';
 
             if (result.success && result.data.length > 0) {
                 result.data.forEach(convo => renderConversation(convo));
@@ -1297,18 +1648,16 @@ document.addEventListener("DOMContentLoaded", function() {
         const listItemsContainer = document.getElementById('conversation-list-items');
         if (!listItemsContainer) return;
 
-        // Don't touch the search bar, just the results area
         listItemsContainer.innerHTML = `<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Searching...</div>`;
 
         try {
             const response = await fetch(`api.php?action=searchUsers&term=${encodeURIComponent(term)}`);
             const result = await response.json();
             
-            listItemsContainer.innerHTML = ''; // Clear the container
+            listItemsContainer.innerHTML = '';
 
             if (result.success && result.data.length > 0) {
                 result.data.forEach(user => {
-                    // This HTML now includes the data-conversation-id
                     const searchResultHtml = `
                         <div class="conversation-item" 
                             data-conversation-id="${user.conversation_id || ''}"
@@ -1346,7 +1695,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     // ===================================================================
-    // --- Profile Settings Page Logic (REVISED) ---
+    // --- Profile Settings Page Logic ---
     // ===================================================================
     const personalInfoForm = document.getElementById('personal-info-form');
     if (personalInfoForm) {
@@ -1429,16 +1778,14 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    // --- NEW: Security Form (Password Update) Logic ---
     const securityForm = document.getElementById('security-form');
     if (securityForm) {
         securityForm.addEventListener('submit', async function(e) {
-            e.preventDefault(); // This is the crucial line that prevents the redirect
+            e.preventDefault();
 
             const newPassword = document.getElementById('new-password').value;
             const confirmPassword = document.getElementById('confirm-password').value;
 
-            // --- Basic Client-Side Validation ---
             if (newPassword.length < 8) {
                 alert('New password must be at least 8 characters long.');
                 return;
@@ -1454,7 +1801,7 @@ document.addEventListener("DOMContentLoaded", function() {
             saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Updating...`;
 
             const formData = new FormData(this);
-            formData.append('action', 'updatePassword'); // Tell the API what to do
+            formData.append('action', 'updatePassword');
 
             try {
                 const response = await fetch('api.php', {
@@ -1465,16 +1812,14 @@ document.addEventListener("DOMContentLoaded", function() {
 
                 if (result.success) {
                     alert('Password updated successfully!');
-                    this.reset(); // Clear the form fields
+                    this.reset();
                 } else {
-                    // Display the specific error message from the server
                     alert(`Error: ${result.message || 'An unknown error occurred.'}`);
                 }
             } catch (error) {
                 console.error('Error updating password:', error);
                 alert('A network error occurred. Please try again.');
             } finally {
-                // Restore the button to its original state
                 saveButton.disabled = false;
                 saveButton.innerHTML = originalButtonText;
             }
@@ -1482,27 +1827,24 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
 
-// --- NEW: Password visibility toggle logic ---
-document.querySelectorAll('.toggle-password').forEach(icon => {
-    icon.addEventListener('click', function() {
-        // Find the password input field next to the icon
-        const passwordInput = this.previousElementSibling;
-        
-        // Check the current type of the input field
-        const isPassword = passwordInput.getAttribute('type') === 'password';
-        
-        // Change the type and the icon
-        if (isPassword) {
-            passwordInput.setAttribute('type', 'text');
-            this.classList.remove('fa-eye-slash');
-            this.classList.add('fa-eye');
-        } else {
-            passwordInput.setAttribute('type', 'password');
-            this.classList.remove('fa-eye');
-            this.classList.add('fa-eye-slash');
-        }
+    document.querySelectorAll('.toggle-password').forEach(icon => {
+        icon.addEventListener('click', function() {
+            const passwordInput = this.previousElementSibling;
+            
+            const isPassword = passwordInput.getAttribute('type') === 'password';
+            
+            if (isPassword) {
+                passwordInput.setAttribute('type', 'text');
+                this.classList.remove('fa-eye-slash');
+                this.classList.add('fa-eye');
+            } else {
+                passwordInput.setAttribute('type', 'password');
+                this.classList.remove('fa-eye');
+                this.classList.add('fa-eye-slash');
+            }
+        });
     });
-});
+
     const profilePageEl = document.getElementById('profile-page');
     if (profilePageEl) {
         const profileTabs = profilePageEl.querySelectorAll('.profile-tab-link');
@@ -1826,24 +2168,21 @@ document.querySelectorAll('.toggle-password').forEach(icon => {
         });
     }
 
-    // --- New Patient Search Logic for Admit Patient Modal ---
     const admitPatientSearch = document.getElementById('patient-search-admit');
     const admitPatientResults = document.getElementById('patient-search-results-admit');
     const admitPatientId = document.getElementById('patient-id-admit');
     let admitSearchTimeout;
 
     if (admitPatientSearch) {
-        // Listen for user typing in the search box
         admitPatientSearch.addEventListener('input', () => {
              const term = admitPatientSearch.value.trim();
              admitPatientResults.innerHTML = '';
              admitPatientResults.classList.remove('active');
 
-             if (term.length < 2) return; // Don't search for less than 2 characters
+             if (term.length < 2) return;
 
              clearTimeout(admitSearchTimeout);
              admitSearchTimeout = setTimeout(async () => {
-                // Use the existing 'search_patients' API action
                 const res = await fetch(`api.php?action=search_patients&term=${encodeURIComponent(term)}`);
                 const result = await res.json();
                 
@@ -1858,15 +2197,14 @@ document.querySelectorAll('.toggle-password').forEach(icon => {
                     });
                     admitPatientResults.classList.add('active');
                 }
-             }, 300); // Wait 300ms after typing to search
+             }, 300);
         });
 
-        // Listen for a click on one of the search results
         admitPatientResults.addEventListener('click', (e) => {
             if (e.target.classList.contains('search-result-item')) {
-                admitPatientId.value = e.target.dataset.patientId; // Set the hidden ID input
-                admitPatientSearch.value = e.target.dataset.patientName; // Set the visible search input
-                admitPatientResults.classList.remove('active'); // Hide the results dropdown
+                admitPatientId.value = e.target.dataset.patientId;
+                admitPatientSearch.value = e.target.dataset.patientName;
+                admitPatientResults.classList.remove('active');
             }
         });
     }
@@ -1875,12 +2213,12 @@ document.querySelectorAll('.toggle-password').forEach(icon => {
     if (prescriptionsPage) {
         prescriptionsPage.addEventListener('click', function(e) {
             const viewButton = e.target.closest('.view-prescription');
-            const printButton = e.target.closest('.print-prescription'); // New
+            const printButton = e.target.closest('.print-prescription');
 
             if (viewButton) {
                 const prescriptionId = viewButton.dataset.id;
                 openViewPrescriptionModal(prescriptionId);
-            } else if (printButton) { // New else-if block
+            } else if (printButton) {
                 const prescriptionId = printButton.dataset.id;
                 if(prescriptionId) {
                     window.open(`api.php?action=download_prescription&id=${prescriptionId}`, '_blank');
@@ -1915,7 +2253,6 @@ document.querySelectorAll('.toggle-password').forEach(icon => {
 
 });
 
-// Add this new event listener for the modal's print button
 const prescriptionViewModal = document.getElementById('prescription-view-modal-overlay');
 if (prescriptionViewModal) {
     prescriptionViewModal.addEventListener('click', function(e) {
