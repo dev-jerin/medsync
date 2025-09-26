@@ -623,7 +623,10 @@ document.addEventListener('DOMContentLoaded', () => {
         bookNewBtn.addEventListener('click', () => {
             bookingData = {}; 
             goToStep(1);
-            fetchAndRenderDoctors();
+            // --- MODIFICATION HERE ---
+            // Call both functions to populate the modal
+            fetchAndPopulateSpecialties(); // This will fill the specialty dropdown
+            fetchAndRenderDoctors();       // This will load the initial doctor list
             bookingModal.classList.add('show');
         });
     }
@@ -740,10 +743,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+
+    // ==========================================================
+    // === ADD THIS NEW FUNCTION TO POPULATE THE FILTER       ===
+    // ==========================================================
+    const fetchAndPopulateSpecialties = async () => {
+        const specialtySelect = document.getElementById('doctor-search-specialty');
+        
+        // Prevent re-populating if it already has options
+        if (specialtySelect.options.length > 1) {
+            return;
+        }
+
+        try {
+            const response = await fetch('api.php?action=get_specialties');
+            const result = await response.json();
+
+            if (result.success && result.data) {
+                result.data.forEach(specialty => {
+                    const option = document.createElement('option');
+                    option.value = specialty.name;
+                    option.textContent = specialty.name;
+                    specialtySelect.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Error fetching specialties:', error);
+        }
+    };
+
     const fetchAndRenderDoctors = async () => {
         const doctorListContainer = document.getElementById('doctor-list');
         const nameSearch = document.getElementById('doctor-search-name').value;
         const specialtyFilter = document.getElementById('doctor-search-specialty')?.value || '';
+
 
         doctorListContainer.innerHTML = '<p>Loading doctors...</p>';
         
@@ -1081,6 +1114,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`api.php?${params.toString()}`);
             if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
             const result = await response.json();
+
 
             if (!result.success) throw new Error(result.message);
             

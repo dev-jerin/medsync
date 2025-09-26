@@ -497,6 +497,7 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     $current_token_stmt->close();
                     $total_patients_stmt->close();
                     
+
                     $response = ['success' => true, 'tokens' => $tokens, 'message' => "Live token status fetched successfully."];
                     break;
                 
@@ -540,6 +541,19 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                 
                     $response = ['success' => true, 'data' => $appointments];
                     break;
+                
+
+                // ==========================================================
+                // === NEWLY ADDED CASE TO FETCH SPECIALTIES ===
+                // ==========================================================
+                case 'get_specialties':
+                    $stmt = $conn->prepare("SELECT name FROM specialities ORDER BY name ASC");
+                    $stmt->execute();
+                    $specialties = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+                    $response = ['success' => true, 'data' => $specialties];
+                    break;
+                // ==========================================================
                 
                 case 'get_doctors':
                     $specialty_filter = $_GET['specialty'] ?? '';
