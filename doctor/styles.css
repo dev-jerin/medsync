@@ -82,10 +82,8 @@ body {
 .sidebar-header .logo-img {
     height: 40px;
     margin-right: 10px;
-    filter: hue-rotate(-40deg); /* MODIFIED: Turns the blue logo green */
+    filter: hue-rotate(-40deg);
 }
-
-/* REMOVED the dark theme logo filter that was causing issues */
 
 .sidebar-header .logo-text {
     font-size: 1.5rem;
@@ -605,9 +603,23 @@ input:checked + .theme-slider:before {
     transition: opacity 0.3s ease;
     overflow-y: auto;
 }
+
+/* Z-index stacking for nested modals */
+#medical-record-modal-overlay {
+    z-index: 1055;
+}
+
+#prescription-view-modal-overlay,
+#lab-report-view-modal-overlay,
+#encounter-modal-overlay,
+#prescription-modal-overlay,
+#lab-order-modal-overlay {
+    z-index: 1060;
+}
+
 .modal-overlay.active {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     opacity: 1;
 }
@@ -621,7 +633,7 @@ input:checked + .theme-slider:before {
     border-radius: var(--border-radius);
     box-shadow: 0 10px 30px rgba(0,0,0,0.1);
     width: 90%;
-    max-width: 800px; /* Increased max-width for prescription modal */
+    max-width: 800px;
     z-index: 1051;
     opacity: 0;
     transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.3s;
@@ -706,7 +718,7 @@ body.dark-theme .btn-secondary:hover {
 /* --- Prescription Modal Enhancements (Line-Item Style) --- */
 .medication-row {
     display: flex;
-    align-items: flex-end; /* Aligns items to the bottom */
+    align-items: flex-end;
     gap: 1rem;
     padding: 1rem;
     background-color: var(--background-body);
@@ -717,12 +729,12 @@ body.dark-theme .btn-secondary:hover {
 }
 
 .medication-row .form-group {
-    margin-bottom: 0; /* Override default form-group margin */
+    margin-bottom: 0;
     flex-grow: 1;
 }
 
 .medication-row .med-search-group {
-    flex-basis: 35%; /* Give more space to the search field */
+    flex-basis: 35%;
 }
 
 .medication-row .dosage-group,
@@ -744,13 +756,13 @@ body.dark-theme .btn-secondary:hover {
     color: var(--danger-color);
     font-size: 1.5rem;
     cursor: pointer;
-    padding: 0.5rem; /* Make it easier to click */
+    padding: 0.5rem;
     line-height: 1;
-    margin-bottom: 5px; /* Align with input bottom */
+    margin-bottom: 5px;
 }
 
 .med-search-group {
-    position: relative; /* Crucial for positioning the dropdown */
+    position: relative;
 }
 
 .search-results-dropdown {
@@ -764,7 +776,7 @@ body.dark-theme .btn-secondary:hover {
     border-radius: 0 0 8px 8px;
     max-height: 200px;
     overflow-y: auto;
-    z-index: 1060; /* Ensure it's above other modal elements */
+    z-index: 1061;
 }
 
 .search-results-dropdown.active {
@@ -858,52 +870,6 @@ body.dark-theme .btn-secondary:hover {
 }
 body.dark-theme .timeline-content span {
     color: #888;
-}
-
-
-/* --- Lab Result Specific Styles --- */
-.finding-row {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 0.75rem;
-    align-items: center;
-}
-.finding-row input {
-    flex-grow: 1;
-}
-.btn-remove-finding {
-    background: none;
-    border: none;
-    color: var(--danger-color);
-    font-size: 1.2rem;
-    cursor: pointer;
-}
-.report-view-header {
-    display: flex;
-    justify-content: space-between;
-    padding-bottom: 1rem;
-    margin-bottom: 1.5rem;
-    border-bottom: 2px solid var(--primary-color);
-    flex-wrap: wrap;
-    gap: 1rem;
-}
-.report-view-body h5 {
-    font-weight: 600;
-    color: var(--primary-color);
-    margin-top: 1.5rem;
-    margin-bottom: 0.75rem;
-}
-.findings-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-.findings-table th, .findings-table td {
-    border: 1px solid var(--border-color);
-    padding: 0.75rem;
-    text-align: left;
-}
-.findings-table th {
-    background-color: var(--background-body);
 }
 
 /* --- Profile Settings Page --- */
@@ -1001,7 +967,6 @@ body.dark-theme .timeline-content span {
     color: var(--text-dark);
 }
 
-/* MODIFIED: Added .settings-form select to apply consistent styling */
 .settings-form input, .settings-form select {
     padding: 0.75rem;
     border-radius: 8px;
@@ -1010,7 +975,7 @@ body.dark-theme .timeline-content span {
     font-size: 0.95rem;
     background-color: var(--background-input);
     color: var(--text-dark);
-    -webkit-appearance: none; /* Helps in standardizing appearance */
+    -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
 }
@@ -1032,7 +997,7 @@ body.dark-theme .timeline-content span {
 }
 .password-wrapper input {
     width: 100%;
-    padding-right: 2.5rem; /* Space for the icon */
+    padding-right: 2.5rem;
 }
 .toggle-password {
     position: absolute;
@@ -1164,6 +1129,11 @@ input:checked + .slider:before {
     transform: scale(0.9);
 }
 
+.record-history-table .clickable-row:hover {
+    cursor: pointer;
+    background-color: var(--background-body);
+}
+
 /* --- Bed Management Page --- */
 .bed-legend {
     display: flex;
@@ -1195,9 +1165,8 @@ input:checked + .slider:before {
     gap: 1.5rem;
 }
 
-/* NEW: Loading Placeholder Style */
 .loading-placeholder {
-    grid-column: 1 / -1; /* Span full width */
+    grid-column: 1 / -1;
     text-align: center;
     padding: 3rem;
     font-size: 1.2rem;
@@ -1215,18 +1184,17 @@ input:checked + .slider:before {
     padding: 1rem;
     transition: all 0.3s ease;
     box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-    cursor: pointer; /* MODIFIED: Make cards feel clickable */
+    cursor: pointer;
 }
 .bed-card:hover {
     transform: translateY(-5px);
     box-shadow: var(--shadow-md);
 }
 
-/* MODIFIED: Add styles for different statuses */
 .bed-card.status-available { border-left-color: var(--secondary-color); }
 .bed-card.status-occupied { 
     border-left-color: var(--danger-color);
-    cursor: not-allowed; /* MODIFIED: Not clickable */
+    cursor: not-allowed;
     opacity: 0.8;
 }
 .bed-card.status-cleaning { border-left-color: var(--warning-color); }
@@ -1312,7 +1280,6 @@ input:checked + .slider:before {
 }
 .rx-body {
     display: flex;
-    /* gap: 1rem; */ /* <<< THIS WAS THE CAUSE OF THE SPACE */
     margin-top: 1rem;
 }
 .rx-symbol {
@@ -1357,7 +1324,7 @@ body.dark-theme .rx-signature {
 }
 .messenger-layout {
     display: flex;
-    height: calc(100vh - 200px); /* Adjust based on header/footer */
+    height: calc(100vh - 200px);
     background: var(--background-panel);
     border-radius: var(--border-radius);
     box-shadow: var(--shadow-md);
@@ -1656,6 +1623,101 @@ body.dark-theme .rx-signature {
     z-index: 999;
 }
 
+
+/* --- Encounter Modal Styles --- */
+.encounter-top-grid, .encounter-bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.vitals-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    background-color: var(--background-body);
+    padding: 1rem;
+    border-radius: 8px;
+}
+
+.soap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.soap-grid label {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.integrated-actions label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+.integrated-actions div {
+    display: flex;
+    gap: 1rem;
+}
+
+/* --- Medical Record Modal Styles --- */
+#medical-record-modal-overlay .modal-container {
+    max-width: 900px;
+}
+.record-section {
+    margin-bottom: 2rem;
+}
+.record-section:last-child {
+    margin-bottom: 0;
+}
+.record-section h5 {
+    font-weight: 600;
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+.patient-details-section .details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+    background-color: var(--background-body);
+    padding: 1rem;
+    border-radius: 8px;
+}
+.patient-details-section .details-grid > div {
+    font-size: 0.95rem;
+}
+.record-history-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.record-history-table th, .record-history-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.9rem;
+}
+.record-history-table th {
+    background-color: var(--background-body);
+    font-weight: 600;
+}
+.record-history-table .status {
+    transform: scale(0.9);
+}
+
+.record-history-table .clickable-row:hover {
+    cursor: pointer;
+    background-color: var(--background-body);
+}
+
 /* --- Responsive & Print Styles --- */
 @media (max-width: 992px) {
     .sidebar {
@@ -1693,18 +1755,18 @@ body.dark-theme .rx-signature {
     
     .messenger-layout { 
         flex-direction: column; 
-        height: calc(100vh - 180px); /* Adjusted height for mobile */
+        height: calc(100vh - 180px);
         min-height: 500px;
     }
     .conversation-list { 
         width: 100%; 
-        flex: 0 0 40%; /* Fixed 40% height */
+        flex: 0 0 40%;
         border-right: none; 
         border-bottom: 1px solid var(--border-color); 
         overflow-y: auto;
     }
     .chat-window {
-        flex-grow: 1; /* Takes remaining space */
+        flex-grow: 1;
     }
     .notification-dropdown {
         width: 90vw;
@@ -1726,7 +1788,7 @@ body.dark-theme .rx-signature {
         gap: 0.75rem;
     }
     .theme-toggle-widget {
-        display: none; /* Hide theme toggle on smaller screens to save space */
+        display: none;
     }
     .modal-body .form-grid { grid-template-columns: 1fr; }
     .settings-form .form-grid { grid-template-columns: 1fr; }
@@ -1757,7 +1819,7 @@ body.dark-theme .rx-signature {
         justify-content: flex-end;
     }
     .data-table thead {
-        display: none; /* Hide table headers on mobile */
+        display: none;
     }
     .data-table tr {
         display: block;
@@ -1798,6 +1860,10 @@ body.dark-theme .rx-signature {
     .rx-header, .rx-patient-details { flex-direction: column; align-items: stretch; text-align: left; }
     .rx-doctor-details { text-align: left; }
     .rx-patient-details { grid-template-columns: 1fr; }
+
+    .encounter-top-grid, .encounter-bottom-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media print {
@@ -1831,4 +1897,125 @@ body.dark-theme .rx-signature {
     .modal-header-print, .modal-footer-print {
         display: none;
     }
+}
+
+/* --- Professional Lab Report Modal Styles --- */
+.report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 1rem;
+    border-bottom: 3px double var(--border-color);
+    margin-bottom: 1.5rem;
+}
+.report-header-logo {
+    height: 50px;
+}
+.report-hospital-details {
+    text-align: right;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+.report-hospital-details strong {
+    font-size: 1.2rem;
+    color: var(--text-dark);
+    display: block;
+}
+.report-hospital-details p {
+    margin: 0;
+    line-height: 1.4;
+}
+.report-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+.info-box {
+    background-color: var(--background-body);
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+.info-box-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    margin-bottom: 0.75rem;
+}
+.info-box p {
+    margin: 0.4rem 0;
+    font-size: 0.9rem;
+}
+.report-section {
+    margin-bottom: 2rem;
+}
+.report-section-title {
+    font-weight: 600;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* CORRECTED table styles */
+.findings-table {
+    width: 100%;
+    border-collapse: collapse; /* Ensures borders are neat */
+}
+
+.findings-table th {
+    font-size: 0.85rem;
+    text-align: left;
+    padding: 0.75rem;
+    background-color: var(--background-body);
+}
+
+.findings-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.findings-table td.flag {
+    font-weight: 700;
+    text-align: center;
+}
+.findings-table tr.abnormal-high td {
+    background-color: rgba(231, 76, 60, 0.1); /* Danger color, transparent */
+}
+.findings-table tr.abnormal-high td.flag {
+    color: var(--danger-color);
+}
+.findings-table tr.abnormal-low td {
+    background-color: rgba(52, 152, 219, 0.1); /* Info color, transparent */
+}
+.findings-table tr.abnormal-low td.flag {
+    color: var(--info-color);
+}
+.report-summary {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    background-color: var(--background-body);
+    padding: 1rem;
+    border-radius: 8px;
+}
+.report-signature-section {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    color: var(--text-muted);
+}
+.signature-box {
+    text-align: center;
+}
+.signature-box p {
+    margin: 0;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+.signature-box small {
+    font-size: 0.8rem;
 }

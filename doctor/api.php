@@ -154,6 +154,45 @@ if (isset($_GET['action']) && $_GET['action'] == 'download_prescription') {
     exit();
 }
 
+// --- NEW: DISCHARGE SUMMARY PDF DOWNLOAD HANDLER ---
+if (isset($_GET['action']) && $_GET['action'] == 'download_discharge_summary') {
+    if (empty($_GET['admission_id'])) {
+        die('Admission ID is required.');
+    }
+    $admission_id = (int)$_GET['admission_id'];
+    $current_user_id = $_SESSION['user_id'];
+    $conn = getDbConnection();
+    
+    // Fetch all data needed for the PDF
+    $stmt = $conn->prepare("
+        SELECT 
+            p.name AS patient_name, p.display_user_id AS patient_display_id, p.gender, p.date_of_birth,
+            a.admission_date,
+            dc.discharge_date, dc.summary_text,
+            d.name AS doctor_name, d.display_user_id AS doctor_display_id,
+            s.name as specialty
+        FROM admissions a
+        JOIN users p ON a.patient_id = p.id
+        LEFT JOIN discharge_clearance dc ON a.id = dc.admission_id
+        LEFT JOIN users d ON dc.doctor_id = d.id
+        LEFT JOIN doctors doc ON d.id = doc.user_id
+        LEFT JOIN specialities s ON doc.specialty_id = s.id
+        WHERE a.id = ? AND a.doctor_id = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param("ii", $admission_id, $current_user_id);
+    $stmt->execute();
+    $summary_data = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if (!$summary_data) {
+        die('Summary not found or you do not have permission to view it.');
+    }
+
+    generateDischargeSummaryPdf($summary_data);
+    exit();
+}
+
 
 // --- Prepare Variables for Frontend (for non-AJAX page loads) ---
 if (!isset($_REQUEST['action'])) {
@@ -255,12 +294,12 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         // 1. Fetch statistics
         $stats_sql = "
             SELECT
-                (SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND DATE(appointment_date) = CURDATE()) AS today_appointments,
+                (SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND DATE(appointment_date) = CURDATE() AND status = 'scheduled') AS today_appointments,
                 (SELECT COUNT(*) FROM admissions WHERE doctor_id = ? AND discharge_date IS NULL) AS active_admissions,
                 (SELECT COUNT(DISTINCT a.id) 
                  FROM admissions a 
                  JOIN discharge_clearance dc ON a.id = dc.admission_id 
-                 WHERE a.doctor_id = ? AND a.discharge_date IS NULL) AS pending_discharges
+                 WHERE a.doctor_id = ? AND a.discharge_date IS NULL AND dc.is_cleared = 0) AS pending_discharges
         ";
         $stmt = $conn->prepare($stats_sql);
         $stmt->bind_param("iii", $current_user_id, $current_user_id, $current_user_id);
@@ -271,10 +310,10 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
 
         // 2. Fetch today's appointment queue (Limit 5 for the dashboard)
         $appt_sql = "
-            SELECT a.token_number, p.name AS patient_name, a.appointment_date, a.status
+            SELECT a.id, a.token_number, p.name AS patient_name, a.appointment_date, a.status
             FROM appointments a
             JOIN users p ON a.user_id = p.id
-            WHERE a.doctor_id = ? AND DATE(a.appointment_date) = CURDATE()
+            WHERE a.doctor_id = ? AND DATE(a.appointment_date) = CURDATE() AND a.status = 'scheduled'
             ORDER BY a.appointment_date ASC LIMIT 5
         ";
         $stmt = $conn->prepare($appt_sql);
@@ -311,13 +350,111 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
     }
 
     // ==========================================================
-    // --- ADMISSIONS ACTIONS ---
+    // --- PATIENT ENCOUNTER ACTIONS ---
+    // ==========================================================
+    if ($action == 'get_encounter_details' && isset($_GET['appointment_id'])) {
+        $appointment_id = (int)$_GET['appointment_id'];
+        $response = ['success' => false, 'data' => null];
+
+        // Fetch patient details from appointment
+        $stmt_patient = $conn->prepare("SELECT user_id as patient_id, name FROM appointments a JOIN users u ON a.user_id = u.id WHERE a.id = ? AND a.doctor_id = ?");
+        $stmt_patient->bind_param("ii", $appointment_id, $current_user_id);
+        $stmt_patient->execute();
+        $patient_data = $stmt_patient->get_result()->fetch_assoc();
+        $stmt_patient->close();
+
+        if ($patient_data) {
+            $response['patient_data'] = $patient_data;
+            // Now check for an existing encounter
+            $stmt_encounter = $conn->prepare("SELECT * FROM patient_encounters WHERE appointment_id = ?");
+            $stmt_encounter->bind_param("i", $appointment_id);
+            $stmt_encounter->execute();
+            $encounter_data = $stmt_encounter->get_result()->fetch_assoc();
+            $stmt_encounter->close();
+
+            // Decode vitals JSON if it exists
+            if ($encounter_data && !empty($encounter_data['vitals'])) {
+                $encounter_data['vitals'] = json_decode($encounter_data['vitals'], true);
+            }
+
+            $response['success'] = true;
+            $response['encounter_data'] = $encounter_data; // Will be null if no encounter exists yet
+        } else {
+            $response['message'] = 'Appointment not found or unauthorized.';
+        }
+        
+        echo json_encode($response);
+        exit();
+    }
+
+    if ($action == 'save_encounter' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $encounter_id = (int)($_POST['encounter_id'] ?? 0);
+        $appointment_id = (int)($_POST['appointment_id'] ?? 0);
+        $patient_id = (int)($_POST['patient_id'] ?? 0);
+        $chief_complaint = trim($_POST['chief_complaint'] ?? '');
+        $vitals = json_encode($_POST['vitals'] ?? []);
+        $soap_subjective = trim($_POST['soap_subjective'] ?? '');
+        $soap_objective = trim($_POST['soap_objective'] ?? '');
+        $soap_assessment = trim($_POST['soap_assessment'] ?? '');
+        $soap_plan = trim($_POST['soap_plan'] ?? '');
+        $diagnosis = trim($_POST['diagnosis_icd10'] ?? '');
+
+        if (empty($appointment_id) || empty($patient_id)) {
+            echo json_encode(['success' => false, 'message' => 'Missing required appointment data.']);
+            exit();
+        }
+        
+        // --- Start Transaction ---
+        $conn->begin_transaction();
+        
+        try {
+            if ($encounter_id > 0) {
+                // UPDATE existing encounter
+                $stmt = $conn->prepare("UPDATE patient_encounters SET chief_complaint=?, vitals=?, soap_subjective=?, soap_objective=?, soap_assessment=?, soap_plan=?, diagnosis_icd10=? WHERE id=? AND doctor_id=?");
+                $stmt->bind_param("sssssssii", $chief_complaint, $vitals, $soap_subjective, $soap_objective, $soap_assessment, $soap_plan, $diagnosis, $encounter_id, $current_user_id);
+            } else {
+                // INSERT new encounter
+                $stmt = $conn->prepare("INSERT INTO patient_encounters (appointment_id, patient_id, doctor_id, chief_complaint, vitals, soap_subjective, soap_objective, soap_assessment, soap_plan, diagnosis_icd10) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->bind_param("iiisssssss", $appointment_id, $patient_id, $current_user_id, $chief_complaint, $vitals, $soap_subjective, $soap_objective, $soap_assessment, $soap_plan, $diagnosis);
+            }
+
+            if (!$stmt->execute()) {
+                throw new Exception('Failed to save encounter details.');
+            }
+            $new_id = ($encounter_id > 0) ? $encounter_id : $conn->insert_id;
+            $stmt->close();
+
+            // --- NEW: Update the appointment status to 'completed' ---
+            $stmt_appt = $conn->prepare("UPDATE appointments SET status = 'completed' WHERE id = ? AND doctor_id = ?");
+            $stmt_appt->bind_param("ii", $appointment_id, $current_user_id);
+            if (!$stmt_appt->execute()) {
+                throw new Exception('Failed to update appointment status.');
+            }
+            $stmt_appt->close();
+            
+            // --- Commit Transaction ---
+            $conn->commit();
+            
+            echo json_encode(['success' => true, 'message' => 'Consultation saved and appointment completed.', 'encounter_id' => $new_id]);
+
+        } catch (Exception $e) {
+            // --- Rollback Transaction on Error ---
+            $conn->rollback();
+            echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
+        }
+        
+        exit();
+    }
+
+
+    // ==========================================================
+    // --- ADMISSIONS & DISCHARGE ACTIONS ---
     // ==========================================================
     if ($action == 'get_admissions') {
         $admissions = [];
         $sql = "
             SELECT 
-                adm.id, p.name AS patient_name, p.display_user_id, adm.admission_date,
+                adm.id, p.id as patient_id, p.name AS patient_name, p.display_user_id, adm.admission_date,
                 CASE
                     WHEN acc.type = 'room' THEN CONCAT('Room ', acc.number)
                     ELSE CONCAT(w.name, ' - Bed ', acc.number)
@@ -338,6 +475,71 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         echo json_encode(['success' => true, 'data' => $admissions]);
         exit();
     }
+
+    // --- NEW: Get details for discharge summary modal ---
+    if ($action == 'get_discharge_summary_details' && isset($_GET['admission_id'])) {
+        $admission_id = (int)$_GET['admission_id'];
+        $response = ['success' => false];
+        
+        $stmt = $conn->prepare("
+            SELECT 
+                p.name AS patient_name, a.admission_date,
+                dc.summary_text, dc.discharge_date
+            FROM admissions a
+            JOIN users p ON a.patient_id = p.id
+            LEFT JOIN discharge_clearance dc ON a.id = dc.admission_id
+            WHERE a.id = ? AND a.doctor_id = ?
+            LIMIT 1
+        ");
+        $stmt->bind_param("ii", $admission_id, $current_user_id);
+        $stmt->execute();
+        $data = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if ($data) {
+            $response['success'] = true;
+            $response['data'] = $data;
+        } else {
+            $response['message'] = 'Admission record not found or unauthorized.';
+        }
+        echo json_encode($response);
+        exit();
+    }
+    
+    // --- NEW: Save the discharge summary ---
+    if ($action == 'save_discharge_summary' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $admission_id = (int)($_POST['admission_id'] ?? 0);
+        $discharge_date = trim($_POST['discharge_date'] ?? '');
+        $summary_text = trim($_POST['summary_text'] ?? '');
+
+        if (empty($admission_id) || empty($discharge_date) || empty($summary_text)) {
+            echo json_encode(['success' => false, 'message' => 'All fields are required.']);
+            exit();
+        }
+
+        // This query updates the summary across all clearance steps for the admission.
+        // This is a workaround based on the current schema design.
+        $stmt = $conn->prepare("
+            UPDATE discharge_clearance 
+            SET summary_text = ?, discharge_date = ?, doctor_id = ? 
+            WHERE admission_id = ?
+        ");
+        $stmt->bind_param("ssii", $summary_text, $discharge_date, $current_user_id, $admission_id);
+        
+        if ($stmt->execute()) {
+            if ($stmt->affected_rows > 0) {
+                 log_activity($conn, $current_user_id, 'Discharge Summary Created', null, "For Admission ID: {$admission_id}");
+                echo json_encode(['success' => true, 'message' => 'Discharge summary saved successfully.']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'No matching admission record found to update. Please ensure clearance has been initiated.']);
+            }
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Database error: Could not save the summary.']);
+        }
+        $stmt->close();
+        exit();
+    }
+
 
     if ($action == 'get_available_accommodations') {
         $accommodations = [];
@@ -396,7 +598,7 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         $filter_date = $_GET['date'] ?? null;
 
         $sql = "
-            SELECT a.id, a.appointment_date, a.status, a.token_number, p.name AS patient_name, p.display_user_id AS patient_display_id
+            SELECT a.id, a.user_id, a.appointment_date, a.status, a.token_number, p.name AS patient_name, p.display_user_id AS patient_display_id
             FROM appointments a JOIN users p ON a.user_id = p.id
             WHERE a.doctor_id = ? 
         ";
@@ -580,6 +782,7 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         $patient_id = (int)($input['patient_id'] ?? 0);
         $notes = trim($input['notes'] ?? '');
         $items = $input['items'] ?? [];
+        $encounter_id = isset($input['encounter_id']) && !empty($input['encounter_id']) ? (int)$input['encounter_id'] : null;
 
         if (empty($patient_id) || empty($items)) {
             echo json_encode(['success' => false, 'message' => 'Patient and at least one medication are required.']);
@@ -588,8 +791,8 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
 
         $conn->begin_transaction();
         try {
-            $stmt_pr = $conn->prepare("INSERT INTO prescriptions (patient_id, doctor_id, prescription_date, notes, status) VALUES (?, ?, CURDATE(), ?, 'pending')");
-            $stmt_pr->bind_param("iis", $patient_id, $current_user_id, $notes);
+            $stmt_pr = $conn->prepare("INSERT INTO prescriptions (patient_id, doctor_id, prescription_date, notes, status, encounter_id) VALUES (?, ?, CURDATE(), ?, 'pending', ?)");
+            $stmt_pr->bind_param("iisi", $patient_id, $current_user_id, $notes, $encounter_id);
             $stmt_pr->execute();
             $prescription_id = $conn->insert_id;
             $stmt_pr->close();
@@ -928,9 +1131,15 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
     if ($action == 'get_lab_report_details' && isset($_GET['id'])) {
         $report_id = (int)$_GET['id'];
         $sql = "SELECT 
-                    lo.*, p.name AS patient_name, p.display_user_id AS patient_display_id
+                    lo.*, 
+                    p.name AS patient_name, 
+                    p.display_user_id AS patient_display_id,
+                    p.gender AS patient_gender,
+                    p.date_of_birth AS patient_dob,
+                    s.name AS staff_name
                 FROM lab_orders lo
                 JOIN users p ON lo.patient_id = p.id
+                LEFT JOIN users s ON lo.staff_id = s.id
                 WHERE lo.id = ? AND lo.doctor_id = ?";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("ii", $report_id, $current_user_id);
@@ -939,7 +1148,16 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         $data = $result->fetch_assoc();
         
         if ($data) {
-            // Assuming result_details is stored as JSON
+            // Calculate patient age
+            if ($data['patient_dob']) {
+                $birthDate = new DateTime($data['patient_dob']);
+                $today = new DateTime('today');
+                $data['patient_age'] = $birthDate->diff($today)->y;
+            } else {
+                $data['patient_age'] = 'N/A';
+            }
+
+            // Decode JSON result details
             if (!empty($data['result_details'])) {
                 $data['result_details'] = json_decode($data['result_details'], true);
             }
@@ -962,11 +1180,9 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
 
     // NEW Action: Create new lab order(s)
     if ($action == 'create_lab_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-        // Note: We get data from json_decode because the JS will send a JSON string
-        $input = json_decode(file_get_contents('php://input'), true);
-        
         $patient_id = (int)($input['patient_id'] ?? 0);
         $test_names = $input['test_names'] ?? [];
+        $encounter_id = isset($input['encounter_id']) && !empty($input['encounter_id']) ? (int)$input['encounter_id'] : null;
 
         if (empty($patient_id) || empty($test_names)) {
             echo json_encode(['success' => false, 'message' => 'Patient and at least one test name are required.']);
@@ -976,14 +1192,14 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         $conn->begin_transaction();
         try {
             $stmt = $conn->prepare(
-                "INSERT INTO lab_orders (patient_id, doctor_id, test_name, status, ordered_at) 
-                 VALUES (?, ?, ?, 'ordered', NOW())"
+                "INSERT INTO lab_orders (patient_id, doctor_id, test_name, status, ordered_at, encounter_id) 
+                 VALUES (?, ?, ?, 'ordered', NOW(), ?)"
             );
             
             foreach ($test_names as $test_name) {
                 $trimmed_test_name = trim($test_name);
                 if (!empty($trimmed_test_name)) {
-                    $stmt->bind_param("iis", $patient_id, $current_user_id, $trimmed_test_name);
+                    $stmt->bind_param("iisi", $patient_id, $current_user_id, $trimmed_test_name, $encounter_id);
                     $stmt->execute();
                 }
             }
@@ -1011,6 +1227,97 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
     // ==========================================================
     // --- END: LAB WORKFLOW UPDATE ---
     // ==========================================================
+    // ==========================================================
+    // --- MEDICAL RECORD ACTIONS ---
+    // ==========================================================
+    if ($action == 'get_patient_medical_record' && isset($_GET['patient_id'])) {
+        $patient_id = (int)$_GET['patient_id'];
+        $response = ['success' => false, 'data' => null];
+
+        try {
+            // 1. Get Patient Details
+            $stmt_details = $conn->prepare("SELECT name, display_user_id, gender, date_of_birth FROM users WHERE id = ?");
+            $stmt_details->bind_param("i", $patient_id);
+            $stmt_details->execute();
+            $details = $stmt_details->get_result()->fetch_assoc();
+            $stmt_details->close();
+
+            if (!$details) {
+                throw new Exception('Patient not found.');
+            }
+
+            // Calculate age
+            if ($details['date_of_birth']) {
+                $birthDate = new DateTime($details['date_of_birth']);
+                $today = new DateTime('today');
+                $details['age'] = $birthDate->diff($today)->y;
+            } else {
+                $details['age'] = 'N/A';
+            }
+
+            // 2. Get Admission History
+            $stmt_admissions = $conn->prepare("
+                SELECT adm.id, adm.admission_date, IF(adm.discharge_date IS NULL, 'Active', 'Discharged') as status,
+                CASE WHEN acc.type = 'room' THEN CONCAT('Room ', acc.number) ELSE CONCAT(w.name, ' - Bed ', acc.number) END AS room_bed
+                FROM admissions adm
+                LEFT JOIN accommodations acc ON adm.accommodation_id = acc.id
+                LEFT JOIN wards w ON acc.ward_id = w.id
+                WHERE adm.patient_id = ? ORDER BY adm.admission_date DESC
+            ");
+            $stmt_admissions->bind_param("i", $patient_id);
+            $stmt_admissions->execute();
+            $admissions = $stmt_admissions->get_result()->fetch_all(MYSQLI_ASSOC);
+            $stmt_admissions->close();
+
+            // 3. Get Prescription History
+            $stmt_prescriptions = $conn->prepare("SELECT id, prescription_date, status FROM prescriptions WHERE patient_id = ? ORDER BY prescription_date DESC");
+            $stmt_prescriptions->bind_param("i", $patient_id);
+            $stmt_prescriptions->execute();
+            $prescriptions = $stmt_prescriptions->get_result()->fetch_all(MYSQLI_ASSOC);
+            $stmt_prescriptions->close();
+
+            // 4. Get Lab Order History
+            $stmt_labs = $conn->prepare("SELECT id, test_name, ordered_at, status FROM lab_orders WHERE patient_id = ? ORDER BY ordered_at DESC");
+            $stmt_labs->bind_param("i", $patient_id);
+            $stmt_labs->execute();
+            $labs = $stmt_labs->get_result()->fetch_all(MYSQLI_ASSOC);
+            $stmt_labs->close();
+
+            // 5. Get Encounter History (UPDATED)
+            $stmt_encounters = $conn->prepare("
+                SELECT 
+                    pe.id, pe.encounter_date, pe.chief_complaint, 
+                    a.id as appointment_id, d.name as doctor_name
+                FROM patient_encounters pe
+                JOIN users d ON pe.doctor_id = d.id
+                LEFT JOIN appointments a ON pe.appointment_id = a.id
+                WHERE pe.patient_id = ? 
+                ORDER BY pe.encounter_date DESC
+            ");
+            $stmt_encounters->bind_param("i", $patient_id);
+            $stmt_encounters->execute();
+            $encounters = $stmt_encounters->get_result()->fetch_all(MYSQLI_ASSOC);
+            $stmt_encounters->close();
+
+            $response = [
+                'success' => true,
+                'data' => [
+                    'details' => $details,
+                    'admissions' => $admissions,
+                    'prescriptions' => $prescriptions,
+                    'labs' => $labs,
+                    'encounters' => $encounters // (UPDATED) Add encounters to the response
+                ]
+            ];
+
+        } catch (Exception $e) {
+            $response['message'] = $e->getMessage();
+        }
+
+        echo json_encode($response);
+        exit();
+    }
+
 
     // Fallback for any unknown action
     echo json_encode(['success' => false, 'message' => 'Invalid action specified.']);
@@ -1122,5 +1429,100 @@ function generatePrescriptionPdf($data) {
     $dompdf->setPaper('A4', 'portrait');
     $dompdf->render();
     $dompdf->stream("Prescription-".htmlspecialchars($data['patient_display_id']).".pdf", ["Attachment" => 0]);
+}
+
+/**
+ * NEW: Generates a Discharge Summary PDF and streams it to the browser.
+ * @param array $data The discharge summary data.
+ */
+function generateDischargeSummaryPdf($data) {
+    // --- Get image paths and convert to base64 ---
+    $medsync_logo_path = '../images/logo.png';
+    $hospital_logo_path = '../images/hospital.png';
+    $medsync_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($medsync_logo_path));
+    $hospital_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($hospital_logo_path));
+
+    // Calculate age
+    $age = 'N/A';
+    if (!empty($data['date_of_birth'])) {
+        $birthDate = new DateTime($data['date_of_birth']);
+        $today = new DateTime('today');
+        $age = $birthDate->diff($today)->y;
+    }
+
+    $html = '
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Discharge Summary</title>
+        <style>
+            @page { margin: 40px 50px; }
+            body { font-family: DejaVu Sans, sans-serif; font-size: 12px; color: #333; line-height: 1.6; }
+            .header-table { width: 100%; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+            .header-table .logo { width: 60px; vertical-align: middle; }
+            .hospital-details { text-align: center; }
+            .patient-details-box { border: 1px solid #ccc; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+            .patient-details-table { width: 100%; }
+            .section { margin-bottom: 25px; }
+            .section h3 { font-size: 1.2em; color: #16a085; border-bottom: 1px solid #1abc9c; padding-bottom: 5px; margin-bottom: 10px; }
+            .summary-text { text-align: justify; white-space: pre-wrap; }
+            .footer { position: fixed; bottom: -20px; left: 0px; right: 0px; height: 100px; }
+            .signature-area { margin-top: 50px; padding-top: 10px; border-top: 1px solid #333; text-align: right; }
+        </style>
+    </head>
+    <body>
+        <table class="header-table">
+            <tr>
+                <td style="width:25%;"><img src="' . $medsync_logo_base64 . '" alt="MedSync Logo" class="logo"></td>
+                <td style="width:50%;" class="hospital-details">
+                    <h1 style="margin:0;">Discharge Summary</h1>
+                    <h3 style="margin:0;">Calysta Health Institute</h3>
+                </td>
+                <td style="width:25%; text-align:right;"><img src="' . $hospital_logo_base64 . '" alt="Hospital Logo" class="logo"></td>
+            </tr>
+        </table>
+
+        <div class="patient-details-box">
+            <table class="patient-details-table">
+                <tr>
+                    <td style="width:50%;"><strong>Patient Name:</strong> ' . htmlspecialchars($data['patient_name']) . '</td>
+                    <td style="width:50%;"><strong>Patient ID:</strong> ' . htmlspecialchars($data['patient_display_id']) . '</td>
+                </tr>
+                <tr>
+                    <td><strong>Age / Gender:</strong> ' . $age . ' / ' . htmlspecialchars($data['gender']) . '</td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td><strong>Admission Date:</strong> ' . date("F j, Y, g:i a", strtotime($data['admission_date'])) . '</td>
+                    <td><strong>Discharge Date:</strong> ' . date("F j, Y", strtotime($data['discharge_date'])) . '</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h3>Doctor\'s Summary</h3>
+            <p class="summary-text">' . nl2br(htmlspecialchars($data['summary_text'])) . '</p>
+        </div>
+
+        <div class="footer">
+            <div class="signature-area">
+                <p><strong>Dr. ' . htmlspecialchars($data['doctor_name']) . '</strong><br>
+                ' . htmlspecialchars($data['specialty']) . '<br>
+                Reg. No: ' . htmlspecialchars($data['doctor_display_id']) . '</p>
+                <p style="font-size: 0.8em;">(Digitally Signed)</p>
+            </div>
+        </div>
+    </body>
+    </html>';
+
+    $options = new Options();
+    $options->set('isHtml5ParserEnabled', true);
+    $options->set('isRemoteEnabled', true); 
+    $dompdf = new Dompdf($options);
+    $dompdf->loadHtml($html);
+    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->render();
+    $dompdf->stream("Discharge-Summary-".htmlspecialchars($data['patient_display_id']).".pdf", ["Attachment" => 0]);
 }
 ?>

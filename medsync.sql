@@ -383,6 +383,7 @@ CREATE TABLE `lab_orders` (
   `patient_id` int(11) NOT NULL,
   `doctor_id` int(11) DEFAULT NULL,
   `staff_id` int(11) DEFAULT NULL COMMENT 'Staff member who processed the result',
+  `encounter_id` INT(11) NULL DEFAULT NULL,
   `ordered_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `test_name` varchar(255) NOT NULL,
   `test_date` date DEFAULT NULL,
@@ -444,6 +445,7 @@ CREATE TABLE `prescriptions` (
   `patient_id` int(11) NOT NULL,
   `doctor_id` int(11) NOT NULL,
   `admission_id` INT(11) DEFAULT NULL,
+  `encounter_id` INT(11) NULL DEFAULT NULL,
   `prescription_date` date NOT NULL,
   `status` enum('pending','dispensed','partial','cancelled') NOT NULL DEFAULT 'pending',
   `notes` text DEFAULT NULL,
@@ -574,4 +576,25 @@ CREATE TABLE `ip_blocks` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `ip_address` (`ip_address`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- NEW: Table structure for table `patient_encounters`
+--
+CREATE TABLE `patient_encounters` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `appointment_id` int(11) NOT NULL,
+  `patient_id` int(11) NOT NULL,
+  `doctor_id` int(11) NOT NULL,
+  `encounter_date` timestamp NOT NULL DEFAULT current_timestamp(),
+  `chief_complaint` text DEFAULT NULL,
+  `vitals` json DEFAULT NULL,
+  `soap_subjective` text DEFAULT NULL,
+  `soap_objective` text DEFAULT NULL,
+  `soap_assessment` text DEFAULT NULL,
+  `soap_plan` text DEFAULT NULL,
+  `diagnosis_icd10` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `appointment_id` (`appointment_id`),
+  CONSTRAINT `fk_encounter_appointment` FOREIGN KEY (`appointment_id`) REFERENCES `appointments` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
