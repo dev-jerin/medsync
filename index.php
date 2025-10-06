@@ -1,11 +1,11 @@
 <?php
-// 1. Include your configuration file.
-// This handles the database connection and starts the session.
+
+// 1. Include the configuration file to set up the database connection and session.
 require_once 'config.php';
 
 // 2. Check if a user is already logged in (This logic is preserved from your original file).
 if (isset($_SESSION['user_id'])) {
-    // Redirect based on user role.
+    // Redirection based on user role.
     switch ($_SESSION['role']) {
         case 'admin':   header("Location: admin/dashboard");   break;
         case 'doctor':  header("Location: doctor/dashboard");  break;
@@ -17,20 +17,20 @@ if (isset($_SESSION['user_id'])) {
 }
 
 // 3. Query for dynamic data for the "Impact" section.
-// The $conn object is available from your config.php file.
-// The role_id for 'user' is 1.
-$user_sql = "SELECT COUNT(id) AS user_count FROM users WHERE role_id = 1";
+// For Regular User
+$user_sql = "SELECT COUNT(id) AS user_count FROM users WHERE role_id = 1 AND is_active = 1";
 $user_result = $conn->query($user_sql);
 $user_count = ($user_result && $user_result->num_rows > 0) ? $user_result->fetch_assoc()['user_count'] : 0;
 
-// The role_id for 'doctor' is 2.
-$doctor_sql = "SELECT COUNT(id) AS doctor_count FROM users WHERE role_id = 2";
+// For doctor .
+$doctor_sql = "SELECT COUNT(id) AS doctor_count FROM users WHERE role_id = 2 AND is_active = 1";
 $doctor_result = $conn->query($doctor_sql);
 $doctor_count = ($doctor_result && $doctor_result->num_rows > 0) ? $doctor_result->fetch_assoc()['doctor_count'] : 0;
 
 // 4. Close the connection as it's no longer needed for rendering the rest of this page.
 $conn->close();
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -347,16 +347,16 @@ $conn->close();
                 <div class="footer-col">
                     <h4>Follow Us</h4>
                     <div class="social-links">
-                        <a href="#" aria-label="Facebook">
+                        <a href="https://facebook.com/" aria-label="Facebook">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" role="img"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"></path></svg>
                         </a>
-                        <a href="#" aria-label="Twitter">
+                        <a href="https://x.com/" aria-label="Twitter">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" role="img"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
                         </a>
-                        <a href="#" aria-label="Instagram">
+                        <a href="https://instagram.com" aria-label="Instagram">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" role="img"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.85s-.011 3.584-.069 4.85c-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07s-3.584-.012-4.85-.07c-3.252-.148-4.771-1.691-4.919-4.919-.058-1.265-.069-1.645-.069-4.85s.011-3.584.069-4.85c.149-3.225 1.664 4.771 4.919-4.919C8.416 2.175 8.796 2.163 12 2.163zm0 1.441c-3.117 0-3.482.01-4.694.063-2.433.11-3.58 1.1-3.69 3.69-.052 1.21-.062 1.556-.062 4.634s.01 3.424.062 4.634c.11 2.59 1.257 3.58 3.69 3.69 1.212.053 1.577.063 4.694.063s3.482-.01 4.694-.063c2.433-.11 3.58-1.1 3.69-3.69.052-1.21.062-1.556.062-4.634s-.01-3.424-.062-4.634c-.11-2.59-1.257-3.58-3.69-3.69C15.482 3.613 15.117 3.604 12 3.604zM12 8.25c-2.071 0-3.75 1.679-3.75 3.75s1.679 3.75 3.75 3.75 3.75-1.679 3.75-3.75S14.071 8.25 12 8.25zm0 6c-1.24 0-2.25-1.01-2.25-2.25S10.76 9.75 12 9.75s2.25 1.01 2.25 2.25S13.24 14.25 12 14.25zm6.36-7.18c-.414 0-.75.336-.75.75s.336.75.75.75.75-.336.75-.75-.336-.75-.75-.75z"></path></svg>
                         </a>
-                        <a href="#" aria-label="LinkedIn">
+                        <a href="https://linkedin.com/" aria-label="LinkedIn">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" role="img"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"></path></svg>
                         </a>
                     </div>
@@ -367,6 +367,7 @@ $conn->close();
             </div>
         </div>
     </footer>
+    <!-- Chatbot Integration -->
     <script> window.chtlConfig = { chatbotId: "4776578598" } </script>
     <script async data-id="4776578598" id="chtl-script" type="text/javascript" src="https://chatling.ai/js/embed.js"></script>
 
