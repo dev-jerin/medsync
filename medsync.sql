@@ -70,13 +70,6 @@ CREATE TABLE `users` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Initialize an admin user (Change password after first login) - change it with real data
---
-INSERT INTO `users` (`display_user_id`,`username`,`email`,`password`,`role_id`,`name`,`phone`,`is_active`) VALUES ('A0001','admin','admin@email.com','$2y$10$st0OkWHJKIYaSe7DxNNp2.X506p38taUUBSUT0y/pd2gfCGPDI/qO',4,'Admin','+910000000000',1);
-
-UPDATE `role_counters` SET `last_id` = 1 WHERE `role_prefix` = 'A';
-
---
 -- Table structure for table `activity_logs`
 --
 CREATE TABLE `activity_logs` (
@@ -118,33 +111,6 @@ CREATE TABLE `specialities` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Initialize specialities
---
-INSERT INTO `specialities` (`name`, `description`) VALUES
-('Anesthesiology', 'Focuses on perioperative care, developing anesthetic plans, and the administration of anesthetics.'),
-('Cardiology', 'Deals with disorders of the heart as well as some parts of the circulatory system.'),
-('Dermatology', 'Concerned with the diagnosis and treatment of diseases of the skin, hair, and nails.'),
-('Emergency Medicine', 'Focuses on the immediate decision making and action necessary to prevent death or any further disability.'),
-('Endocrinology', 'Deals with the diagnosis and treatment of diseases related to hormones.'),
-('Gastroenterology', 'Focuses on the digestive system and its disorders.'),
-('General Surgery', 'A surgical specialty that focuses on abdominal contents including esophagus, stomach, small intestine, large intestine, liver, pancreas, gallbladder, appendix and bile ducts, and often the thyroid gland.'),
-('Hematology', 'The study of blood, the blood-forming organs, and blood diseases.'),
-('Infectious Disease', 'Deals with the diagnosis and treatment of complex infections.'),
-('Nephrology', 'A specialty of medicine that concerns itself with the kidneys.'),
-('Neurology', 'Deals with disorders of the nervous system.'),
-('Obstetrics and Gynecology (OB/GYN)', 'Focuses on female reproductive health and childbirth.'),
-('Oncology', 'A branch of medicine that deals with the prevention, diagnosis, and treatment of cancer.'),
-('Ophthalmology', 'Deals with the diagnosis and treatment of eye disorders.'),
-('Orthopedics', 'The branch of surgery concerned with conditions involving the musculoskeletal system.'),
-('Otolaryngology (ENT)', 'A surgical subspecialty within medicine that deals with the surgical and medical management of conditions of the head and neck.'),
-('Pediatrics', 'The branch of medicine that involves the medical care of infants, children, and adolescents.'),
-('Psychiatry', 'The medical specialty devoted to the diagnosis, prevention, and treatment of mental disorders.'),
-('Pulmonology', 'A medical speciality that deals with diseases involving the respiratory tract.'),
-('Radiology', 'A medical specialty that uses medical imaging to diagnose and treat diseases within the bodies of animals and humans.'),
-('Rheumatology', 'A sub-specialty in internal medicine and pediatrics, devoted to the diagnosis and therapy of rheumatic diseases.'),
-('Urology', 'Focuses on surgical and medical diseases of the male and female urinary-tract system and the male reproductive organs.');
 
 --
 -- Table structure for table `doctors`
@@ -223,20 +189,6 @@ CREATE TABLE `blood_inventory` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `blood_group` (`blood_group`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Insert initial blood groups
---
-INSERT INTO `blood_inventory` (`blood_group`, `quantity_ml`, `low_stock_threshold_ml`) VALUES
-('A+', 15000, 5000),
-('A-', 8000, 3000),
-('B+', 12000, 5000),
-('B-', 7500, 3000),
-('AB+', 5000, 2000),
-('AB-', 3000, 1500),
-('O+', 20000, 7000),
-('O-', 10000, 4000);
-
 
 --
 -- Table structure for table `wards`
@@ -365,15 +317,6 @@ CREATE TABLE `system_settings` (
   `setting_value` TEXT NOT NULL,
   PRIMARY KEY (`setting_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
---
--- Initialize system settings for email (Change with real data)
---
-INSERT INTO `system_settings` (`setting_key`, `setting_value`) VALUES 
-('system_email', 'your_email@gmail.com'), 
-('gmail_app_password', 'your_gmail_app_password') 
-ON DUPLICATE KEY UPDATE `setting_value` = VALUES(`setting_value`);
-
 
 --
 -- Table structure for table `lab_orders` (Previously lab_results)
@@ -598,3 +541,141 @@ CREATE TABLE `patient_encounters` (
   KEY `appointment_id` (`appointment_id`),
   CONSTRAINT `fk_encounter_appointment` FOREIGN KEY (`appointment_id`) REFERENCES `appointments` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- DEMO DATA
+--
+--
+-- Initialize an admin user (Change password after first login) - change it with real data
+--
+INSERT INTO `users` (`display_user_id`,`username`,`email`,`password`,`role_id`,`name`,`phone`,`is_active`) VALUES ('A0001','admin','admin@email.com','$2y$10$st0OkWHJKIYaSe7DxNNp2.X506p38taUUBSUT0y/pd2gfCGPDI/qO',4,'Admin','+910000000000',1);
+
+UPDATE `role_counters` SET `last_id` = 1 WHERE `role_prefix` = 'A';
+
+--
+-- Initialize specialities
+--
+INSERT INTO `specialities` (`name`, `description`) VALUES
+('Anesthesiology', 'Focuses on perioperative care, developing anesthetic plans, and the administration of anesthetics.'),
+('Cardiology', 'Deals with disorders of the heart as well as some parts of the circulatory system.'),
+('Dermatology', 'Concerned with the diagnosis and treatment of diseases of the skin, hair, and nails.'),
+('Emergency Medicine', 'Focuses on the immediate decision making and action necessary to prevent death or any further disability.'),
+('Endocrinology', 'Deals with the diagnosis and treatment of diseases related to hormones.'),
+('Gastroenterology', 'Focuses on the digestive system and its disorders.'),
+('General Surgery', 'A surgical specialty that focuses on abdominal contents including esophagus, stomach, small intestine, large intestine, liver, pancreas, gallbladder, appendix and bile ducts, and often the thyroid gland.'),
+('Hematology', 'The study of blood, the blood-forming organs, and blood diseases.'),
+('Infectious Disease', 'Deals with the diagnosis and treatment of complex infections.'),
+('Nephrology', 'A specialty of medicine that concerns itself with the kidneys.'),
+('Neurology', 'Deals with disorders of the nervous system.'),
+('Obstetrics and Gynecology (OB/GYN)', 'Focuses on female reproductive health and childbirth.'),
+('Oncology', 'A branch of medicine that deals with the prevention, diagnosis, and treatment of cancer.'),
+('Ophthalmology', 'Deals with the diagnosis and treatment of eye disorders.'),
+('Orthopedics', 'The branch of surgery concerned with conditions involving the musculoskeletal system.'),
+('Otolaryngology (ENT)', 'A surgical subspecialty within medicine that deals with the surgical and medical management of conditions of the head and neck.'),
+('Pediatrics', 'The branch of medicine that involves the medical care of infants, children, and adolescents.'),
+('Psychiatry', 'The medical specialty devoted to the diagnosis, prevention, and treatment of mental disorders.'),
+('Pulmonology', 'A medical speciality that deals with diseases involving the respiratory tract.'),
+('Radiology', 'A medical specialty that uses medical imaging to diagnose and treat diseases within the bodies of animals and humans.'),
+('Rheumatology', 'A sub-specialty in internal medicine and pediatrics, devoted to the diagnosis and therapy of rheumatic diseases.'),
+('Urology', 'Focuses on surgical and medical diseases of the male and female urinary-tract system and the male reproductive organs.');
+
+--
+-- Insert initial blood groups
+--
+INSERT INTO `blood_inventory` (`blood_group`, `quantity_ml`, `low_stock_threshold_ml`) VALUES
+('A+', 15000, 5000),
+('A-', 8000, 3000),
+('B+', 12000, 5000),
+('B-', 7500, 3000),
+('AB+', 5000, 2000),
+('AB-', 3000, 1500),
+('O+', 20000, 7000),
+('O-', 10000, 4000);
+
+--
+-- Initialize system settings for email (Change with real data)
+--
+INSERT INTO `system_settings` (`setting_key`, `setting_value`) VALUES 
+('system_email', 'your_email@gmail.com'), 
+('gmail_app_password', 'your_gmail_app_password') 
+ON DUPLICATE KEY UPDATE `setting_value` = VALUES(`setting_value`);
+
+--
+-- Inserting department data.
+--
+INSERT INTO `departments` (`name`, `head_of_department_id`, `is_active`) VALUES
+('Anesthesiology', NULL, 1),
+('Cardiology', NULL, 1), 
+('Dermatology', NULL, 1),
+('Emergency Medicine', NULL, 1),
+('Endocrinology', NULL, 1),
+('Gastroenterology', NULL, 1),
+('General Medicine', NULL, 1),
+('General Surgery', NULL, 1),
+('Hematology', NULL, 1),
+('Infectious Disease', NULL, 1),
+('Intensive Care Unit (ICU)', NULL, 1),
+('Nephrology', NULL, 1),
+('Neurology', NULL, 1), 
+('Obstetrics and Gynecology (OB/GYN)', NULL, 1),
+('Oncology', NULL, 1),
+('Ophthalmology', NULL, 1),
+('Orthopedics', NULL, 1),
+('Otolaryngology (ENT)', NULL, 1),
+('Pediatrics', NULL, 1),
+('Pharmacy Services', NULL, 1),
+('Psychiatry', NULL, 1),
+('Pulmonology', NULL, 1),
+('Radiology and Imaging', NULL, 1),
+('Rheumatology', NULL, 1),
+('Urology', NULL, 1);
+
+-- Insert a comprehensive list of hospital wards
+INSERT INTO `wards` (`name`, `capacity`, `description`, `is_active`) VALUES
+('General Ward', 30, 'For general medical and post-surgical recovery patients.', 1),
+('Intensive Care Unit (ICU)', 12, 'For critically ill patients requiring intensive monitoring and care.', 1),
+('Pediatric Ward', 15, 'Dedicated care for infants, children, and adolescents.', 1),
+('Maternity Ward', 18, 'Provides care for women during pregnancy, childbirth, and the postpartum period.', 1),
+('Cardiology Ward', 20, 'Specialized unit for patients with acute and chronic heart conditions.', 1),
+('Neurology Ward', 16, 'For patients with disorders of the nervous system, including stroke and brain injuries.', 1),
+('Orthopedic Ward', 22, 'Focuses on patients recovering from musculoskeletal surgeries and injuries.', 1),
+('Oncology Ward', 14, 'Provides comprehensive care for patients undergoing cancer treatment.', 1),
+('Emergency Observation Unit', 10, 'For short-term observation of emergency patients before admission or discharge.', 1),
+('Geriatric Ward', 15, 'Specialized care tailored to the needs of elderly patients.', 1),
+('Psychiatric Ward', 12, 'Secure unit for the assessment and treatment of mental health conditions.', 1),
+('Surgical Ward', 25, 'For patients recovering from various surgical procedures.', 1),
+('Isolation Ward', 8, 'For patients with contagious diseases requiring isolation from others.', 1),
+ 
+
+--
+-- Insert comprehensive data for accommodations
+--
+INSERT INTO `accommodations` (`type`, `number`, `ward_id`, `status`, `patient_id`, `doctor_id`, `occupied_since`, `reserved_since`, `price_per_day`) VALUES
+-- General Ward (ward_id: 1) - Economy Beds
+('bed', 'GW-B01', 1, 'available', NULL, NULL, NULL, NULL, 1500.00),
+('bed', 'GW-B02', 1, 'available', NULL, NULL, NULL, NULL, 1500.00),
+('bed', 'GW-B03', 1, 'occupied', NULL, NULL, NULL, NULL, 1500.00),
+('bed', 'GW-B04', 1, 'cleaning', NULL, NULL, NULL, NULL, 1500.00),
+('bed', 'GW-B05', 1, 'available', NULL, NULL, NULL, NULL, 1500.00),
+-- Cardiology Ward (ward_id: 2) - Private Rooms and Semi-Private Beds
+('room', 'CW-R101', 2, 'available', NULL, NULL, NULL, NULL, 5500.00),
+('bed', 'CW-B01', 2, 'available', NULL, NULL, NULL, NULL, 2800.00),
+('bed', 'CW-B02', 2, 'available', NULL, NULL, NULL, NULL, 2800.00),
+-- Neurology Ward (ward_id: 3) - Standard Beds
+('bed', 'NW-B01', 3, 'available', NULL, NULL, NULL, NULL, 2200.00),
+('bed', 'NW-B02', 3, 'available', NULL, NULL, NULL, NULL, 2200.00),
+('bed', 'NW-B03', 3, 'available', NULL, NULL, NULL, NULL, 2200.00),
+-- Intensive Care Unit (ICU) (ward_id: 4) - Critical Care Beds
+('bed', 'ICU-B01', 4, 'occupied', NULL, NULL, NULL, NULL, 12000.00),
+('bed', 'ICU-B02', 4, 'available', NULL, NULL, NULL, NULL, 12000.00),
+('bed', 'ICU-B03', 4, 'cleaning', NULL, NULL, NULL, NULL, 12000.00),
+-- Pediatric Ward (ward_id: 5, assuming this ward exists)
+('room', 'PW-R201', 5, 'available', NULL, NULL, NULL, NULL, 4000.00),
+('room', 'PW-R202', 5, 'available', NULL, NULL, NULL, NULL, 4000.00),
+-- Deluxe Private Ward (ward_id: 6, assuming this ward exists)
+('room', 'DX-R301', 6, 'available', NULL, NULL, NULL, NULL, 9500.00),
+('room', 'DX-R302', 6, 'occupied', NULL, 2, '2025-10-06 15:00:00', NULL, 9500.00), -- VIP Patient
+('room', 'DX-R303', 6, 'available', NULL, NULL, NULL, NULL, 9500.00),
+-- Maternity Ward (ward_id: 7, assuming this ward exists)
+('room', 'MW-R401', 7, 'available', NULL, NULL, NULL, NULL, 6000.00),
+('room', 'MW-R402', 7, 'available', NULL, NULL, NULL, NULL, 6000.00);
