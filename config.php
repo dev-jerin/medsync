@@ -92,4 +92,6 @@ function customErrorHandler($severity, $message, $file, $line) {
 // Register our custom function as the default error handler for the application.
 set_error_handler("customErrorHandler");
 
+// Include reCAPTCHA configuration
+require_once __DIR__ . '/_private/recaptcha_config.php';
 ?>
