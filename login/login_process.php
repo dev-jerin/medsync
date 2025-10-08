@@ -21,6 +21,47 @@ if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST
     exit();
 }
 
+// --- reCAPTCHA Validation ---
+if (!isset($_POST['g-recaptcha-response']) || empty($_POST['g-recaptcha-response'])) {
+    $_SESSION['login_error'] = "Please complete the reCAPTCHA.";
+    // Persist form data
+    $_SESSION['form_data'] = $_POST;
+    unset($_SESSION['form_data']['password']);
+    header("Location: index.php");
+    exit();
+}
+
+$recaptcha_response = $_POST['g-recaptcha-response'];
+$recaptcha_secret = RECAPTCHA_SECRET_KEY;
+$recaptcha_url = 'https://www.google.com/recaptcha/api/siteverify';
+$recaptcha_data = [
+    'secret' => $recaptcha_secret,
+    'response' => $recaptcha_response,
+    'remoteip' => $_SERVER['REMOTE_ADDR'],
+];
+
+$options = [
+    'http' => [
+        'header' => "Content-type: application/x-www-form-urlencoded\r\n",
+        'method' => 'POST',
+        'content' => http_build_query($recaptcha_data),
+    ],
+];
+
+$context = stream_context_create($options);
+$result = file_get_contents($recaptcha_url, false, $context);
+$result_json = json_decode($result, true);
+
+if ($result_json['success'] !== true) {
+    $_SESSION['login_error'] = "reCAPTCHA verification failed. Please try again.";
+    // Persist form data
+    $_SESSION['form_data'] = $_POST;
+    unset($_SESSION['form_data']['password']);
+    header("Location: index.php");
+    exit();
+}
+
+
 // --- Form Data Retrieval ---
 $login_identifier = trim($_POST['username']); // Can be username, email, or user_id
 $password = $_POST['password'];

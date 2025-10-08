@@ -9,6 +9,17 @@ if (isset($_SESSION['user_id'])) {
     header("Location: ../{$role}/dashboard");
     exit();
 }
+
+// Retrieve persisted form data if it exists after a validation failure
+$form_data = $_SESSION['form_data'] ?? [];
+unset($_SESSION['form_data']);
+
+$name_value = isset($form_data['name']) ? htmlspecialchars($form_data['name']) : '';
+$username_value = isset($form_data['username']) ? htmlspecialchars($form_data['username']) : '';
+$email_value = isset($form_data['email']) ? htmlspecialchars($form_data['email']) : '';
+$phone_value = isset($form_data['phone']) ? htmlspecialchars($form_data['phone']) : '';
+$dob_value = isset($form_data['date_of_birth']) ? htmlspecialchars($form_data['date_of_birth']) : '';
+$gender_value = isset($form_data['gender']) ? htmlspecialchars($form_data['gender']) : '';
 ?>
 
 <!DOCTYPE html>
@@ -18,18 +29,15 @@ if (isset($_SESSION['user_id'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create Your Account - MedSync</title>
     
-    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
-    <!-- Favicon -->
     <link rel="apple-touch-icon" sizes="180x180" href="../images/favicon/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="../images/favicon/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="../images/favicon/favicon-16x16.png">
     <link rel="manifest" href="../images/favicon/site.webmanifest">
 
-    <!-- Stylesheets -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="../main/styles.css"> 
     <link rel="stylesheet" href="styles.css">
@@ -72,6 +80,7 @@ if (isset($_SESSION['user_id'])) {
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
     </style>
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 <body>
 
@@ -131,39 +140,39 @@ if (isset($_SESSION['user_id'])) {
                         </div>
 
                         <div class="form-group">
-                            <input type="text" id="name" name="name" class="form-control" placeholder=" " required>
+                            <input type="text" id="name" name="name" class="form-control" placeholder=" " required value="<?php echo $name_value; ?>">
                             <label for="name" class="form-label">Full Name</label>
                         </div>
                         
                         <div class="form-group">
-                            <input type="text" id="username" name="username" class="form-control" placeholder=" " required>
+                            <input type="text" id="username" name="username" class="form-control" placeholder=" " required value="<?php echo $username_value; ?>">
                             <label for="username" class="form-label">Username</label>
                             <div id="username-availability" class="availability-message"></div>
                         </div>
 
                         <div class="form-group">
-                            <input type="email" id="email" name="email" class="form-control" placeholder=" " required>
+                            <input type="email" id="email" name="email" class="form-control" placeholder=" " required value="<?php echo $email_value; ?>">
                             <label for="email" class="form-label">Email Address</label>
                             <div id="email-availability" class="availability-message"></div>
                         </div>
 
                         <div class="form-group">
-                            <input type="tel" id="phone" name="phone" class="form-control" placeholder=" " pattern="^\+91[0-9]{10}$" title="Format: +911234567890" required>
+                            <input type="tel" id="phone" name="phone" class="form-control" placeholder=" " pattern="^\+91[0-9]{10}$" title="Format: +911234567890" required value="<?php echo $phone_value; ?>">
                             <label for="phone" class="form-label">Phone Number (e.g., +91...)</label>
                             <div id="phone-message" class="availability-message"></div>
                         </div>
 
                         <div class="form-group-row">
                             <div class="form-group">
-                                <input type="date" id="date_of_birth" name="date_of_birth" class="form-control" placeholder=" " max="<?php echo date('Y-m-d'); ?>" required>
+                                <input type="date" id="date_of_birth" name="date_of_birth" class="form-control" placeholder=" " max="<?php echo date('Y-m-d'); ?>" required value="<?php echo $dob_value; ?>">
                                 <label for="date_of_birth" class="form-label">Date of Birth</label>
                             </div>
                             <div class="form-group">
                                 <select id="gender" name="gender" class="form-control" required>
                                     <option value="" disabled selected></option>
-                                    <option value="Male">Male</option>
-                                    <option value="Female">Female</option>
-                                    <option value="Other">Other</option>
+                                    <option value="Male" <?php if ($gender_value === 'Male') echo 'selected'; ?>>Male</option>
+                                    <option value="Female" <?php if ($gender_value === 'Female') echo 'selected'; ?>>Female</option>
+                                    <option value="Other" <?php if ($gender_value === 'Other') echo 'selected'; ?>>Other</option>
                                 </select>
                                 <label for="gender" class="form-label">Gender</label>
                             </div>
@@ -189,6 +198,10 @@ if (isset($_SESSION['user_id'])) {
                             <div class="availability-message"></div>
                         </div>
                         
+                        <div class="form-group">
+                            <div class="g-recaptcha" data-sitekey="<?php echo RECAPTCHA_SITE_KEY; ?>"></div>
+                        </div>
+
                         <button type="submit" class="btn btn-primary btn-full-width">Create Account</button>
                     </form>
                 </div>
@@ -196,7 +209,6 @@ if (isset($_SESSION['user_id'])) {
         </div>
     </main>
     
-    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
 
@@ -212,4 +224,3 @@ if (isset($_SESSION['user_id'])) {
     <script src="script.js"></script>
 </body>
 </html>
-

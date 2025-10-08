@@ -8,6 +8,11 @@ if (isset($_SESSION['user_id'])) {
     header("Location: ../" . $_SESSION['role'] . "/dashboard");
     exit();
 }
+
+// Retrieve persisted form data if it exists
+$form_data = $_SESSION['form_data'] ?? [];
+unset($_SESSION['form_data']);
+$username_value = isset($form_data['username']) ? htmlspecialchars($form_data['username']) : '';
 ?>
 
 <!DOCTYPE html>
@@ -17,22 +22,17 @@ if (isset($_SESSION['user_id'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - MedSync</title>
     
-    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-    <!-- Favicon -->
     <link rel="apple-touch-icon" sizes="180x180" href="../images/favicon/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="../images/favicon/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="../images/favicon/favicon-16x16.png">
     <link rel="manifest" href="../images/favicon/site.webmanifest">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
-    <!-- Stylesheets -->
-    <link rel="stylesheet" href="../main/styles.css"> <!-- Main styles for header/footer -->
-    <link rel="stylesheet" href="styles.css"> <!-- Page-specific styles -->
-    <style>
+    <link rel="stylesheet" href="../main/styles.css"> <link rel="stylesheet" href="styles.css"> <style>
         .divider {
             display: flex;
             align-items: center;
@@ -71,10 +71,10 @@ if (isset($_SESSION['user_id'])) {
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
     </style>
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 <body>
 
-    <!-- Header -->
     <header class="header" id="header">
         <nav class="container navbar">
             <a href="../index.php" class="logo">
@@ -89,7 +89,6 @@ if (isset($_SESSION['user_id'])) {
 
     <main class="auth-page">
         <div class="auth-container">
-            <!-- Left Panel: Branding & Illustration (visible only to desktop or supported device) -->
             <div class="auth-panel">
                 <img src="../images/doctor.png" alt="Medical professionals collaborating" class="auth-image">
                 <div class="auth-panel-overlay">
@@ -98,7 +97,6 @@ if (isset($_SESSION['user_id'])) {
                 </div>
             </div>
 
-            <!-- Right Panel: Login Form -->
             <div class="auth-form-wrapper">
                 <div class="auth-form-container">
                     <div class="auth-header">
@@ -125,12 +123,11 @@ if (isset($_SESSION['user_id'])) {
                     }
                     ?>
 
-                    <!-- FORM SUBMITTED TO login_process.php -->
                     <form action="login_process.php" method="POST">
                         <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                         
                         <div class="form-group">
-                            <input type="text" id="username" name="username" class="form-control" placeholder=" " required>
+                            <input type="text" id="username" name="username" class="form-control" placeholder=" " required value="<?php echo $username_value; ?>">
                             <label for="username" class="form-label">Username, Email, or User ID</label>
                         </div>
 
@@ -138,6 +135,10 @@ if (isset($_SESSION['user_id'])) {
                             <input type="password" id="password" name="password" class="form-control" placeholder=" " required>
                             <label for="password" class="form-label">Password</label>
                             <i class="fas fa-eye-slash password-toggle-icon" id="togglePassword"></i>
+                        </div>
+
+                        <div class="form-group">
+                            <div class="g-recaptcha" data-sitekey="<?php echo RECAPTCHA_SITE_KEY; ?>"></div>
                         </div>
 
                         <div class="forgot-password-link">
@@ -162,7 +163,6 @@ if (isset($_SESSION['user_id'])) {
         </div>
     </main>
     
-    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
 
@@ -181,4 +181,3 @@ if (isset($_SESSION['user_id'])) {
     <script src="script.js"></script>
 </body>
 </html>
-
