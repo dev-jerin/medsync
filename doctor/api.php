@@ -10,6 +10,7 @@
  * - UPDATED: Includes handler for My Patients page.
  * - Includes handlers for Admissions.
  * - Includes handlers for Prescriptions (get, search, add).
+ * - UPDATED: Added full handlers for the automated Discharge Process.
  */
 require_once '../config.php'; // Contains the database connection ($conn)
 require_once '../vendor/autoload.php'; // Add this line for Dompdf
@@ -154,7 +155,7 @@ if (isset($_GET['action']) && $_GET['action'] == 'download_prescription') {
     exit();
 }
 
-// --- NEW: DISCHARGE SUMMARY PDF DOWNLOAD HANDLER ---
+// --- DISCHARGE SUMMARY PDF DOWNLOAD HANDLER ---
 if (isset($_GET['action']) && $_GET['action'] == 'download_discharge_summary') {
     if (empty($_GET['admission_id'])) {
         die('Admission ID is required.');
@@ -299,7 +300,7 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
                 (SELECT COUNT(DISTINCT a.id) 
                  FROM admissions a 
                  JOIN discharge_clearance dc ON a.id = dc.admission_id 
-                 WHERE a.doctor_id = ? AND a.discharge_date IS NULL AND dc.is_cleared = 0) AS pending_discharges
+                 WHERE a.doctor_id = ? AND a.discharge_date IS NULL) AS pending_discharges
         ";
         $stmt = $conn->prepare($stats_sql);
         $stmt->bind_param("iii", $current_user_id, $current_user_id, $current_user_id);
@@ -348,6 +349,127 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         echo json_encode($response);
         exit();
     }
+    
+    // --- START: ADDED CODE FOR DISCHARGE PROCESS ---
+    
+    // Action: Get all active and completed discharge requests for the 'Discharge' page
+    if ($action == 'get_discharge_requests') {
+        $requests = [];
+        // This query fetches all admissions that have a corresponding entry in discharge_clearance,
+        // which means the discharge process has been started for them.
+        $sql = "
+            SELECT 
+                a.id AS admission_id,
+                p.name AS patient_name,
+                p.display_user_id,
+                dc_summary.initiated_at, -- Use the earliest creation time as the initiation time
+                CASE
+                    WHEN a.discharge_date IS NOT NULL THEN 'Completed'
+                    WHEN (SELECT COUNT(*) FROM discharge_clearance WHERE admission_id = a.id AND is_cleared = 0) = 0 THEN 'Ready for Discharge'
+                    ELSE 'Pending'
+                END AS status,
+                CASE 
+                    WHEN acc.type = 'room' THEN CONCAT('Room ', acc.number)
+                    ELSE CONCAT(w.name, ' - Bed ', acc.number)
+                END AS room_bed
+            FROM admissions a
+            JOIN users p ON a.patient_id = p.id
+            LEFT JOIN accommodations acc ON a.accommodation_id = acc.id
+            LEFT JOIN wards w ON acc.ward_id = w.id
+            JOIN (
+                SELECT admission_id, MIN(created_at) as initiated_at 
+                FROM discharge_clearance 
+                GROUP BY admission_id
+            ) dc_summary ON a.id = dc_summary.admission_id
+            WHERE a.doctor_id = ?
+            ORDER BY 
+                CASE 
+                    WHEN a.discharge_date IS NULL THEN 0 ELSE 1 
+                END, -- Show active requests first
+                dc_summary.initiated_at DESC
+        ";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $current_user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $requests = $result->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+        echo json_encode(['success' => true, 'data' => $requests]);
+        exit();
+    }
+
+    // Action: Initiate the discharge process for an admitted patient
+    if ($action == 'initiate_discharge' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $admission_id = (int)($_POST['admission_id'] ?? 0);
+
+        if (empty($admission_id)) {
+            echo json_encode(['success' => false, 'message' => 'Admission ID is required.']);
+            exit();
+        }
+
+        $conn->begin_transaction();
+        try {
+            // Check if discharge has already been initiated
+            $stmt_check = $conn->prepare("SELECT id FROM discharge_clearance WHERE admission_id = ?");
+            $stmt_check->bind_param("i", $admission_id);
+            $stmt_check->execute();
+            if ($stmt_check->get_result()->num_rows > 0) {
+                throw new Exception('Discharge process has already been initiated for this admission.');
+            }
+            $stmt_check->close();
+
+            // Insert the three required clearance steps
+            $steps = ['nursing', 'pharmacy', 'billing'];
+            $stmt_insert = $conn->prepare("INSERT INTO discharge_clearance (admission_id, clearance_step) VALUES (?, ?)");
+            foreach ($steps as $step) {
+                $stmt_insert->bind_param("is", $admission_id, $step);
+                $stmt_insert->execute();
+            }
+            $stmt_insert->close();
+            
+            log_activity($conn, $current_user_id, 'Discharge Initiated', null, "For Admission ID: {$admission_id}");
+
+            $conn->commit();
+            echo json_encode(['success' => true, 'message' => 'Discharge process initiated. Departments have been notified.']);
+
+        } catch (Exception $e) {
+            $conn->rollback();
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    // Action: Get the status of each clearance step for a specific request
+    if ($action == 'get_discharge_status' && isset($_GET['admission_id'])) {
+        $admission_id = (int)$_GET['admission_id'];
+        $response = ['success' => false];
+
+        $sql = "
+            SELECT 
+                dc.clearance_step, dc.is_cleared, dc.cleared_at, u.name AS cleared_by
+            FROM discharge_clearance dc
+            LEFT JOIN users u ON dc.cleared_by_user_id = u.id
+            WHERE dc.admission_id = ?
+            ORDER BY FIELD(dc.clearance_step, 'nursing', 'pharmacy', 'billing')
+        ";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $admission_id);
+        $stmt->execute();
+        $status_data = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        if ($status_data) {
+            $response['success'] = true;
+            $response['data'] = $status_data;
+        } else {
+            $response['message'] = 'No clearance details found. The process may not have been initiated.';
+        }
+        echo json_encode($response);
+        exit();
+    }
+    
+    // --- END: ADDED CODE FOR DISCHARGE PROCESS ---
+
 
     // ==========================================================
     // --- PATIENT ENCOUNTER ACTIONS ---
@@ -476,7 +598,7 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         exit();
     }
 
-    // --- NEW: Get details for discharge summary modal ---
+    // --- Get details for discharge summary modal ---
     if ($action == 'get_discharge_summary_details' && isset($_GET['admission_id'])) {
         $admission_id = (int)$_GET['admission_id'];
         $response = ['success' => false];
@@ -506,7 +628,7 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         exit();
     }
     
-    // --- NEW: Save the discharge summary ---
+    // --- Save the discharge summary ---
     if ($action == 'save_discharge_summary' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $admission_id = (int)($_POST['admission_id'] ?? 0);
         $discharge_date = trim($_POST['discharge_date'] ?? '');
@@ -518,7 +640,6 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         }
 
         // This query updates the summary across all clearance steps for the admission.
-        // This is a workaround based on the current schema design.
         $stmt = $conn->prepare("
             UPDATE discharge_clearance 
             SET summary_text = ?, discharge_date = ?, doctor_id = ? 
@@ -967,7 +1088,6 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
     }
 
     if ($action == 'updatePassword') {
-        // ADDED: A try...catch block to handle errors and send proper JSON responses
         try {
             $current_password = $_POST['current_password'];
             $new_password = $_POST['new_password'];
@@ -980,7 +1100,6 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
             }
 
             $stmt = $conn->prepare("SELECT password FROM users WHERE id = ?");
-            // CHANGED: Use the correct session variable '$current_user_id' instead of '$user_id'
             $stmt->bind_param("i", $current_user_id);
             $stmt->execute();
             $result = $stmt->get_result()->fetch_assoc();
@@ -989,7 +1108,6 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
             if ($result && password_verify($current_password, $result['password'])) {
                 $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
                 $stmt_update = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
-                // CHANGED: Use the correct session variable here as well
                 $stmt_update->bind_param("si", $hashed_password, $current_user_id);
                 
                 if ($stmt_update->execute()) {
@@ -1003,7 +1121,6 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
                 throw new Exception('Incorrect current password.');
             }
         } catch (Exception $e) {
-            // This 'catch' block ensures errors are sent back as JSON
             echo json_encode(['success' => false, 'message' => $e->getMessage()]);
         }
         exit();
@@ -1027,7 +1144,6 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
                 AND u.id != ?";
                 
         $stmt = $conn->prepare($sql);
-        // CORRECTED: The type string now has 5 characters ("iissi") to match the 5 variables.
         $stmt->bind_param("iissi", $current_user_id, $current_user_id, $term, $term, $current_user_id);
         $stmt->execute();
         $users = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);

@@ -1,4 +1,7 @@
 <?php
+// This file is already correctly structured for the discharge process.
+// No changes were needed.
+
 // Include the backend logic for session management and data retrieval.
 require_once 'api.php';
 ?>
