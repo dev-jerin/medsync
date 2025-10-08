@@ -1778,7 +1778,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $stmt->close();
                     break;
 
-                case 'generateInvoice':
+                 case 'generateInvoice':
                     $conn->begin_transaction();
                     $transaction_active = true;
                     try {
@@ -1787,6 +1787,17 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         }
                         $admission_id = (int)$_POST['admission_id'];
                         
+                        // --- START: THIS IS THE FIX ---
+                        // Check if an unpaid invoice already exists for this admission
+                        $stmt_check = $conn->prepare("SELECT id FROM transactions WHERE admission_id = ? AND status = 'pending'");
+                        $stmt_check->bind_param("i", $admission_id);
+                        $stmt_check->execute();
+                        if ($stmt_check->get_result()->num_rows > 0) {
+                            throw new Exception("An unpaid invoice already exists for this admission. Please process the existing one.");
+                        }
+                        $stmt_check->close();
+                        // --- END: THIS IS THE FIX ---
+
                         $stmt_adm = $conn->prepare("
                             SELECT a.patient_id, a.admission_date, COALESCE(a.discharge_date, NOW()) as effective_discharge_date, acc.price_per_day
                             FROM admissions a LEFT JOIN accommodations acc ON a.accommodation_id = acc.id
@@ -1836,7 +1847,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $new_invoice_id = $conn->insert_id;
                         $stmt_insert->close();
                         
-                        // UPDATED: Added more context to log
                         log_activity($conn, $user_id, 'generate_invoice', $admission['patient_id'], "Generated invoice #{$new_invoice_id} for admission #{$admission_id}. Amount: ₹{$total_amount}.");
                         
                         $conn->commit();
