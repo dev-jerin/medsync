@@ -147,7 +147,7 @@ git clone https://github.com/dev-jerin/medsync.git
 ### 3. Configure the Application
 1. Update the admin details in database for initial login as a new admin.
 2.  Update your system email and Gmail App Password in the `system_settings` table in the database for PHPMailer to work.
-3. Go to [Firebse Console](https://console.firebase.google.com/) and enable google authentication.
+3. Go to [Firebase Console](https://console.firebase.google.com/) and enable google authentication.
 4.  Add your Firebase configuration to `_private/firebase_config.php`.
 ```
 <?php
@@ -185,7 +185,7 @@ You can host this for free with the help of [infinityfree](https://www.infinityf
 ## 🚀 Usage
 Open XAMPP and start Apache and MySQL.
 
-Open your browser and navigate to http://localhost/medsync/. 
+Open your browser and navigate to http://localhost/medsync/ (URL may change based on port you use). 
 
 Register a new account (requires email-based OTP verification) or log in with the default admin credentials (admin / password) to access the admin dashboard.
 
