@@ -1,19 +1,63 @@
 # MedSync Healthcare Platform
 
-MedSync is a state-of-the-art, web-based Healthcare Information System (HIS) designed to streamline hospital operations, enhance patient care, and improve administrative efficiency for medium to large hospitals. Built with a robust technology stack, it automates critical workflows including appointment scheduling, live token tracking, billing, prescription management, admissions, and discharges. The platform provides a secure, responsive, and user-friendly interface for Administrators, Doctors, Staff, and Patients, ensuring tailored functionality and seamless communication across all departments.
+<p align="center">
+  <img src="images/logo.png" alt="MedSync Logo" width="200">
+</p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/PHP-8.3%2B-blue?style=for-the-badge&logo=php" alt="PHP Version">
+  <img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg?style=for-the-badge" alt="License">
+  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge" alt="PRs Welcome">
+  <img src="https://img.shields.io/github/issues/dev-jerin/medsync?style=for-the-badge" alt="GitHub issues">
+  <img src="https://img.shields.io/github/stars/dev-jerin/medsync?style=for-the-badge" alt="GitHub stars">
+  <img src="https://img.shields.io/badge/Status-In--Development-orange?style=for-the-badge" alt="Project Status">
+</p>
+
+<p align="center">
+  <strong><a href="https://medsync.great-site.net/">View Live Demo</a></strong>
+</p>
+
+![Home page](docs/screenshots/home.png)
+
+<p align="center">
+  <strong>MedSync is a state-of-the-art, web-based Healthcare Information System (HIS) designed to streamline hospital operations, enhance patient care, and improve administrative efficiency.</strong>
+</p>
+
+<p align="center">
+    <a href="#-key-features">Key Features</a> •
+    <a href="#-technology-stack">Technology Stack</a> •
+    <a href="#-user-roles--functionalities">User Roles</a> •
+    <a href="#-installation-and-configuration">Installation</a> •
+    <a href="#-usage">Usage</a> •
+    <a href="#-contributing">Contribute Now</a>
+</p>
+
+
+MedSync is a comprehensive, web-based platform built to automate critical hospital workflows, including appointment scheduling, live token tracking, billing, prescription management, admissions, and discharges. The platform provides a secure, responsive, and user-friendly interface for Administrators, Doctors, Staff, and Patients, ensuring tailored functionality and seamless communication across all departments.
+
+---
 ## ✨ Key Features
 
 * **Role-Based Access Control (RBAC)**: Four distinct user roles (Administrator, Doctor, Staff, Patient) with specific permissions and tailored dashboards to ensure data security and operational efficiency.
-* **Comprehensive User Management**: Secure OTP-based registration and password resets via email, session management with a 30-minute timeout, and detailed audit logs for critical actions. Administrators and Staff have designated user management capabilities.
-* **Dynamic Appointment & Token System**: Real-time appointment booking based on doctor availability, a "Search Doctor" function, and a flexible live token system for queue management. The system accommodates late arrivals without disrupting the queue flow.
-* **Automated & Enhanced Discharge Process**: A multi-step, sequential workflow initiated by a doctor and cleared by nursing and pharmacy teams before final bill generation and settlement. Discharge summaries and related documents are automatically generated and emailed to the patient.
-* **Integrated Healthcare Services**: Digital prescription management, secure access to patient medical records, and management of lab results.
-* **Resource & Inventory Management**: A color-coded interface to track bed availability (available, occupied, reserved, cleaning) and real-time monitoring of medicine and blood inventories with low-stock alerts.
-* **Robust Notification System**: Automated email and system alerts for appointments, billing, discharges, and other critical events, powered by PHPMailer.
-* **Advanced Security Protocols**: Measures include password hashing, CSRF token protection for all forms, prepared statements to prevent SQL injection, and secure session management.
-* **Modern UI/UX**: A responsive and intuitive design combining glassmorphism and neumorphism, enhanced with GSAP and AOS animations for a professional and smooth user experience.
-* **In-depth Reporting**: Generation of comprehensive reports on revenue, bed occupancy, and overall hospital performance, which can be exported to PDF.
+* **Comprehensive User Management**:
+    * Secure user registration with OTP email verification and Google Sign-In options.
+    * Password reset functionality with expiring OTPs sent via email.
+    * Sequential and role-prefixed User ID generation (e.g., `U0001`, `D0001`).
+    * Detailed audit logs for all critical system actions.
+* **Dynamic Appointment & Token System**:
+    * Real-time appointment booking based on doctor availability and a "Search Doctor" function.
+    * A flexible live token system for efficient queue management.
+* **Automated Discharge Process**: A multi-step workflow initiated by doctors and cleared sequentially by nursing and pharmacy teams before final bill generation and settlement. Discharge summaries are automatically generated as PDFs and can be emailed to the patient.
+* **Integrated Healthcare Services**:
+    * Digital prescription management with inventory checks.
+    * Secure access to patient medical records, including lab results, prescriptions, and admission history.
+    * Generation of downloadable PDF lab reports and discharge summaries.
+* **Resource & Inventory Management**:
+    * Color-coded interface to track bed availability (available, occupied, cleaning).
+    * Real-time monitoring of medicine and blood inventories with low-stock alerts.
+* **Robust Notification System**: Automated email and system alerts for appointments, billing, password resets, and other critical events, powered by **PHPMailer**.
+* **Advanced Security Protocols**: Implements password hashing, CSRF token protection, prepared statements to prevent SQL injection, Google reCAPTCHA, and secure session management.
+* **In-depth Reporting**: Generation of comprehensive PDF reports on revenue, bed occupancy, and patient statistics for administrators.
 
 ---
 
@@ -21,16 +65,14 @@ MedSync is a state-of-the-art, web-based Healthcare Information System (HIS) des
 
 * **Backend**: PHP
 * **Database**: MySQL
-* **Frontend**: HTML, CSS (no frameworks), JavaScript
-* **UI/UX Libraries**:
-    * **GSAP**: For advanced animations.
-    * **AOS (Animate On Scroll)**: For scroll-based animations.
-* **Email Notifications**: PHPMailer
-* **PDF Generation**: dompdf
-* **Server Environment**: XAMPP
-* **Icons & Fonts**:
-    * **Font Awesome**: For iconography.
-    * **Poppins**: Primary font for readability.
+* **Frontend**: HTML, CSS (custom styles, no frameworks), JavaScript
+* **Backend Libraries**:
+    * **PHPMailer**: For sending all system emails (OTP, notifications, etc.).
+    * **dompdf**: For generating PDF documents like invoices and reports.
+    * **Firebase PHP JWT**: For verifying Google Sign-In tokens on the backend.
+* **Authentication**: Google Firebase Authentication (for Google Sign-In)
+* **Security**: Google reCAPTCHA
+* **Server Environment**: XAMPP with Apache
 
 ---
 
@@ -41,129 +83,185 @@ The platform supports four distinct user roles, each with a dedicated dashboard 
 ### **Patient**
 
 * **Appointments**: Book, view live token status, and cancel appointments.
-* **Medical Information**: Access personal prescriptions, bills, and lab results, with options to download PDFs.
-* **Profile Management**: Edit personal details and manage account security.
-* **Communication**: Receive system notifications and submit feedback.
+* **Medical Information**: Access and download personal prescriptions, bills, lab results, and discharge summaries as PDFs.
+* **Profile Management**: Edit personal details and manage account security settings.
+* **Communication**: Receive system notifications.
+
+![User Dashboard](docs/screenshots/user_dashboard.png)
 
 ### **Doctor**
 
-* **Patient Care**: Manage patient admissions, appointments, and prescriptions. Can add medications and tests during discharge.
-* **Discharge Process**: Initiate patient discharge requests, which triggers the automated multi-step clearance process.
-* **Record Management**: Access and manage patient medical records and input lab results.
+* **Patient Care**: Manage patient admissions, appointments, and prescriptions.
+* **Discharge Process**: Initiate patient discharge requests, triggering the automated multi-step clearance process.
+* **Record Management**: Access patient medical records, view history, and input lab results.
 * **Scheduling**: Manage personal availability and define appointment time slots.
+
+![Doctor Dashboard](docs/screenshots/doctor_dashboard.png)
 
 ### **Staff**
 
-* **User Management**: Add, edit, and remove patient and doctor accounts.
-* **Admissions & Discharge**: Manage the full admission process and execute the multi-step discharge confirmation, including nursing and pharmacy clearances, bill settlement, and final physical discharge.
-* **Medication Dispensing**: View pending prescriptions, mark medications as 'given' or 'not available', and generate corresponding bills.
+* **User Management**: Add, edit, and remove Patient and Doctor accounts.
+* **Admissions & Discharge**: Manage the full admission process and execute multi-step discharge confirmations (nursing, pharmacy, billing).
+* **Medication Dispensing**: View pending prescriptions and generate corresponding bills.
 * **Inventory & Resource Management**: Track and update the status of beds, medicines, and blood inventory.
-* **Shift Management**: View assigned work shifts.
+* **Live Tokens**: Monitor live token queues for doctors.
+
+![staff Dashboard](docs/screenshots/staff_dashboard.png)
 
 ### **Administrator**
 
-* **Comprehensive User Management**: Add, edit, and remove all user accounts, including other admins, doctors, and staff. Can also perform bulk user uploads via CSV.
-* **System Configuration**: Manage system-wide settings, including schedules, pricing, and ward/room details.
-* **Reporting & Auditing**: Generate detailed reports on revenue and resource usage, and view activity logs for all critical system actions.
-* **Staff Management**: Assign and manage staff shifts.
+* **Comprehensive User Management**: Add, edit, and remove all user accounts, including other admins, doctors, and staff.
+* **System Configuration**: Manage system-wide settings like departments, wards, and email configuration.
+* **Reporting & Auditing**: Generate detailed financial, patient, and resource reports, and view activity logs for all critical system actions.
+* **Security**: Manage IP blocking and view login histories.
 * **System Maintenance**: Perform database backups directly from the dashboard.
 
----
+![Admin Dashboard](docs/screenshots/admin_dashboard.png)
 
+---
 ## 🛠️ Installation and Configuration
 
 Follow these steps to set up the MedSync Healthcare Platform locally.
 
 ### **Prerequisites**
 
-* XAMPP (with PHP >= 8.3, MySQL >= 8.0)
+Make sure you have these :-
+* [XAMPP](https://www.apachefriends.org/download.html)
+* [Composer](https://getcomposer.org/)
+* [Git](https://git-scm.com/downloads)
+* [VS Code](https://code.visualstudio.com/download) or any other edittors.
 
 ### **1. Clone the Repository**
 
+1. Go to `\xampp\htdocs` and clone the file there
 ```bash
-git clone [https://github.com/your-username/medsync-healthcare-platform.git](https://github.com/your-username/medsync-healthcare-platform.git)
-cd medsync-healthcare-platform
+git clone https://github.com/dev-jerin/medsync.git
 ```
-
-### **2. Database Setup**
-
+2. Open the medsync folder in vscode or other editor.
+### 2. Database Setup
 1.  Start Apache and MySQL services from the XAMPP Control Panel.
-2.  Open your web browser and navigate to `http://localhost/phpmyadmin`.
+2.  Navigate to `http://localhost/phpmyadmin`.
 3.  Create a new database named `medsync`.
-4.  Import the provided `medsync.sql` file to create all necessary tables and relationships.
+4.  Import the provided `medsync.sql` file to create all necessary tables and initial data.
 
-### **3. Configure the Application**
-
-Create a `config.php` file in the root directory with your database credentials:
-
-```php
+### 3. Configure the Application
+1. Update the admin details in database for initial login as a new admin.
+2.  Update your system email and Gmail App Password in the `system_settings` table in the database for PHPMailer to work.
+3. Go to [Firebse Console](https://console.firebase.google.com/) and enable google authentication.
+4.  Add your Firebase configuration to `_private/firebase_config.php`.
+```
 <?php
-// config.php
-
-// Start session if not already started
-if (session_status() == PHP_SESSION_NONE) {
-    session_start();
-}
-
-// Database Configuration
-$dbhost = 'localhost';
-$dbuser = 'root';
-$dbpass = '';
-$db = 'medsync';
-
-// Establish Database Connection
-$conn = new mysqli($dbhost, $dbuser, $dbpass, $db);
-
-// Check Connection
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
-
-// Set Character Set
-$conn->set_charset("utf8mb4");
-
-// Function to get the database connection
-function getDbConnection() {
-    global $conn;
-    return $conn;
-}
-
-// Initialize CSRF Token
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
+$firebaseConfig = [
+    "apiKey" => "",
+    "authDomain" => "",
+    "projectId" => "",
+    "storageBucket" => "",
+    "messagingSenderId" => "",
+    "appId" => "",
+];
 ?>
 ```
+5.  Add your Firebase service account credentials JSON file to `_private/firebase_credentials.json`.
+6. Create your Google reCAPTCHA KEY SECRET from [here](https://www.google.com/recaptcha/admin/create)
 
-### **4. Install Dependencies**
+### 4. Install Dependencies
+Install the required PHP libraries using Composer.
+```bash
+composer install
+```
+This will install phpmailer, dompdf, and firebase/php-jwt into the vendor/ directory as specified in composer.json.
 
-* **PHPMailer**: Download and place the PHPMailer library into a `vendor/` directory.
-* **dompdf**: Download and place the dompdf library into a `vendor/` directory.
-* **GSAP & AOS**: Download the library files and place them in a `public/js/` directory or link them via CDN in your HTML files.
-    * GSAP CDN: `https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js`
-    * AOS CDN: `https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js`
+### 5. Configure Apache
+Ensure your Apache configuration (.htaccess) is set up correctly to handle clean URLs and custom error pages. The provided .htaccess file is pre-configured for this.
 
-### **5. Configure Email (PHPMailer)**
+### 6. Additional
+You can add an AI Chatbot by making it from [chatling.ai](https://chatling.ai/) and adding it to the footer of home page.
 
-For email functionalities like OTP and notifications, configure your SMTP settings in the relevant PHP files or a dedicated mail configuration file. This will require setting up `sendmail.ini` in your XAMPP installation or using an external SMTP service.
+### 7. Hosting
+You can host this for free with the help of [infinityfree](https://www.infinityfree.com/)
+
 
 ---
-
 ## 🚀 Usage
+Open XAMPP and start Apache and MySQL.
 
-1.  Place the entire project folder inside the `htdocs` directory of your XAMPP installation.
-2.  Open your web browser and navigate to `http://localhost/medsync-healthcare-platform/`.
-3.  The home page will provide options to "Book Appointment" or "Patient Login". New users can register for an account, which involves an OTP verification step sent to their email.
-4.  Log in using one of the predefined roles to access the corresponding dashboard and functionalities.
+Open your browser and navigate to http://localhost/medsync/. 
+
+Register a new account (requires email-based OTP verification) or log in with the default admin credentials (admin / password) to access the admin dashboard.
+
+---
+## 🛡️ Security Features
+* **Password Hashing:** User passwords are securely hashed using PASSWORD_BCRYPT.
+
+* **CSRF Protection:** All forms are protected against Cross-Site Request Forgery attacks using session-based CSRF tokens.
+
+* **SQL Injection Prevention:** The application exclusively uses prepared statements for all database queries to prevent SQL injection.
+
+* **Google reCAPTCHA:** The login and registration forms are protected by Google reCAPTCHA v2 to prevent automated abuse and spam.
+
+* **Secure Session Management:** Sessions are regenerated upon login to prevent fixation attacks, and an inactivity timeout is enforced.
+
+* **IP Blocking:** Administrators can monitor and block suspicious IP addresses from accessing the platform.
+
+* **Role-Based Access Control:** Strict server-side checks ensure that users can only access data and perform actions permitted for their role.
+
+---
+## ⚠️Troubleshoot
+**Mail not send or error while requesting a mail or other issues in mail** <br>
+<i>Causes</I>:- <br>
+1. Gmail address or App password in `system _settings` table in database not correct.
+2. Composer version not updated, for this run `composer update` in root and run `composer install` again.
+
+**Some pages not running due to `Uncaught mysqli_sql_exception`** <br>
+<i>Causes</I>:- <br>
+1. MySQL stopped running, go to XAMPP and check MySQL.
+
+**CAPTCHA not working**
+<br>
+<i>Causes</I>:- <br>
+1. Possibly due to to wrong KEY and SECRET, check `_private/recaptcha_config.php/`
+
+---
+## 🤝 Contributing
+
+Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**. Before contributing, please read our [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines and standards.
 
 ---
 
-## 🎯 Expected Outcomes
+## 🙏 Acknowledgements
 
-The MedSync platform is designed to achieve tangible improvements in hospital management:
+This project would not have been possible without these amazing open-source libraries:
 
-* **Reduce appointment scheduling delays by 40%**.
-* **Minimize billing errors by 25%**.
-* **Reduce manual paperwork by 35%**.
-* Enhance patient satisfaction through real-time updates and improved communication.
-* Optimize resource utilization and operational planning with real-time dashboards and reports.
+* [PHPMailer](https://github.com/PHPMailer/PHPMailer)
+* [dompdf](https://github.com/dompdf/dompdf)
+* [Firebase PHP JWT](https://github.com/kreait/firebase-php)
+* [Chart.js](https://www.chartjs.org/)
+
+
+## 👥 Contributors
+
+A big thanks to the core developers who have brought this project to life:
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/dev-jerin">
+        <img src="https://avatars.githubusercontent.com/u/199967931?s=96&v=4" width="100px;" alt="Jerin Sigi"/>
+        <br />
+        <sub><b>Jerin Sigi<br> (Main Contributor)</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/SEBINKSHAJI">
+        <img src="https://avatars.githubusercontent.com/u/148709103?v=4" width="100px;" alt="Second Person's Name"/>
+        <br />
+        <sub><b>Sebin K Shaji</b></sub>
+      </a>
+    </td>
+  </tr>
+</table>
+
+---
+## License
+
+Distributed under the AGPL-3.0 License. See `LICENSE` for more information.
