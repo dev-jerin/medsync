@@ -357,8 +357,8 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         $response = ['success' => false, 'data' => null];
 
         // Fetch patient details from appointment
-        $stmt_patient = $conn->prepare("SELECT user_id as patient_id, name FROM appointments a JOIN users u ON a.user_id = u.id WHERE a.id = ? AND a.doctor_id = ?");
-        $stmt_patient->bind_param("ii", $appointment_id, $current_user_id);
+        $stmt_patient = $conn->prepare("SELECT user_id as patient_id, name FROM appointments a JOIN users u ON a.user_id = u.id WHERE a.id = ?");
+        $stmt_patient->bind_param("i", $appointment_id);
         $stmt_patient->execute();
         $patient_data = $stmt_patient->get_result()->fetch_assoc();
         $stmt_patient->close();
@@ -846,9 +846,9 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
             SELECT pr.prescription_date, pr.notes, p.name AS patient_name, p.display_user_id AS patient_display_id
             FROM prescriptions pr
             JOIN users p ON pr.patient_id = p.id
-            WHERE pr.id = ? AND pr.doctor_id = ?
+            WHERE pr.id = ?
         ");
-        $stmt_main->bind_param("ii", $prescription_id, $current_user_id);
+        $stmt_main->bind_param("i", $prescription_id);
         $stmt_main->execute();
         $result_main = $stmt_main->get_result();
         
@@ -1140,9 +1140,9 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
                 FROM lab_orders lo
                 JOIN users p ON lo.patient_id = p.id
                 LEFT JOIN users s ON lo.staff_id = s.id
-                WHERE lo.id = ? AND lo.doctor_id = ?";
+                WHERE lo.id = ?";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ii", $report_id, $current_user_id);
+        $stmt->bind_param("i", $report_id);
         $stmt->execute();
         $result = $stmt->get_result();
         $data = $result->fetch_assoc();

@@ -890,13 +890,14 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                                 <label for="encounter-diagnosis">Diagnosis (ICD-10)</label>
                                 <input type="text" id="encounter-diagnosis" name="diagnosis_icd10" placeholder="e.g., J02.9 - Acute pharyngitis, unspecified">
                             </div>
-                            <div class="integrated-actions">
-                                <label>Integrated Actions</label>
-                                <div>
-                                    <button type="button" class="btn" id="encounter-new-prescription-btn"><i class="fas fa-file-prescription"></i> New Prescription</button>
-                                    <button type="button" class="btn" id="encounter-new-lab-btn"><i class="fas fa-vials"></i> Order Lab Test</button>
+                                <div class="integrated-actions">
+                                    <label>Integrated Actions</label>
+                                    <div>
+                                        <button type="button" class="btn" id="encounter-new-prescription-btn"><i class="fas fa-file-prescription"></i> New Prescription</button>
+                                        <button type="button" class="btn" id="encounter-new-lab-btn"><i class="fas fa-vials"></i> Order Lab Test</button>
+                                        <button type="button" class="btn" id="encounter-admit-patient-btn"><i class="fas fa-procedures"></i> Admit Patient</button>
+                                    </div>
                                 </div>
-                            </div>
                         </div>
                     </form>
                 </div>

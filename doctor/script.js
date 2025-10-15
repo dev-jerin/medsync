@@ -298,6 +298,27 @@ document.addEventListener("DOMContentLoaded", function() {
         }, 100);
     });
 
+    document.getElementById('encounter-admit-patient-btn').addEventListener('click', () => {
+    const patientId = document.getElementById('encounter-patient-id').value;
+    const patientName = document.getElementById('encounter-modal-title').textContent.replace('Consultation for: ', '');
+
+    if (!patientId) {
+        alert('Patient information is not available.');
+        return;
+    }
+
+    // Call the existing function that opens the admit modal
+    openAdmitPatientModal();
+
+    // Use a short delay to ensure the modal is ready, then pre-fill the patient info
+    setTimeout(() => {
+        document.getElementById('patient-id-admit').value = patientId;
+        document.getElementById('patient-search-admit').value = patientName;
+        // Hide the search results dropdown since we've already selected the patient
+        document.getElementById('patient-search-results-admit').classList.remove('active');
+    }, 150);
+});
+
     // ===================================================================
     // --- Medical Record Modal Logic ---
     // ===================================================================

@@ -609,10 +609,16 @@ input:checked + .theme-slider:before {
     z-index: 1055;
 }
 
+/* Make the main encounter modal sit just below others */
+#encounter-modal-overlay {
+    z-index: 1058; 
+}
+
+/* These modals can now open on top of the encounter modal */
 #prescription-view-modal-overlay,
 #lab-report-view-modal-overlay,
-#encounter-modal-overlay,
 #prescription-modal-overlay,
+#admit-patient-modal-overlay,
 #lab-order-modal-overlay {
     z-index: 1060;
 }
