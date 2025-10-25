@@ -1,13 +1,14 @@
 <?php
 // forgot_password/resend_reset_otp.php
 
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
+// These are no longer needed here as they are handled in the send_mail.php file
+// use PHPMailer\PHPMailer\PHPMailer;
+// use PHPMailer\PHPMailer\Exception;
 
 require '../vendor/autoload.php';
 require_once '../config.php';
-// UPDATED: Include the new file with only the email template functions.
-require_once 'email_templates.php'; 
+// UPDATED: Include the centralized email templates file.
+require_once __DIR__ . '/../mail/templates.php';
 
 header('Content-Type: application/json');
 
@@ -39,8 +40,9 @@ $new_otp = random_int(100000, 999999);
 $_SESSION['password_reset']['otp'] = $new_otp;
 $_SESSION['password_reset']['timestamp'] = time();
 
-// --- Email OTP using PHPMailer ---
-$mail = new PHPMailer(true);
+// --- Email OTP using Centralized Function ---
+require_once __DIR__ . '/../mail/send_mail.php'; // Include the centralized mail function
+
 try {
     // Fetch user's name for a personalized email
     $stmt_get_name = $conn->prepare("SELECT name FROM users WHERE email = ?");
@@ -49,41 +51,21 @@ try {
     $user_name = $stmt_get_name->get_result()->fetch_assoc()['name'] ?? 'User';
     $stmt_get_name->close();
 
-    $system_email = get_system_setting($conn, 'system_email');
-    $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
-
-    if (empty($system_email) || empty($gmail_app_password)) {
-        throw new Exception("Mail service is not configured.");
+    $subject = 'Your New Password Reset Code for MedSync';
+    $body    = getPasswordResetEmailTemplate($user_name, $new_otp); 
+    
+    // Call the centralized mail function
+    if (send_mail('MedSync Support', $session_data['email'], $subject, $body)) {
+        $conn->close();
+        echo json_encode(['status' => 'success', 'message' => 'A new OTP has been sent to your email.']);
+        exit();
+    } else {
+        // This will trigger if the send_mail function returns false
+        throw new Exception("Mail service failed.");
     }
 
-    // Server settings
-    $mail->isSMTP();
-    $mail->Host = 'smtp.gmail.com';
-    $mail->SMTPAuth = true;
-    $mail->Username = $system_email;
-    $mail->Password = $gmail_app_password;
-    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-    $mail->Port = 587;
-
-    // Recipients
-    $mail->setFrom($system_email, 'MedSync Support');
-    $mail->addAddress($session_data['email'], $user_name);
-
-    // Content
-    $mail->isHTML(true);
-    $mail->Subject = 'Your New Password Reset Code for MedSync';
-    // Use the correct email template function
-    $mail->Body    = getPasswordResetEmailTemplate($user_name, $new_otp); 
-    $mail->AltBody = "Your new password reset code for MedSync is: $new_otp. It's valid for 10 minutes.";
-
-    $mail->send();
-    $conn->close();
-    
-    echo json_encode(['status' => 'success', 'message' => 'A new OTP has been sent to your email.']);
-    exit();
-
 } catch (Exception $e) {
-    error_log("Mailer Error on Resend Reset OTP: " . $mail->ErrorInfo);
+    error_log("Mailer Error on Resend Reset OTP: " . $e->getMessage());
     $conn->close();
 
     echo json_encode(['status' => 'error', 'message' => 'Could not send OTP. Please try again later.']);
