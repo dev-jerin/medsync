@@ -466,26 +466,40 @@ require_once 'api.php';
                         <h3><i class="fas fa-users-cog"></i> User Management</h3><button class="btn btn-primary"
                             id="add-new-user-btn"><i class="fas fa-user-plus"></i> Add New User</button>
                     </div>
-                    <div class="filters"><input type="text" id="user-search" class="search-bar"
-                            placeholder="Search by name or ID..."><select id="user-role-filter">
+                    <div class="filters">
+                        <input type="text" id="user-search" class="search-bar" placeholder="Search by name, ID, email, or phone...">
+                        <select id="user-role-filter">
                             <option value="all">All Roles</option>
                             <option value="doctor">Doctors</option>
                             <option value="user">Patients</option>
-                        </select></div>
-                    <table class="data-table" id="users-table">
-                        <thead>
-                            <tr>
-                                <th>User ID</th>
-                                <th>Name</th>
-                                <th>Role</th>
-                                <th>Email</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            </tbody>
-                    </table>
+                        </select>
+                        <select id="user-status-filter">
+                            <option value="all">All Status</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="data-table" id="users-table">
+                            <thead>
+                                <tr>
+                                    <th>Photo</th>
+                                    <th>User ID</th>
+                                    <th>Name</th>
+                                    <th>Gender</th>
+                                    <th>Age/DOB</th>
+                                    <th>Phone</th>
+                                    <th>Role</th>
+                                    <th>Email</th>
+                                    <th>Status</th>
+                                    <th>Last Active</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
@@ -728,6 +742,15 @@ require_once 'api.php';
                         <label for="user-phone">Phone Number</label>
                         <input type="tel" id="user-phone" name="phone" placeholder="+919876543210" maxlength="13">
                         <small class="validation-error" id="user-phone-error"></small>
+                    </div>
+                    <div class="form-group">
+                        <label for="user-gender">Gender</label>
+                        <select id="user-gender" name="gender" required>
+                            <option value="">-- Select Gender --</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label for="user-dob">Date of Birth</label>

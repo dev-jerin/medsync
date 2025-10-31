@@ -367,9 +367,15 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 case 'get_users':
                     $role_filter = $_GET['role'] ?? 'all';
                     $search_query = $_GET['search'] ?? '';
+                    $status_filter = $_GET['status'] ?? 'all'; // New status filter
                     $allowed_roles = ['user', 'doctor'];
 
-                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, r.role_name as role, u.email, u.phone, u.date_of_birth, u.is_active as active, u.created_at, d.specialty_id
+                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, r.role_name as role, 
+                            u.email, u.phone, u.date_of_birth, u.gender, u.profile_picture,
+                            u.is_active as active, u.created_at, u.session_token,
+                            d.specialty_id,
+                            TIMESTAMPDIFF(YEAR, u.date_of_birth, CURDATE()) AS age,
+                            (SELECT MAX(al.created_at) FROM activity_logs al WHERE al.user_id = u.id) AS last_active
                             FROM users u
                             JOIN roles r ON u.role_id = r.id
                             LEFT JOIN doctors d ON u.id = d.user_id
@@ -382,13 +388,24 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $params[] = $role_filter;
                         $types .= "s";
                     }
+                    
+                    // Add status filter
+                    if ($status_filter !== 'all') {
+                        if ($status_filter === 'active') {
+                            $sql .= " AND u.is_active = 1";
+                        } elseif ($status_filter === 'inactive') {
+                            $sql .= " AND u.is_active = 0";
+                        }
+                    }
 
                     if (!empty($search_query)) {
-                        $sql .= " AND (u.name LIKE ? OR u.display_user_id LIKE ?)";
+                        $sql .= " AND (u.name LIKE ? OR u.display_user_id LIKE ? OR u.email LIKE ? OR u.phone LIKE ?)";
                         $search_term = "%{$search_query}%";
                         $params[] = $search_term;
                         $params[] = $search_term;
-                        $types .= "ss";
+                        $params[] = $search_term;
+                        $params[] = $search_term;
+                        $types .= "ssss";
                     }
 
                     $sql .= " ORDER BY u.created_at DESC";

@@ -1117,17 +1117,69 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!userTableBody) return;
 
         if (users.length === 0) {
-            userTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No users found.</td></tr>`;
+            userTableBody.innerHTML = `<tr><td colspan="11" style="text-align: center;">No users found.</td></tr>`;
             return;
         }
-        userTableBody.innerHTML = users.map(user => `
+        userTableBody.innerHTML = users.map(user => {
+            // Format profile picture
+            const profilePic = user.profile_picture && user.profile_picture !== 'default.png' 
+                ? `../uploads/profile_pictures/${user.profile_picture}` 
+                : '../uploads/profile_pictures/default.png';
+            
+            // Format gender with icon
+            const genderIcon = user.gender === 'Male' ? '♂️' : user.gender === 'Female' ? '♀️' : '⚧';
+            const genderDisplay = user.gender ? `${user.gender} ${genderIcon}` : 'N/A';
+            
+            // Format age and DOB
+            const age = user.age || 'N/A';
+            const dob = user.date_of_birth ? new Date(user.date_of_birth).toLocaleDateString('en-GB') : 'N/A';
+            
+            // Format phone
+            const phone = user.phone || 'N/A';
+            
+            // Format last active
+            let lastActive = 'Never';
+            if (user.last_active) {
+                const lastActiveDate = new Date(user.last_active);
+                const now = new Date();
+                const diffMs = now - lastActiveDate;
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMs / 3600000);
+                const diffDays = Math.floor(diffMs / 86400000);
+                
+                if (diffMins < 60) {
+                    lastActive = `${diffMins} min${diffMins !== 1 ? 's' : ''} ago`;
+                } else if (diffHours < 24) {
+                    lastActive = `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+                } else if (diffDays < 30) {
+                    lastActive = `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+                } else {
+                    lastActive = lastActiveDate.toLocaleDateString('en-GB');
+                }
+            }
+            
+            return `
             <tr data-user='${JSON.stringify(user)}'>
+                <td data-label="Photo">
+                    <img src="${profilePic}" alt="${user.name}" 
+                         style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #e2e8f0;"
+                         onerror="this.src='../uploads/profile_pictures/default.png'">
+                </td>
                 <td data-label="User ID">${user.display_user_id}</td>
-                <td data-label="Name">${user.name}</td>
+                <td data-label="Name"><strong>${user.name}</strong></td>
+                <td data-label="Gender">${genderDisplay}</td>
+                <td data-label="Age/DOB">
+                    ${age} yrs<br>
+                    <small style="color: #666;">${dob}</small>
+                </td>
+                <td data-label="Phone">${phone}</td>
                 <td data-label="Role">${user.role.charAt(0).toUpperCase() + user.role.slice(1)}</td>
                 <td data-label="Email">${user.email}</td>
                 <td data-label="Status">
                     <span class="status ${user.active == 1 ? 'admitted' : 'unpaid'}">${user.active == 1 ? 'Active' : 'Inactive'}</span>
+                </td>
+                <td data-label="Last Active">
+                    <small style="color: #666;">${lastActive}</small>
                 </td>
                 <td data-label="Actions">
                     <button class="action-btn edit-user-btn"><i class="fas fa-edit"></i> Edit</button> 
@@ -1137,7 +1189,8 @@ document.addEventListener("DOMContentLoaded", function() {
                     }
                 </td>
             </tr>
-        `).join('');
+        `;
+        }).join('');
     };
 
     const fetchUsers = async () => {
@@ -1145,18 +1198,20 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!userTableBody) return;
 
         const roleFilter = document.getElementById('user-role-filter');
+        const statusFilter = document.getElementById('user-status-filter');
         const searchInput = document.getElementById('user-search');
         const role = roleFilter.value;
+        const status = statusFilter.value;
         const search = searchInput.value;
-        userTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">Loading users...</td></tr>`;
+        userTableBody.innerHTML = `<tr><td colspan="11" style="text-align: center;">Loading users...</td></tr>`;
 
         try {
-            const response = await fetch(`api.php?fetch=get_users&role=${role}&search=${search}`);
+            const response = await fetch(`api.php?fetch=get_users&role=${role}&status=${status}&search=${encodeURIComponent(search)}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             renderUsers(result.data);
         } catch (error) {
-            userTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
+            userTableBody.innerHTML = `<tr><td colspan="11" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
         }
     };
 
@@ -1206,6 +1261,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 userForm.querySelector('#user-username').disabled = true;
                 userForm.querySelector('#user-email').value = userData.email;
                 userForm.querySelector('#user-phone').value = userData.phone || '';
+                userForm.querySelector('#user-gender').value = userData.gender || '';
                 userForm.querySelector('#user-dob').value = userData.date_of_birth || '';
                 userForm.querySelector('#user-role').value = userData.role;
                 userForm.querySelector('#user-role').disabled = true;
@@ -1316,6 +1372,13 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         roleFilter.addEventListener('change', fetchUsers);
+        
+        // Add status filter event listener
+        const statusFilter = document.getElementById('user-status-filter');
+        if (statusFilter) {
+            statusFilter.addEventListener('change', fetchUsers);
+        }
+        
         searchInput.addEventListener('input', () => {
             clearTimeout(userFetchDebounce);
             userFetchDebounce = setTimeout(fetchUsers, 300);
