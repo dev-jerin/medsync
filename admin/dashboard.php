@@ -46,14 +46,16 @@ $_SESSION['loggedin_time'] = time();
 $conn = getDbConnection();
 $admin_id = $_SESSION['user_id'];
 
-// Fetch admin's full name for the welcome message
-$stmt = $conn->prepare("SELECT name, display_user_id FROM users WHERE id = ?");
+// Fetch admin's full name and profile picture for the welcome message
+$stmt = $conn->prepare("SELECT name, display_user_id, profile_picture, email FROM users WHERE id = ?");
 $stmt->bind_param("i", $admin_id);
 $stmt->execute();
 $result = $stmt->get_result();
 $admin_user = $result->fetch_assoc();
 $admin_name = $admin_user ? htmlspecialchars($admin_user['name']) : 'Admin';
 $display_user_id = $admin_user ? htmlspecialchars($admin_user['display_user_id']) : 'N/A';
+$admin_profile_picture = $admin_user && $admin_user['profile_picture'] ? htmlspecialchars($admin_user['profile_picture']) : 'default.png';
+$admin_email = $admin_user ? htmlspecialchars($admin_user['email']) : '';
 $stmt->close();
 
 
@@ -198,12 +200,45 @@ $conn->close();
                         <i class="fas fa-moon"></i>
                     </div>
 
-                    <div class="user-profile-widget">
-                        <i class="fas fa-user-crown"></i>
+                    <div class="user-profile-widget" id="user-profile-dropdown-trigger">
+                        <img src="../uploads/profile_pictures/<?php echo $admin_profile_picture; ?>" 
+                             alt="Profile" 
+                             class="profile-avatar"
+                             onerror="this.src='../uploads/profile_pictures/default.png'">
                         <div class="user-info">
                             <strong><?php echo $admin_name; ?></strong><br>
                             <span style="color: var(--text-muted); font-size: 0.8rem;">ID:
                                 <?php echo $display_user_id; ?></span>
+                        </div>
+                        <i class="fas fa-chevron-down dropdown-arrow"></i>
+                        
+                        <!-- Dropdown Menu -->
+                        <div class="user-dropdown-menu" id="user-dropdown-menu">
+                            <div class="dropdown-header">
+                                <img src="../uploads/profile_pictures/<?php echo $admin_profile_picture; ?>" 
+                                     alt="Profile" 
+                                     class="dropdown-avatar"
+                                     onerror="this.src='../uploads/profile_pictures/default.png'">
+                                <div class="dropdown-user-info">
+                                    <strong><?php echo $admin_name; ?></strong>
+                                    <span class="user-role-badge">Admin</span>
+                                    <span class="user-email"><?php echo $admin_email; ?></span>
+                                </div>
+                            </div>
+                            <div class="dropdown-divider"></div>
+                            <a href="#" class="dropdown-item dropdown-nav-link" data-target="settings">
+                                <i class="fas fa-user-circle"></i>
+                                <span>View My Profile</span>
+                            </a>
+                            <a href="#" class="dropdown-item dropdown-nav-link" data-target="activity">
+                                <i class="fas fa-history"></i>
+                                <span>Activity Log</span>
+                            </a>
+                            <div class="dropdown-divider"></div>
+                            <a href="../logout.php" class="dropdown-item logout-item">
+                                <i class="fas fa-sign-out-alt"></i>
+                                <span>Logout</span>
+                            </a>
                         </div>
                     </div>
 
@@ -211,42 +246,42 @@ $conn->close();
             </header>
             <div id="dashboard-panel" class="content-panel active">
                 <div class="stat-cards-container">
-                    <div class="stat-card blue">
+                    <div class="stat-card blue clickable-stat-card nav-link" data-target="users-user" title="Click to view all users">
                         <div class="icon"><i class="fas fa-users"></i></div>
                         <div class="info">
                             <div class="value" id="total-users-stat"><?php echo $total_users; ?></div>
                             <div class="label">Total Users</div>
                         </div>
                     </div>
-                    <div class="stat-card green">
+                    <div class="stat-card green clickable-stat-card nav-link" data-target="users-doctor" title="Click to view all doctors">
                         <div class="icon"><i class="fas fa-user-md"></i></div>
                         <div class="info">
                             <div class="value" id="active-doctors-stat"><?php echo $active_doctors; ?></div>
                             <div class="label">Active Doctors</div>
                         </div>
                     </div>
-                    <div class="stat-card orange">
+                    <div class="stat-card orange clickable-stat-card nav-link" data-target="appointments" title="Click to view appointments">
                         <div class="icon"><i class="fas fa-calendar-check"></i></div>
                         <div class="info">
                             <div class="value" id="pending-appointments-stat">0</div>
                             <div class="label">Pending Appointments</div>
                         </div>
                     </div>
-                    <div class="stat-card purple" id="patient-satisfaction-stat" style="display: none;">
+                    <div class="stat-card purple clickable-stat-card nav-link" id="patient-satisfaction-stat" data-target="feedback" title="Click to view patient feedback" style="display: none;">
                         <div class="icon"><i class="fas fa-star-half-alt"></i></div>
                         <div class="info">
                             <div class="value" id="satisfaction-score">0/5</div>
                             <div class="label">Patient Satisfaction</div>
                         </div>
                     </div>
-                    <div class="stat-card red" id="low-medicine-stat" style="display: none;">
+                    <div class="stat-card red clickable-stat-card nav-link" id="low-medicine-stat" data-target="inventory-medicine" title="Click to view medicine inventory" style="display: none;">
                         <div class="icon"><i class="fas fa-pills"></i></div>
                         <div class="info">
                             <div class="value" id="low-medicine-count">0</div>
                             <div class="label">Low Medicines</div>
                         </div>
                     </div>
-                    <div class="stat-card red" id="low-blood-stat" style="display: none;">
+                    <div class="stat-card red clickable-stat-card nav-link" id="low-blood-stat" data-target="inventory-blood" title="Click to view blood inventory" style="display: none;">
                         <div class="icon"><i class="fas fa-tint"></i></div>
                         <div class="info">
                             <div class="value" id="low-blood-count">0</div>
@@ -283,26 +318,134 @@ $conn->close();
 
             </div>
             <div id="appointments-panel" class="content-panel">
-                <div
-                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
-                    <h2 id="appointments-table-title">Patient Appointments</h2>
-                    <div class="form-group" style="flex-grow: 1; max-width: 400px; margin-bottom: 0;">
-                        <label for="appointment-doctor-filter" style="margin-bottom: 0.25rem; font-weight: 500;">Filter
-                            by Doctor</label>
-                        <select id="appointment-doctor-filter">
-                            <option value="all">All Doctors</option>
-                        </select>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <h2>Patient Appointments</h2>
+                </div>
+
+                <!-- Enhanced Filters Section -->
+                <div style="background: var(--bg-grey); padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+                        <!-- Search Input -->
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="appointment-search-input" style="font-size: 0.9rem; font-weight: 500;">Search</label>
+                            <div class="search-container" style="position: relative;">
+                                <i class="fas fa-search search-icon" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted);"></i>
+                                <input type="text" 
+                                       id="appointment-search-input" 
+                                       placeholder="Search by patient or doctor..." 
+                                       style="padding-left: 2.5rem; width: 100%;">
+                            </div>
+                        </div>
+
+                        <!-- Appointment Status Filter -->
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="appointment-status-filter" style="font-size: 0.9rem; font-weight: 500;">Appointment Status</label>
+                            <select id="appointment-status-filter">
+                                <option value="all">All Statuses</option>
+                                <option value="scheduled">Scheduled</option>
+                                <option value="completed">Completed</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                        </div>
+
+                        <!-- Token Status Filter -->
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="token-status-filter" style="font-size: 0.9rem; font-weight: 500;">Token Status</label>
+                            <select id="token-status-filter">
+                                <option value="all">All Token Statuses</option>
+                                <option value="waiting">Waiting</option>
+                                <option value="in_consultation">In Consultation</option>
+                                <option value="completed">Completed</option>
+                                <option value="skipped">Skipped</option>
+                            </select>
+                        </div>
+
+                        <!-- Date From -->
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="appointment-date-from" style="font-size: 0.9rem; font-weight: 500;">Date From</label>
+                            <input type="date" id="appointment-date-from">
+                        </div>
+
+                        <!-- Date To -->
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="appointment-date-to" style="font-size: 0.9rem; font-weight: 500;">Date To</label>
+                            <input type="date" id="appointment-date-to" value="<?php echo date('Y-m-d'); ?>">
+                        </div>
+
+                        <!-- Doctor Filter -->
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="appointment-doctor-select" style="font-size: 0.9rem; font-weight: 500;">Filter by Doctor</label>
+                            <select id="appointment-doctor-select">
+                                <option value="all">All Doctors</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button id="appointment-apply-filters-btn" class="btn btn-primary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">
+                            <i class="fas fa-filter"></i> Apply Filters
+                        </button>
+                        <button id="appointment-reset-filters-btn" class="btn btn-secondary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">
+                            <i class="fas fa-redo"></i> Reset
+                        </button>
+                        <button id="appointment-export-csv-btn" class="btn btn-secondary" style="font-size: 0.9rem; padding: 0.5rem 1rem; margin-left: auto;">
+                            <i class="fas fa-download"></i> Export CSV
+                        </button>
                     </div>
                 </div>
+
+                <!-- Statistics Cards -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <i class="fas fa-calendar-check" style="font-size: 2rem; opacity: 0.8;"></i>
+                            <div>
+                                <div style="font-size: 1.8rem; font-weight: 700;" id="total-appointments-stat">0</div>
+                                <div style="font-size: 0.85rem; opacity: 0.9;">Total Appointments</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <i class="fas fa-clock" style="font-size: 2rem; opacity: 0.8;"></i>
+                            <div>
+                                <div style="font-size: 1.8rem; font-weight: 700;" id="scheduled-appointments-stat">0</div>
+                                <div style="font-size: 0.85rem; opacity: 0.9;">Scheduled</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <i class="fas fa-check-circle" style="font-size: 2rem; opacity: 0.8;"></i>
+                            <div>
+                                <div style="font-size: 1.8rem; font-weight: 700;" id="completed-appointments-stat">0</div>
+                                <div style="font-size: 0.85rem; opacity: 0.9;">Completed</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <i class="fas fa-times-circle" style="font-size: 2rem; opacity: 0.8;"></i>
+                            <div>
+                                <div style="font-size: 1.8rem; font-weight: 700;" id="cancelled-appointments-stat">0</div>
+                                <div style="font-size: 0.85rem; opacity: 0.9;">Cancelled</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="table-container">
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Appt. ID</th>
+                                <th class="sortable" data-sort="id">Appt. ID <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="token">Token <i class="fas fa-sort"></i></th>
                                 <th>Patient Details</th>
-                                <th>Doctor</th>
-                                <th>Date & Time</th>
+                                <th>Contact</th>
+                                <th>Doctor Details</th>
+                                <th class="sortable" data-sort="date">Date & Time <i class="fas fa-sort"></i></th>
                                 <th>Status</th>
+                                <th>Token Status</th>
                             </tr>
                         </thead>
                         <tbody id="appointments-table-body">
@@ -551,9 +694,60 @@ $conn->close();
             <div id="settings-panel" class="content-panel">
                 <h3>My Account Details</h3>
                 <p>Edit your personal information and password here.</p>
+
+                <!-- Security Information Display -->
+                <div id="security-info-panel" style="margin: 2rem 0; padding: 1.5rem; background: var(--bg-grey); border-radius: 8px; border-left: 4px solid var(--primary-color); max-width: 600px;">
+                    <h4 style="margin-top: 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-shield-alt"></i> Security Information
+                    </h4>
+                    <div id="security-info-content" style="display: grid; gap: 0.75rem;">
+                        <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--border-light);">
+                            <span style="color: var(--text-muted);"><i class="fas fa-clock"></i> Last Login:</span>
+                            <strong id="last-login-time">Loading...</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 0.5rem 0;">
+                            <span style="color: var(--text-muted);"><i class="fas fa-network-wired"></i> IP Address:</span>
+                            <strong id="last-login-ip">Loading...</strong>
+                        </div>
+                    </div>
+                </div>
+
                 <form id="profile-form" style="margin-top: 2rem; max-width: 600px;">
                     <input type="hidden" name="action" value="updateProfile">
                     <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+
+                    <!-- Profile Picture Section -->
+                    <div class="form-group" style="text-align: center; margin-bottom: 2rem;">
+                        <label style="display: block; margin-bottom: 1rem; font-weight: 600;">Profile Picture</label>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
+                            <div style="position: relative;">
+                                <img id="profile-picture-preview" 
+                                     src="../uploads/profile_pictures/default.png" 
+                                     alt="Profile Picture" 
+                                     style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid var(--primary-color); box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                                <label for="profile-picture-input" 
+                                       style="position: absolute; bottom: 0; right: 0; background: var(--primary-color); color: white; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                                    <i class="fas fa-camera"></i>
+                                </label>
+                            </div>
+                            <input type="file" 
+                                   id="profile-picture-input" 
+                                   name="profile_picture" 
+                                   accept="image/jpeg,image/png,image/jpg" 
+                                   style="display: none;">
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button type="button" 
+                                        id="remove-profile-picture-btn" 
+                                        class="btn" 
+                                        style="background: var(--danger-color); color: white; font-size: 0.85rem; padding: 0.4rem 0.8rem;">
+                                    <i class="fas fa-trash"></i> Remove Picture
+                                </button>
+                            </div>
+                            <small style="color: var(--text-muted); font-size: 0.8rem;">
+                                Accepted formats: JPG, PNG. Max size: 2MB
+                            </small>
+                        </div>
+                    </div>
 
                     <div class="form-group">
                         <label for="profile-name">Full Name</label>
@@ -569,17 +763,48 @@ $conn->close();
                             title="Enter in format +91 followed by 10 digits" maxlength="13" minlength="13">
                     </div>
                     <div class="form-group">
+                        <label for="profile-gender">Gender</label>
+                        <select id="profile-gender" name="gender">
+                            <option value="">Select Gender</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-dob">Date of Birth</label>
+                        <input type="date" id="profile-dob" name="date_of_birth" max="<?php echo date('Y-m-d'); ?>">
+                    </div>
+                    <div class="form-group">
                         <label for="profile-username">Username</label>
                         <input type="text" id="profile-username" name="username" disabled>
                         <small style="color: var(--text-muted); font-size: 0.8rem;">Username cannot be changed.</small>
                     </div>
-                    <div class="form-group">
-                        <label for="profile-password">New Password</label>
-                        <input type="password" id="profile-password" name="password">
-                        <small style="color: var(--text-muted); font-size: 0.8rem;">Leave blank to keep your current
-                            password.</small>
+
+                    <!-- Password Change Section -->
+                    <div style="margin-top: 2rem; padding: 1.5rem; background: var(--bg-grey); border-radius: 8px; border: 1px solid var(--border-light);">
+                        <h4 style="margin-top: 0; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-lock"></i> Change Password
+                        </h4>
+                        <div class="form-group">
+                            <label for="profile-current-password">Current Password</label>
+                            <input type="password" id="profile-current-password" name="current_password" autocomplete="current-password">
+                            <small style="color: var(--text-muted); font-size: 0.8rem;">Required when changing password</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="profile-password">New Password</label>
+                            <input type="password" id="profile-password" name="password" autocomplete="new-password">
+                            <small style="color: var(--text-muted); font-size: 0.8rem;">Leave blank to keep your current password</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="profile-confirm-password">Confirm New Password</label>
+                            <input type="password" id="profile-confirm-password" name="confirm_password" autocomplete="new-password">
+                        </div>
                     </div>
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
+
+                    <button type="submit" class="btn btn-primary" style="margin-top: 1.5rem;">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
                 </form>
             </div>
 
@@ -737,14 +962,109 @@ $conn->close();
         <h2>IP Address Management</h2>
         <button id="add-ip-block-btn" class="btn btn-danger"><i class="fas fa-ban"></i> Block New IP</button>
     </div>
+
+    <!-- Enhanced Filters Section -->
+    <div style="background: var(--bg-grey); padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+            <!-- Search Input -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="ip-search-input" style="font-size: 0.9rem; font-weight: 500;">Search</label>
+                <div class="search-container" style="position: relative;">
+                    <i class="fas fa-search search-icon" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted);"></i>
+                    <input type="text" 
+                           id="ip-search-input" 
+                           placeholder="Search by IP, username, or label..." 
+                           style="padding-left: 2.5rem; width: 100%;">
+                </div>
+            </div>
+
+            <!-- Status Filter -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="ip-status-filter" style="font-size: 0.9rem; font-weight: 500;">Status</label>
+                <select id="ip-status-filter">
+                    <option value="all">All IPs</option>
+                    <option value="active">Active Only</option>
+                    <option value="blocked">Blocked Only</option>
+                </select>
+            </div>
+
+            <!-- Date From -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="ip-date-from" style="font-size: 0.9rem; font-weight: 500;">Date From</label>
+                <input type="date" id="ip-date-from" max="<?php echo date('Y-m-d'); ?>">
+            </div>
+
+            <!-- Date To -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="ip-date-to" style="font-size: 0.9rem; font-weight: 500;">Date To</label>
+                <input type="date" id="ip-date-to" max="<?php echo date('Y-m-d'); ?>" value="<?php echo date('Y-m-d'); ?>">
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button id="ip-apply-filters-btn" class="btn btn-primary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">
+                <i class="fas fa-filter"></i> Apply Filters
+            </button>
+            <button id="ip-reset-filters-btn" class="btn btn-secondary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">
+                <i class="fas fa-redo"></i> Reset
+            </button>
+            <button id="ip-export-csv-btn" class="btn btn-secondary" style="font-size: 0.9rem; padding: 0.5rem 1rem; margin-left: auto;">
+                <i class="fas fa-download"></i> Export CSV
+            </button>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <i class="fas fa-network-wired" style="font-size: 2rem; opacity: 0.8;"></i>
+                <div>
+                    <div style="font-size: 1.8rem; font-weight: 700;" id="total-ips-stat">0</div>
+                    <div style="font-size: 0.85rem; opacity: 0.9;">Total IPs</div>
+                </div>
+            </div>
+        </div>
+        <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <i class="fas fa-ban" style="font-size: 2rem; opacity: 0.8;"></i>
+                <div>
+                    <div style="font-size: 1.8rem; font-weight: 700;" id="blocked-ips-stat">0</div>
+                    <div style="font-size: 0.85rem; opacity: 0.9;">Blocked IPs</div>
+                </div>
+            </div>
+        </div>
+        <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <i class="fas fa-check-circle" style="font-size: 2rem; opacity: 0.8;"></i>
+                <div>
+                    <div style="font-size: 1.8rem; font-weight: 700;" id="active-ips-stat">0</div>
+                    <div style="font-size: 0.85rem; opacity: 0.9;">Active IPs</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="table-container">
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>IP Address</th>
-                    <th>Name/Label</th>
+                    <th class="sortable" data-sort="ip_address">
+                        IP Address <i class="fas fa-sort"></i>
+                    </th>
+                    <th class="sortable" data-sort="name">
+                        Name/Label <i class="fas fa-sort"></i>
+                    </th>
+                    <th class="sortable" data-sort="user_count">
+                        User Count <i class="fas fa-sort"></i>
+                    </th>
                     <th>Associated Users</th>
-                    <th>Last Login</th>
+                    <th class="sortable" data-sort="last_login">
+                        Last Login <i class="fas fa-sort"></i>
+                    </th>
+                    <th class="sortable" data-sort="login_count">
+                        Login Count <i class="fas fa-sort"></i>
+                    </th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>

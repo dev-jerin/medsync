@@ -382,12 +382,91 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     if (!$email)
                         throw new Exception('Invalid email format.');
                     $phone = $_POST['phone'];
+                    $gender = $_POST['gender'] ?? null;
+                    $date_of_birth = $_POST['date_of_birth'] ?? null;
 
                     $sql_parts = ["name = ?", "email = ?", "phone = ?"];
                     $params = [$name, $email, $phone];
                     $types = "sss";
 
+                    // Handle gender
+                    if (!empty($gender)) {
+                        $sql_parts[] = "gender = ?";
+                        $params[] = $gender;
+                        $types .= "s";
+                    }
+
+                    // Handle date of birth
+                    if (!empty($date_of_birth)) {
+                        $sql_parts[] = "date_of_birth = ?";
+                        $params[] = $date_of_birth;
+                        $types .= "s";
+                    }
+
+                    // Handle profile picture upload
+                    if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] === UPLOAD_ERR_OK) {
+                        $file = $_FILES['profile_picture'];
+                        $allowed_types = ['image/jpeg', 'image/png', 'image/jpg'];
+                        $max_size = 2 * 1024 * 1024; // 2MB
+
+                        if (!in_array($file['type'], $allowed_types)) {
+                            throw new Exception('Invalid file type. Only JPG and PNG are allowed.');
+                        }
+                        if ($file['size'] > $max_size) {
+                            throw new Exception('File size exceeds 2MB limit.');
+                        }
+
+                        // Generate unique filename
+                        $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
+                        $new_filename = 'profile_' . $id . '_' . time() . '.' . $extension;
+                        $upload_path = '../uploads/profile_pictures/' . $new_filename;
+
+                        // Delete old profile picture if not default
+                        $stmt_old = $conn->prepare("SELECT profile_picture FROM users WHERE id = ?");
+                        $stmt_old->bind_param("i", $id);
+                        $stmt_old->execute();
+                        $old_pic = $stmt_old->get_result()->fetch_assoc()['profile_picture'];
+                        if ($old_pic && $old_pic !== 'default.png' && file_exists('../uploads/profile_pictures/' . $old_pic)) {
+                            unlink('../uploads/profile_pictures/' . $old_pic);
+                        }
+
+                        // Upload new file
+                        if (move_uploaded_file($file['tmp_name'], $upload_path)) {
+                            $sql_parts[] = "profile_picture = ?";
+                            $params[] = $new_filename;
+                            $types .= "s";
+                        } else {
+                            throw new Exception('Failed to upload profile picture.');
+                        }
+                    }
+
+                    // Handle password change with validation
                     if (!empty($_POST['password'])) {
+                        // Require current password when changing password
+                        if (empty($_POST['current_password'])) {
+                            throw new Exception('Current password is required to change password.');
+                        }
+
+                        // Verify current password
+                        $stmt_verify = $conn->prepare("SELECT password FROM users WHERE id = ?");
+                        $stmt_verify->bind_param("i", $id);
+                        $stmt_verify->execute();
+                        $current_hash = $stmt_verify->get_result()->fetch_assoc()['password'];
+                        
+                        if (!password_verify($_POST['current_password'], $current_hash)) {
+                            throw new Exception('Current password is incorrect.');
+                        }
+
+                        // Verify password confirmation
+                        if ($_POST['password'] !== $_POST['confirm_password']) {
+                            throw new Exception('New passwords do not match.');
+                        }
+
+                        // Validate password strength
+                        if (strlen($_POST['password']) < 8) {
+                            throw new Exception('New password must be at least 8 characters long.');
+                        }
+
                         $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
                         $sql_parts[] = "password = ?";
                         $params[] = $hashed_password;
@@ -407,6 +486,33 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $response = ['success' => true, 'message' => 'Your profile has been updated successfully.'];
                     } else {
                         throw new Exception('Failed to update your profile.');
+                    }
+                    break;
+
+                case 'removeOwnProfilePicture':
+                    $id = $_SESSION['user_id'];
+                    
+                    // Fetch current profile picture
+                    $stmt_old = $conn->prepare("SELECT profile_picture FROM users WHERE id = ?");
+                    $stmt_old->bind_param("i", $id);
+                    $stmt_old->execute();
+                    $user_data = $stmt_old->get_result()->fetch_assoc();
+
+                    if ($user_data && $user_data['profile_picture'] !== 'default.png') {
+                        $pfp_path = "../uploads/profile_pictures/" . $user_data['profile_picture'];
+                        if (file_exists($pfp_path)) {
+                            unlink($pfp_path);
+                        }
+                    }
+
+                    $stmt = $conn->prepare("UPDATE users SET profile_picture = 'default.png' WHERE id = ?");
+                    $stmt->bind_param("i", $id);
+                    
+                    if ($stmt->execute()) {
+                        log_activity($conn, $admin_user_id_for_log, 'remove_own_profile_picture', $id, 'Admin removed their own profile picture.');
+                        $response = ['success' => true, 'message' => 'Profile picture removed successfully.'];
+                    } else {
+                        throw new Exception('Failed to remove profile picture.');
                     }
                     break;
 
@@ -1128,20 +1234,83 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
 
                 case 'appointments':
-                    $doctor_id_filter = $_GET['doctor_id'] ?? 'all';
+                    $search = $_GET['search'] ?? '';
+                    $statusFilter = $_GET['status'] ?? 'all';
+                    $tokenStatusFilter = $_GET['token_status'] ?? 'all';
+                    $dateFrom = $_GET['date_from'] ?? '';
+                    $dateTo = $_GET['date_to'] ?? '';
+                    $doctorId = $_GET['doctor_id'] ?? 'all';
 
-                    $sql = "SELECT a.id, p.name as patient_name, p.display_user_id as patient_display_id, d.name as doctor_name, a.appointment_date, a.status
+                    $sql = "SELECT 
+                                a.id, 
+                                a.token_number,
+                                a.token_status,
+                                a.slot_start_time,
+                                a.slot_end_time,
+                                a.appointment_date, 
+                                a.status,
+                                p.name as patient_name, 
+                                p.display_user_id as patient_display_id,
+                                p.phone as patient_phone,
+                                p.email as patient_email,
+                                p.gender as patient_gender,
+                                TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as patient_age,
+                                d.name as doctor_name,
+                                d.display_user_id as doctor_display_id,
+                                sp.name as doctor_specialty
                             FROM appointments a
                             JOIN users p ON a.user_id = p.id
-                            JOIN users d ON a.doctor_id = d.id";
+                            JOIN users d ON a.doctor_id = d.id
+                            LEFT JOIN doctors doc ON d.id = doc.user_id
+                            LEFT JOIN specialities sp ON doc.specialty_id = sp.id";
 
+                    $whereConditions = [];
                     $params = [];
                     $types = "";
 
-                    if ($doctor_id_filter !== 'all') {
-                        $sql .= " WHERE a.doctor_id = ?";
-                        $params[] = (int) $doctor_id_filter;
+                    // Search filter
+                    if (!empty($search)) {
+                        $whereConditions[] = "(p.name LIKE ? OR p.display_user_id LIKE ? OR d.name LIKE ? OR d.display_user_id LIKE ?)";
+                        $searchTerm = "%{$search}%";
+                        array_push($params, $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+                        $types .= "ssss";
+                    }
+
+                    // Status filter
+                    if ($statusFilter !== 'all') {
+                        $whereConditions[] = "a.status = ?";
+                        $params[] = $statusFilter;
+                        $types .= "s";
+                    }
+
+                    // Token status filter
+                    if ($tokenStatusFilter !== 'all') {
+                        $whereConditions[] = "a.token_status = ?";
+                        $params[] = $tokenStatusFilter;
+                        $types .= "s";
+                    }
+
+                    // Date range filter
+                    if (!empty($dateFrom)) {
+                        $whereConditions[] = "DATE(a.appointment_date) >= ?";
+                        $params[] = $dateFrom;
+                        $types .= "s";
+                    }
+                    if (!empty($dateTo)) {
+                        $whereConditions[] = "DATE(a.appointment_date) <= ?";
+                        $params[] = $dateTo;
+                        $types .= "s";
+                    }
+
+                    // Doctor filter
+                    if ($doctorId !== 'all') {
+                        $whereConditions[] = "a.doctor_id = ?";
+                        $params[] = (int)$doctorId;
                         $types .= "i";
+                    }
+
+                    if (!empty($whereConditions)) {
+                        $sql .= " WHERE " . implode(" AND ", $whereConditions);
                     }
 
                     $sql .= " ORDER BY a.appointment_date DESC";
@@ -1394,11 +1563,23 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
 
                 case 'my_profile':
                     $admin_id = $_SESSION['user_id'];
-                    $stmt = $conn->prepare("SELECT name, email, phone, username FROM users WHERE id = ?");
+                    $stmt = $conn->prepare("SELECT name, email, phone, username, gender, date_of_birth, profile_picture FROM users WHERE id = ?");
                     $stmt->bind_param("i", $admin_id);
                     $stmt->execute();
                     $result = $stmt->get_result();
                     $data = $result->fetch_assoc();
+
+                    // Fetch last login info from ip_tracking
+                    $stmt_ip = $conn->prepare("SELECT ip_address, login_time, name FROM ip_tracking WHERE user_id = ? ORDER BY login_time DESC LIMIT 1");
+                    $stmt_ip->bind_param("i", $admin_id);
+                    $stmt_ip->execute();
+                    $ip_result = $stmt_ip->get_result();
+                    $ip_data = $ip_result->fetch_assoc();
+                    
+                    $data['last_login_ip'] = $ip_data['ip_address'] ?? 'N/A';
+                    $data['last_login_time'] = $ip_data['login_time'] ?? null;
+                    $data['last_login_device'] = $ip_data['name'] ?? 'Unknown';
+
                     $response = ['success' => true, 'data' => $data];
                     break;
 
@@ -1662,20 +1843,97 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
 
                 case 'getTrackedIps':
-                $sql = "SELECT 
-                            it.ip_address, 
-                            MAX(it.name) as name, 
-                            GROUP_CONCAT(DISTINCT u.username SEPARATOR ', ') as usernames, 
-                            MAX(it.login_time) as last_login, 
-                            EXISTS(SELECT 1 FROM ip_blocks ib WHERE ib.ip_address = it.ip_address) as is_blocked
-                        FROM ip_tracking it
-                        JOIN users u ON it.user_id = u.id
-                        GROUP BY it.ip_address
-                        ORDER BY last_login DESC";
-                $result = $conn->query($sql);
-                $data = $result->fetch_all(MYSQLI_ASSOC);
-                $response = ['success' => true, 'data' => $data];
-                break;
+                    $search = $_GET['search'] ?? '';
+                    $status = $_GET['status'] ?? 'all'; // all, active, blocked
+                    $dateFrom = $_GET['date_from'] ?? null;
+                    $dateTo = $_GET['date_to'] ?? null;
+                    $sortBy = $_GET['sort_by'] ?? 'last_login';
+                    $sortOrder = $_GET['sort_order'] ?? 'DESC';
+
+                    // Validate sort column
+                    $allowedSorts = ['ip_address', 'name', 'last_login', 'user_count', 'login_count'];
+                    if (!in_array($sortBy, $allowedSorts)) {
+                        $sortBy = 'last_login';
+                    }
+                    $sortOrder = strtoupper($sortOrder) === 'ASC' ? 'ASC' : 'DESC';
+
+                    $sql = "SELECT 
+                                it.ip_address, 
+                                MAX(it.name) as name, 
+                                COUNT(DISTINCT it.user_id) as user_count,
+                                GROUP_CONCAT(DISTINCT u.username ORDER BY u.username SEPARATOR ', ') as usernames, 
+                                MAX(it.login_time) as last_login,
+                                COUNT(it.id) as login_count,
+                                EXISTS(SELECT 1 FROM ip_blocks ib WHERE ib.ip_address = it.ip_address) as is_blocked,
+                                (SELECT reason FROM ip_blocks WHERE ip_address = it.ip_address LIMIT 1) as block_reason
+                            FROM ip_tracking it
+                            JOIN users u ON it.user_id = u.id";
+
+                    $whereConditions = [];
+                    $params = [];
+                    $types = "";
+
+                    // Search filter
+                    if (!empty($search)) {
+                        $whereConditions[] = "(it.ip_address LIKE ? OR it.name LIKE ? OR u.username LIKE ?)";
+                        $searchTerm = "%{$search}%";
+                        array_push($params, $searchTerm, $searchTerm, $searchTerm);
+                        $types .= "sss";
+                    }
+
+                    // Date range filter
+                    if (!empty($dateFrom)) {
+                        $whereConditions[] = "it.login_time >= ?";
+                        $params[] = $dateFrom . ' 00:00:00';
+                        $types .= "s";
+                    }
+                    if (!empty($dateTo)) {
+                        $whereConditions[] = "it.login_time <= ?";
+                        $params[] = $dateTo . ' 23:59:59';
+                        $types .= "s";
+                    }
+
+                    if (!empty($whereConditions)) {
+                        $sql .= " WHERE " . implode(" AND ", $whereConditions);
+                    }
+
+                    $sql .= " GROUP BY it.ip_address";
+
+                    // Status filter (applied after grouping)
+                    if ($status === 'blocked') {
+                        $sql .= " HAVING is_blocked = 1";
+                    } elseif ($status === 'active') {
+                        $sql .= " HAVING is_blocked = 0";
+                    }
+
+                    // Sorting
+                    $sql .= " ORDER BY {$sortBy} {$sortOrder}";
+
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+
+                    // Calculate statistics
+                    $stats = [
+                        'total_ips' => count($data),
+                        'blocked_ips' => 0,
+                        'active_ips' => 0
+                    ];
+
+                    foreach ($data as $row) {
+                        if ($row['is_blocked'] == 1) {
+                            $stats['blocked_ips']++;
+                        } else {
+                            $stats['active_ips']++;
+                        }
+                    }
+
+                    $response = ['success' => true, 'data' => $data, 'stats' => $stats];
+                    break;
 
             }
         }

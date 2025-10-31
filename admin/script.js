@@ -204,6 +204,54 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     applyTheme(localStorage.getItem('theme') || 'light-mode');
 
+    // --- USER PROFILE DROPDOWN ---
+    const profileDropdownTrigger = document.getElementById('user-profile-dropdown-trigger');
+    const profileDropdownMenu = document.getElementById('user-dropdown-menu');
+
+    if (profileDropdownTrigger && profileDropdownMenu) {
+        profileDropdownTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            profileDropdownTrigger.classList.toggle('active');
+            profileDropdownMenu.classList.toggle('show');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!profileDropdownTrigger.contains(e.target)) {
+                profileDropdownTrigger.classList.remove('active');
+                profileDropdownMenu.classList.remove('show');
+            }
+        });
+
+        // Handle dropdown navigation items
+        profileDropdownMenu.querySelectorAll('.dropdown-nav-link').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                const target = item.getAttribute('data-target');
+                
+                // Close dropdown
+                profileDropdownTrigger.classList.remove('active');
+                profileDropdownMenu.classList.remove('show');
+                
+                // Navigate to panel - find the nav link element
+                if (target) {
+                    const navLink = document.querySelector(`.nav-link[data-target="${target}"]`);
+                    if (navLink) {
+                        handlePanelSwitch(navLink);
+                    }
+                }
+            });
+        });
+
+        // Close dropdown for non-navigation items (like logout)
+        profileDropdownMenu.querySelectorAll('.dropdown-item:not(.dropdown-nav-link)').forEach(item => {
+            item.addEventListener('click', () => {
+                profileDropdownTrigger.classList.remove('active');
+                profileDropdownMenu.classList.remove('show');
+            });
+        });
+    }
+
 
     // --- SIDEBAR & NAVIGATION ---
     const toggleMenu = () => {
@@ -280,7 +328,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (targetId === 'system-settings') fetchSystemSettings();
             if (targetId === 'appointments') {
                 fetchDoctorsForAppointmentFilter();
-                fetchAppointments();
+                fetchAppointments(false);
             }
              if (targetId === 'messenger') initializeMessenger();
             if (targetId === 'reports') generateReport();
@@ -451,9 +499,23 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     // --- APPOINTMENT MANAGEMENT ---
+    const appointmentSearchInput = document.getElementById('appointment-search-input');
+    const appointmentStatusFilter = document.getElementById('appointment-status-filter');
+    const tokenStatusFilter = document.getElementById('token-status-filter');
+    const appointmentDateFrom = document.getElementById('appointment-date-from');
+    const appointmentDateTo = document.getElementById('appointment-date-to');
+    const appointmentDoctorSelect = document.getElementById('appointment-doctor-select');
+    const appointmentApplyFiltersBtn = document.getElementById('appointment-apply-filters-btn');
+    const appointmentResetFiltersBtn = document.getElementById('appointment-reset-filters-btn');
+    const appointmentExportCsvBtn = document.getElementById('appointment-export-csv-btn');
+    
+    let appointmentSearchTimeout;
+    let currentAppointmentData = [];
+    let appointmentSortColumn = 'date';
+    let appointmentSortOrder = 'desc';
+
     const fetchDoctorsForAppointmentFilter = async () => {
-        const doctorFilterSelect = document.getElementById('appointment-doctor-filter');
-        if (doctorFilterSelect.options.length > 1) return;
+        if (appointmentDoctorSelect.options.length > 1) return;
 
         try {
             const response = await fetch('api.php?fetch=doctors_for_scheduling');
@@ -461,37 +523,221 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!result.success) throw new Error(result.message);
 
             result.data.forEach(doctor => {
-                doctorFilterSelect.innerHTML += `<option value="${doctor.id}">${doctor.name} (${doctor.display_user_id})</option>`;
+                appointmentDoctorSelect.innerHTML += `<option value="${doctor.id}">${doctor.name} (${doctor.display_user_id})</option>`;
             });
         } catch (error) {
             console.error("Failed to fetch doctors for filter:", error);
         }
     };
 
+    const updateAppointmentStatistics = (data) => {
+        const total = data.length;
+        const scheduled = data.filter(a => a.status === 'scheduled').length;
+        const completed = data.filter(a => a.status === 'completed').length;
+        const cancelled = data.filter(a => a.status === 'cancelled').length;
+
+        document.getElementById('total-appointments-stat').textContent = total;
+        document.getElementById('scheduled-appointments-stat').textContent = scheduled;
+        document.getElementById('completed-appointments-stat').textContent = completed;
+        document.getElementById('cancelled-appointments-stat').textContent = cancelled;
+    };
+
     const renderAppointmentRow = (appt) => {
         const status = appt.status.charAt(0).toUpperCase() + appt.status.slice(1);
+        const tokenStatus = appt.token_status ? appt.token_status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'N/A';
+        const tokenStatusClass = appt.token_status ? appt.token_status.replace('_', '-') : 'na';
+        
         return `
             <tr>
                 <td>${appt.id}</td>
-                <td>${appt.patient_name} (${appt.patient_display_id})</td>
-                <td>${appt.doctor_name}</td>
-                <td>${new Date(appt.appointment_date).toLocaleString()}</td>
+                <td><strong style="font-size: 1.1rem; color: var(--primary-color);">${appt.token_number || 'N/A'}</strong></td>
+                <td>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <strong>${appt.patient_name}</strong>
+                        <small style="color: var(--text-muted);">ID: ${appt.patient_display_id}</small>
+                        ${appt.patient_gender ? `<small style="color: var(--text-muted);">${appt.patient_gender}${appt.patient_age ? ', ' + appt.patient_age + ' yrs' : ''}</small>` : ''}
+                    </div>
+                </td>
+                <td>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        ${appt.patient_phone ? `<small><i class="fas fa-phone"></i> ${appt.patient_phone}</small>` : '<small style="color: var(--text-muted);">No phone</small>'}
+                        ${appt.patient_email ? `<small><i class="fas fa-envelope"></i> ${appt.patient_email}</small>` : ''}
+                    </div>
+                </td>
+                <td>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <strong>Dr. ${appt.doctor_name}</strong>
+                        <small style="color: var(--text-muted);">ID: ${appt.doctor_display_id}</small>
+                        ${appt.doctor_specialty ? `<small style="color: var(--text-muted);"><i class="fas fa-stethoscope"></i> ${appt.doctor_specialty}</small>` : ''}
+                    </div>
+                </td>
+                <td>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <strong>${new Date(appt.appointment_date).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</strong>
+                        <small>${new Date(appt.appointment_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</small>
+                        ${appt.slot_start_time && appt.slot_end_time ? `<small style="color: var(--text-muted);">Slot: ${appt.slot_start_time} - ${appt.slot_end_time}</small>` : ''}
+                    </div>
+                </td>
                 <td><span class="status-badge ${appt.status.toLowerCase()}">${status}</span></td>
+                <td><span class="status-badge ${tokenStatusClass}">${tokenStatus}</span></td>
             </tr>
         `;
     };
 
-    const fetchAppointments = (doctorId = 'all') => {
-        fetchAndRender({
-            endpoint: `api.php?fetch=appointments&doctor_id=${doctorId}`,
-            target: document.getElementById('appointments-table-body'),
-            renderRow: renderAppointmentRow,
-            columns: 5,
-            emptyMessage: 'No appointments found.'
+    const fetchAppointments = async (applyFilters = false) => {
+        const searchTerm = applyFilters ? appointmentSearchInput.value.trim() : '';
+        const statusFilter = applyFilters ? appointmentStatusFilter.value : 'all';
+        const tokenFilter = applyFilters ? tokenStatusFilter.value : 'all';
+        const dateFrom = applyFilters ? appointmentDateFrom.value : '';
+        const dateTo = applyFilters ? appointmentDateTo.value : '';
+        const doctorId = applyFilters ? appointmentDoctorSelect.value : 'all';
+
+        const params = new URLSearchParams({
+            search: searchTerm,
+            status: statusFilter,
+            token_status: tokenFilter,
+            date_from: dateFrom,
+            date_to: dateTo,
+            doctor_id: doctorId
         });
+
+        const tableBody = document.getElementById('appointments-table-body');
+        tableBody.innerHTML = `<tr><td colspan="8" class="loading-cell"><div class="spinner"></div><span>Loading...</span></td></tr>`;
+
+        try {
+            const response = await fetch(`api.php?fetch=appointments&${params}`);
+            const result = await response.json();
+            
+            if (!result.success) throw new Error(result.message);
+            
+            currentAppointmentData = result.data;
+            updateAppointmentStatistics(currentAppointmentData);
+            
+            if (currentAppointmentData.length > 0) {
+                tableBody.innerHTML = currentAppointmentData.map(renderAppointmentRow).join('');
+            } else {
+                tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">No appointments found.</td></tr>`;
+            }
+        } catch (error) {
+            console.error('Fetch error:', error);
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Failed to load appointments: ${error.message}</td></tr>`;
+        }
     };
-    
-    document.getElementById('appointment-doctor-filter').addEventListener('change', (e) => fetchAppointments(e.target.value));
+
+    // Search with debounce
+    appointmentSearchInput.addEventListener('keyup', () => {
+        clearTimeout(appointmentSearchTimeout);
+        appointmentSearchTimeout = setTimeout(() => {
+            fetchAppointments(true);
+        }, 300);
+    });
+
+    // Apply filters button
+    appointmentApplyFiltersBtn.addEventListener('click', () => {
+        fetchAppointments(true);
+    });
+
+    // Reset filters button
+    appointmentResetFiltersBtn.addEventListener('click', () => {
+        appointmentSearchInput.value = '';
+        appointmentStatusFilter.value = 'all';
+        tokenStatusFilter.value = 'all';
+        appointmentDateFrom.value = '';
+        appointmentDateTo.value = new Date().toISOString().split('T')[0];
+        appointmentDoctorSelect.value = 'all';
+        fetchAppointments(false);
+    });
+
+    // Export CSV button
+    appointmentExportCsvBtn.addEventListener('click', () => {
+        if (currentAppointmentData.length === 0) {
+            showNotification('No data to export', 'error');
+            return;
+        }
+
+        const headers = ['Appt ID', 'Token', 'Patient Name', 'Patient ID', 'Patient Phone', 'Patient Email', 'Doctor Name', 'Doctor ID', 'Specialty', 'Date', 'Time', 'Status', 'Token Status'];
+        const rows = currentAppointmentData.map(appt => [
+            appt.id,
+            appt.token_number || 'N/A',
+            appt.patient_name,
+            appt.patient_display_id,
+            appt.patient_phone || 'N/A',
+            appt.patient_email || 'N/A',
+            appt.doctor_name,
+            appt.doctor_display_id,
+            appt.doctor_specialty || 'N/A',
+            new Date(appt.appointment_date).toLocaleDateString(),
+            new Date(appt.appointment_date).toLocaleTimeString(),
+            appt.status,
+            appt.token_status || 'N/A'
+        ]);
+
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `appointments_${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        showNotification('Appointments exported successfully', 'success');
+    });
+
+    // Table sorting
+    document.querySelector('#appointments-panel .table-container table thead').addEventListener('click', (e) => {
+        const th = e.target.closest('th.sortable');
+        if (!th) return;
+
+        const sortBy = th.dataset.sort;
+        if (appointmentSortColumn === sortBy) {
+            appointmentSortOrder = appointmentSortOrder === 'asc' ? 'desc' : 'asc';
+        } else {
+            appointmentSortColumn = sortBy;
+            appointmentSortOrder = 'asc';
+        }
+
+        // Update sort icons
+        document.querySelectorAll('#appointments-panel .sortable i').forEach(icon => {
+            icon.className = 'fas fa-sort';
+        });
+        th.querySelector('i').className = `fas fa-sort-${appointmentSortOrder === 'asc' ? 'up' : 'down'}`;
+
+        // Sort data
+        currentAppointmentData.sort((a, b) => {
+            let valA, valB;
+            
+            switch(sortBy) {
+                case 'id':
+                    valA = parseInt(a.id);
+                    valB = parseInt(b.id);
+                    break;
+                case 'token':
+                    valA = parseInt(a.token_number) || 0;
+                    valB = parseInt(b.token_number) || 0;
+                    break;
+                case 'date':
+                    valA = new Date(a.appointment_date);
+                    valB = new Date(b.appointment_date);
+                    break;
+                default:
+                    return 0;
+            }
+
+            if (valA < valB) return appointmentSortOrder === 'asc' ? -1 : 1;
+            if (valA > valB) return appointmentSortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        // Re-render table
+        const tableBody = document.getElementById('appointments-table-body');
+        tableBody.innerHTML = currentAppointmentData.map(renderAppointmentRow).join('');
+    });
 
     // --- USER MANAGEMENT ---
     const userDetailModal = document.getElementById('user-detail-modal');
@@ -779,10 +1025,35 @@ const toggleRoleFields = () => {
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             const profile = result.data;
+            
+            // Basic info
             document.getElementById('profile-name').value = profile.name || '';
             document.getElementById('profile-email').value = profile.email || '';
             document.getElementById('profile-phone').value = profile.phone || '';
             document.getElementById('profile-username').value = profile.username || '';
+            document.getElementById('profile-gender').value = profile.gender || '';
+            document.getElementById('profile-dob').value = profile.date_of_birth || '';
+            
+            // Profile picture
+            const profilePic = profile.profile_picture || 'default.png';
+            document.getElementById('profile-picture-preview').src = `../uploads/profile_pictures/${profilePic}`;
+            
+            // Security information
+            if (profile.last_login_time) {
+                const loginDate = new Date(profile.last_login_time);
+                document.getElementById('last-login-time').textContent = loginDate.toLocaleString('en-IN', { 
+                    dateStyle: 'medium', 
+                    timeStyle: 'short' 
+                });
+            } else {
+                document.getElementById('last-login-time').textContent = 'First login';
+            }
+            
+            document.getElementById('last-login-ip').textContent = profile.last_login_ip || 'N/A';
+            
+            // Note: Password change date is not tracked in current schema
+            // Could be added in future with a password_changed_at field
+            
         } catch (error) {
             showNotification('Could not load your profile data.', 'error');
         }
@@ -808,12 +1079,142 @@ const toggleRoleFields = () => {
         }
     };
 
+    // Profile picture preview on file select
+    document.getElementById('profile-picture-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            // Validate file type
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+            if (!allowedTypes.includes(file.type)) {
+                showNotification('Invalid file type. Only JPG and PNG are allowed.', 'error');
+                e.target.value = '';
+                return;
+            }
+            
+            // Validate file size (2MB)
+            if (file.size > 2 * 1024 * 1024) {
+                showNotification('File size exceeds 2MB limit.', 'error');
+                e.target.value = '';
+                return;
+            }
+            
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                document.getElementById('profile-picture-preview').src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // Remove profile picture button
+    document.getElementById('remove-profile-picture-btn').addEventListener('click', async () => {
+        const confirmed = await showConfirmation('Remove Profile Picture', 'Are you sure you want to remove your profile picture?');
+        if (confirmed) {
+            const formData = new FormData();
+            formData.append('action', 'removeOwnProfilePicture');
+            formData.append('csrf_token', csrfToken);
+            
+            try {
+                const response = await fetch('api.php', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showNotification(result.message, 'success');
+                    // Update preview in the form
+                    document.getElementById('profile-picture-preview').src = '../uploads/profile_pictures/default.png';
+                    // Update header profile picture
+                    const headerAvatar = document.querySelector('.profile-avatar');
+                    if (headerAvatar) {
+                        headerAvatar.src = '../uploads/profile_pictures/default.png';
+                    }
+                    // Update dropdown avatar
+                    const dropdownAvatar = document.querySelector('.dropdown-avatar');
+                    if (dropdownAvatar) {
+                        dropdownAvatar.src = '../uploads/profile_pictures/default.png';
+                    }
+                    // Clear file input
+                    document.getElementById('profile-picture-input').value = '';
+                } else {
+                    showNotification(result.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error removing profile picture:', error);
+                showNotification('Failed to remove profile picture.', 'error');
+            }
+        }
+    });
+
     document.getElementById('profile-form').addEventListener('submit', async (e) => {
         e.preventDefault();
+        
         const formData = new FormData(e.target);
-        handleFormSubmit(formData);
-        document.getElementById('welcome-message').textContent = `Hello, ${formData.get('name')}!`;
-        document.querySelector('.user-profile-widget .user-info strong').textContent = formData.get('name');
+        const newPassword = formData.get('password');
+        const confirmPassword = formData.get('confirm_password');
+        const currentPassword = formData.get('current_password');
+        
+        // Validate password change
+        if (newPassword) {
+            if (!currentPassword) {
+                showNotification('Current password is required to change password.', 'error');
+                return;
+            }
+            if (newPassword !== confirmPassword) {
+                showNotification('New passwords do not match.', 'error');
+                return;
+            }
+            if (newPassword.length < 8) {
+                showNotification('New password must be at least 8 characters long.', 'error');
+                return;
+            }
+        }
+        
+        // Handle form submission
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                showNotification(result.message, 'success');
+                
+                // Update header name if name changed
+                const newName = formData.get('name');
+                document.getElementById('welcome-message').textContent = `Hello, ${newName}!`;
+                document.querySelector('.user-profile-widget .user-info strong').textContent = newName;
+                
+                // Update profile picture in header if uploaded
+                if (formData.get('profile_picture').size > 0) {
+                    // Reload profile to get new picture filename
+                    await fetchMyProfile();
+                    const newProfilePic = document.getElementById('profile-picture-preview').src;
+                    const headerAvatar = document.querySelector('.profile-avatar');
+                    if (headerAvatar) {
+                        headerAvatar.src = newProfilePic;
+                    }
+                    const dropdownAvatar = document.querySelector('.dropdown-avatar');
+                    if (dropdownAvatar) {
+                        dropdownAvatar.src = newProfilePic;
+                    }
+                }
+                
+                // Clear password fields
+                document.getElementById('profile-current-password').value = '';
+                document.getElementById('profile-password').value = '';
+                document.getElementById('profile-confirm-password').value = '';
+                document.getElementById('profile-picture-input').value = '';
+                
+            } else {
+                showNotification(result.message, 'error');
+            }
+        } catch (error) {
+            showNotification('Failed to update profile.', 'error');
+        }
     });
 
     document.getElementById('system-settings-form')?.addEventListener('submit', async (e) => {
@@ -2041,34 +2442,210 @@ staffSearchInput.addEventListener('keyup', () => {
     }
 
     // --- IP MANAGEMENT ---
+    // --- IP MANAGEMENT ---
     const ipManagementPanel = document.getElementById('ip-management-panel');
 
-    const fetchAndRenderTrackedIps = () => {
-        fetchAndRender({
-            endpoint: 'api.php?fetch=getTrackedIps',
-            target: document.getElementById('ip-tracking-table-body'),
-            renderRow: (ip) => `
-                <tr>
-                    <td data-label="IP Address">${ip.ip_address}</td>
-                    <td data-label="Name/Label">${ip.name || 'N/A'}</td>
-                    <td data-label="Associated Users">${ip.usernames}</td>
-                    <td data-label="Last Login">${new Date(ip.last_login).toLocaleString()}</td>
-                    <td data-label="Status"><span class="status-badge ${ip.is_blocked == 1 ? 'inactive' : 'active'}">${ip.is_blocked == 1 ? 'Blocked' : 'Active'}</span></td>
-                    <td data-label="Actions" class="action-buttons">
-                        <button class="btn-edit-ip-name btn-edit" data-ip="${ip.ip_address}" data-name="${ip.name || ''}" title="Edit Name"><i class="fas fa-tag"></i></button>
-                        ${ip.is_blocked == 1
-                            ? `<button class="btn-unblock-ip btn-delete" data-ip="${ip.ip_address}" title="Unblock"><i class="fas fa-check-circle"></i></button>`
-                            : `<button class="btn-block-ip btn-delete" data-ip="${ip.ip_address}" title="Block"><i class="fas fa-ban"></i></button>`
-                        }
-                    </td>
-                </tr>
-            `,
-            columns: 6,
-            emptyMessage: 'No IP addresses have been tracked yet.'
-        });
+    let ipCurrentSort = { column: 'last_login', order: 'DESC' };
+    let ipCurrentFilters = {
+        search: '',
+        status: 'all',
+        dateFrom: '',
+        dateTo: ''
     };
 
-    document.querySelector('.nav-link[data-target="ip-management"]').addEventListener('click', fetchAndRenderTrackedIps);
+    const fetchAndRenderTrackedIps = (filters = ipCurrentFilters, sort = ipCurrentSort) => {
+        const params = new URLSearchParams({
+            fetch: 'getTrackedIps',
+            search: filters.search || '',
+            status: filters.status || 'all',
+            date_from: filters.dateFrom || '',
+            date_to: filters.dateTo || '',
+            sort_by: sort.column,
+            sort_order: sort.order
+        });
+
+        fetch(`api.php?${params.toString()}`)
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    const tbody = document.getElementById('ip-tracking-table-body');
+                    const data = result.data;
+                    const stats = result.stats;
+
+                    // Update statistics
+                    document.getElementById('total-ips-stat').textContent = stats.total_ips;
+                    document.getElementById('blocked-ips-stat').textContent = stats.blocked_ips;
+                    document.getElementById('active-ips-stat').textContent = stats.active_ips;
+
+                    // Update sort icons
+                    document.querySelectorAll('#ip-management-panel .sortable').forEach(th => {
+                        const icon = th.querySelector('i');
+                        icon.className = 'fas fa-sort';
+                        if (th.dataset.sort === sort.column) {
+                            icon.className = sort.order === 'ASC' ? 'fas fa-sort-up' : 'fas fa-sort-down';
+                        }
+                    });
+
+                    // Render table
+                    if (data.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                            <i class="fas fa-network-wired" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;"></i>
+                            <p>No IP addresses found matching your criteria.</p>
+                        </td></tr>`;
+                    } else {
+                        tbody.innerHTML = data.map(ip => `
+                            <tr>
+                                <td data-label="IP Address">
+                                    <strong style="font-family: monospace;">${ip.ip_address}</strong>
+                                    <button class="btn" style="background: none; border: none; padding: 0.25rem 0.5rem; cursor: pointer; color: var(--primary-color);" 
+                                            onclick="navigator.clipboard.writeText('${ip.ip_address}'); showNotification('IP copied to clipboard!', 'success');"
+                                            title="Copy IP">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </td>
+                                <td data-label="Name/Label">${ip.name || '<span style="color: var(--text-muted); font-style: italic;">No label</span>'}</td>
+                                <td data-label="User Count">
+                                    <span style="background: var(--primary-color); color: white; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
+                                        ${ip.user_count}
+                                    </span>
+                                </td>
+                                <td data-label="Associated Users">
+                                    <span style="font-size: 0.9rem;">${ip.usernames.length > 50 ? ip.usernames.substring(0, 50) + '...' : ip.usernames}</span>
+                                </td>
+                                <td data-label="Last Login">${new Date(ip.last_login).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</td>
+                                <td data-label="Login Count">
+                                    <span style="color: var(--primary-color); font-weight: 600;">${ip.login_count}</span>
+                                </td>
+                                <td data-label="Status">
+                                    <span class="status-badge ${ip.is_blocked == 1 ? 'inactive' : 'active'}">
+                                        ${ip.is_blocked == 1 ? 'Blocked' : 'Active'}
+                                    </span>
+                                    ${ip.is_blocked == 1 && ip.block_reason ? `<br><small style="color: var(--text-muted); font-size: 0.75rem;" title="${ip.block_reason}">Reason: ${ip.block_reason.substring(0, 30)}${ip.block_reason.length > 30 ? '...' : ''}</small>` : ''}
+                                </td>
+                                <td data-label="Actions" class="action-buttons">
+                                    <button class="btn-edit-ip-name btn-edit" data-ip="${ip.ip_address}" data-name="${ip.name || ''}" title="Edit Name"><i class="fas fa-tag"></i></button>
+                                    ${ip.is_blocked == 1
+                                        ? `<button class="btn-unblock-ip btn-delete" data-ip="${ip.ip_address}" title="Unblock"><i class="fas fa-check-circle"></i></button>`
+                                        : `<button class="btn-block-ip btn-delete" data-ip="${ip.ip_address}" title="Block"><i class="fas fa-ban"></i></button>`
+                                    }
+                                </td>
+                            </tr>
+                        `).join('');
+                    }
+                } else {
+                    showNotification('Failed to load IP tracking data.', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching IP data:', error);
+                showNotification('Error loading IP data.', 'error');
+            });
+    };
+
+    // Apply filters
+    document.getElementById('ip-apply-filters-btn')?.addEventListener('click', () => {
+        ipCurrentFilters = {
+            search: document.getElementById('ip-search-input').value.trim(),
+            status: document.getElementById('ip-status-filter').value,
+            dateFrom: document.getElementById('ip-date-from').value,
+            dateTo: document.getElementById('ip-date-to').value
+        };
+        fetchAndRenderTrackedIps(ipCurrentFilters, ipCurrentSort);
+    });
+
+    // Reset filters
+    document.getElementById('ip-reset-filters-btn')?.addEventListener('click', () => {
+        document.getElementById('ip-search-input').value = '';
+        document.getElementById('ip-status-filter').value = 'all';
+        document.getElementById('ip-date-from').value = '';
+        document.getElementById('ip-date-to').value = new Date().toISOString().split('T')[0];
+        
+        ipCurrentFilters = { search: '', status: 'all', dateFrom: '', dateTo: '' };
+        ipCurrentSort = { column: 'last_login', order: 'DESC' };
+        fetchAndRenderTrackedIps(ipCurrentFilters, ipCurrentSort);
+    });
+
+    // Search on Enter key
+    document.getElementById('ip-search-input')?.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') {
+            document.getElementById('ip-apply-filters-btn').click();
+        }
+    });
+
+    // Column sorting
+    document.querySelectorAll('#ip-management-panel .sortable').forEach(th => {
+        th.addEventListener('click', () => {
+            const column = th.dataset.sort;
+            if (ipCurrentSort.column === column) {
+                ipCurrentSort.order = ipCurrentSort.order === 'ASC' ? 'DESC' : 'ASC';
+            } else {
+                ipCurrentSort.column = column;
+                ipCurrentSort.order = 'DESC';
+            }
+            fetchAndRenderTrackedIps(ipCurrentFilters, ipCurrentSort);
+        });
+    });
+
+    // Export to CSV
+    document.getElementById('ip-export-csv-btn')?.addEventListener('click', () => {
+        const params = new URLSearchParams({
+            fetch: 'getTrackedIps',
+            search: ipCurrentFilters.search || '',
+            status: ipCurrentFilters.status || 'all',
+            date_from: ipCurrentFilters.dateFrom || '',
+            date_to: ipCurrentFilters.dateTo || '',
+            sort_by: ipCurrentSort.column,
+            sort_order: ipCurrentSort.order
+        });
+
+        fetch(`api.php?${params.toString()}`)
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    const data = result.data;
+                    
+                    // Create CSV content
+                    const headers = ['IP Address', 'Name/Label', 'User Count', 'Associated Users', 'Last Login', 'Login Count', 'Status', 'Block Reason'];
+                    const csvContent = [
+                        headers.join(','),
+                        ...data.map(row => [
+                            row.ip_address,
+                            `"${row.name || 'N/A'}"`,
+                            row.user_count,
+                            `"${row.usernames}"`,
+                            new Date(row.last_login).toLocaleString(),
+                            row.login_count,
+                            row.is_blocked == 1 ? 'Blocked' : 'Active',
+                            `"${row.block_reason || 'N/A'}"`
+                        ].join(','))
+                    ].join('\n');
+
+                    // Download CSV
+                    const blob = new Blob([csvContent], { type: 'text/csv' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `ip_tracking_${new Date().toISOString().split('T')[0]}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+
+                    showNotification('IP data exported successfully!', 'success');
+                } else {
+                    showNotification('Failed to export data.', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error exporting data:', error);
+                showNotification('Error exporting data.', 'error');
+            });
+    });
+
+    // Load IP management when panel is opened
+    document.querySelector('.nav-link[data-target="ip-management"]').addEventListener('click', () => {
+        fetchAndRenderTrackedIps(ipCurrentFilters, ipCurrentSort);
+    });
 
     document.getElementById('ip-tracking-table-body').addEventListener('click', async (e) => {
         const button = e.target.closest('button');
