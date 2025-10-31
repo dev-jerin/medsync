@@ -827,10 +827,35 @@ const toggleRoleFields = () => {
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             const profile = result.data;
+            
+            // Basic info
             document.getElementById('profile-name').value = profile.name || '';
             document.getElementById('profile-email').value = profile.email || '';
             document.getElementById('profile-phone').value = profile.phone || '';
             document.getElementById('profile-username').value = profile.username || '';
+            document.getElementById('profile-gender').value = profile.gender || '';
+            document.getElementById('profile-dob').value = profile.date_of_birth || '';
+            
+            // Profile picture
+            const profilePic = profile.profile_picture || 'default.png';
+            document.getElementById('profile-picture-preview').src = `../uploads/profile_pictures/${profilePic}`;
+            
+            // Security information
+            if (profile.last_login_time) {
+                const loginDate = new Date(profile.last_login_time);
+                document.getElementById('last-login-time').textContent = loginDate.toLocaleString('en-IN', { 
+                    dateStyle: 'medium', 
+                    timeStyle: 'short' 
+                });
+            } else {
+                document.getElementById('last-login-time').textContent = 'First login';
+            }
+            
+            document.getElementById('last-login-ip').textContent = profile.last_login_ip || 'N/A';
+            
+            // Note: Password change date is not tracked in current schema
+            // Could be added in future with a password_changed_at field
+            
         } catch (error) {
             showNotification('Could not load your profile data.', 'error');
         }
@@ -856,12 +881,142 @@ const toggleRoleFields = () => {
         }
     };
 
+    // Profile picture preview on file select
+    document.getElementById('profile-picture-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            // Validate file type
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+            if (!allowedTypes.includes(file.type)) {
+                showNotification('Invalid file type. Only JPG and PNG are allowed.', 'error');
+                e.target.value = '';
+                return;
+            }
+            
+            // Validate file size (2MB)
+            if (file.size > 2 * 1024 * 1024) {
+                showNotification('File size exceeds 2MB limit.', 'error');
+                e.target.value = '';
+                return;
+            }
+            
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                document.getElementById('profile-picture-preview').src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // Remove profile picture button
+    document.getElementById('remove-profile-picture-btn').addEventListener('click', async () => {
+        const confirmed = await showConfirmation('Remove Profile Picture', 'Are you sure you want to remove your profile picture?');
+        if (confirmed) {
+            const formData = new FormData();
+            formData.append('action', 'removeOwnProfilePicture');
+            formData.append('csrf_token', csrfToken);
+            
+            try {
+                const response = await fetch('api.php', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showNotification(result.message, 'success');
+                    // Update preview in the form
+                    document.getElementById('profile-picture-preview').src = '../uploads/profile_pictures/default.png';
+                    // Update header profile picture
+                    const headerAvatar = document.querySelector('.profile-avatar');
+                    if (headerAvatar) {
+                        headerAvatar.src = '../uploads/profile_pictures/default.png';
+                    }
+                    // Update dropdown avatar
+                    const dropdownAvatar = document.querySelector('.dropdown-avatar');
+                    if (dropdownAvatar) {
+                        dropdownAvatar.src = '../uploads/profile_pictures/default.png';
+                    }
+                    // Clear file input
+                    document.getElementById('profile-picture-input').value = '';
+                } else {
+                    showNotification(result.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error removing profile picture:', error);
+                showNotification('Failed to remove profile picture.', 'error');
+            }
+        }
+    });
+
     document.getElementById('profile-form').addEventListener('submit', async (e) => {
         e.preventDefault();
+        
         const formData = new FormData(e.target);
-        handleFormSubmit(formData);
-        document.getElementById('welcome-message').textContent = `Hello, ${formData.get('name')}!`;
-        document.querySelector('.user-profile-widget .user-info strong').textContent = formData.get('name');
+        const newPassword = formData.get('password');
+        const confirmPassword = formData.get('confirm_password');
+        const currentPassword = formData.get('current_password');
+        
+        // Validate password change
+        if (newPassword) {
+            if (!currentPassword) {
+                showNotification('Current password is required to change password.', 'error');
+                return;
+            }
+            if (newPassword !== confirmPassword) {
+                showNotification('New passwords do not match.', 'error');
+                return;
+            }
+            if (newPassword.length < 8) {
+                showNotification('New password must be at least 8 characters long.', 'error');
+                return;
+            }
+        }
+        
+        // Handle form submission
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                showNotification(result.message, 'success');
+                
+                // Update header name if name changed
+                const newName = formData.get('name');
+                document.getElementById('welcome-message').textContent = `Hello, ${newName}!`;
+                document.querySelector('.user-profile-widget .user-info strong').textContent = newName;
+                
+                // Update profile picture in header if uploaded
+                if (formData.get('profile_picture').size > 0) {
+                    // Reload profile to get new picture filename
+                    await fetchMyProfile();
+                    const newProfilePic = document.getElementById('profile-picture-preview').src;
+                    const headerAvatar = document.querySelector('.profile-avatar');
+                    if (headerAvatar) {
+                        headerAvatar.src = newProfilePic;
+                    }
+                    const dropdownAvatar = document.querySelector('.dropdown-avatar');
+                    if (dropdownAvatar) {
+                        dropdownAvatar.src = newProfilePic;
+                    }
+                }
+                
+                // Clear password fields
+                document.getElementById('profile-current-password').value = '';
+                document.getElementById('profile-password').value = '';
+                document.getElementById('profile-confirm-password').value = '';
+                document.getElementById('profile-picture-input').value = '';
+                
+            } else {
+                showNotification(result.message, 'error');
+            }
+        } catch (error) {
+            showNotification('Failed to update profile.', 'error');
+        }
     });
 
     document.getElementById('system-settings-form')?.addEventListener('submit', async (e) => {

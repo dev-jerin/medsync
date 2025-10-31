@@ -586,9 +586,60 @@ $conn->close();
             <div id="settings-panel" class="content-panel">
                 <h3>My Account Details</h3>
                 <p>Edit your personal information and password here.</p>
+
+                <!-- Security Information Display -->
+                <div id="security-info-panel" style="margin: 2rem 0; padding: 1.5rem; background: var(--bg-grey); border-radius: 8px; border-left: 4px solid var(--primary-color); max-width: 600px;">
+                    <h4 style="margin-top: 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-shield-alt"></i> Security Information
+                    </h4>
+                    <div id="security-info-content" style="display: grid; gap: 0.75rem;">
+                        <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--border-light);">
+                            <span style="color: var(--text-muted);"><i class="fas fa-clock"></i> Last Login:</span>
+                            <strong id="last-login-time">Loading...</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 0.5rem 0;">
+                            <span style="color: var(--text-muted);"><i class="fas fa-network-wired"></i> IP Address:</span>
+                            <strong id="last-login-ip">Loading...</strong>
+                        </div>
+                    </div>
+                </div>
+
                 <form id="profile-form" style="margin-top: 2rem; max-width: 600px;">
                     <input type="hidden" name="action" value="updateProfile">
                     <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+
+                    <!-- Profile Picture Section -->
+                    <div class="form-group" style="text-align: center; margin-bottom: 2rem;">
+                        <label style="display: block; margin-bottom: 1rem; font-weight: 600;">Profile Picture</label>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
+                            <div style="position: relative;">
+                                <img id="profile-picture-preview" 
+                                     src="../uploads/profile_pictures/default.png" 
+                                     alt="Profile Picture" 
+                                     style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid var(--primary-color); box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                                <label for="profile-picture-input" 
+                                       style="position: absolute; bottom: 0; right: 0; background: var(--primary-color); color: white; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                                    <i class="fas fa-camera"></i>
+                                </label>
+                            </div>
+                            <input type="file" 
+                                   id="profile-picture-input" 
+                                   name="profile_picture" 
+                                   accept="image/jpeg,image/png,image/jpg" 
+                                   style="display: none;">
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button type="button" 
+                                        id="remove-profile-picture-btn" 
+                                        class="btn" 
+                                        style="background: var(--danger-color); color: white; font-size: 0.85rem; padding: 0.4rem 0.8rem;">
+                                    <i class="fas fa-trash"></i> Remove Picture
+                                </button>
+                            </div>
+                            <small style="color: var(--text-muted); font-size: 0.8rem;">
+                                Accepted formats: JPG, PNG. Max size: 2MB
+                            </small>
+                        </div>
+                    </div>
 
                     <div class="form-group">
                         <label for="profile-name">Full Name</label>
@@ -604,17 +655,48 @@ $conn->close();
                             title="Enter in format +91 followed by 10 digits" maxlength="13" minlength="13">
                     </div>
                     <div class="form-group">
+                        <label for="profile-gender">Gender</label>
+                        <select id="profile-gender" name="gender">
+                            <option value="">Select Gender</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-dob">Date of Birth</label>
+                        <input type="date" id="profile-dob" name="date_of_birth" max="<?php echo date('Y-m-d'); ?>">
+                    </div>
+                    <div class="form-group">
                         <label for="profile-username">Username</label>
                         <input type="text" id="profile-username" name="username" disabled>
                         <small style="color: var(--text-muted); font-size: 0.8rem;">Username cannot be changed.</small>
                     </div>
-                    <div class="form-group">
-                        <label for="profile-password">New Password</label>
-                        <input type="password" id="profile-password" name="password">
-                        <small style="color: var(--text-muted); font-size: 0.8rem;">Leave blank to keep your current
-                            password.</small>
+
+                    <!-- Password Change Section -->
+                    <div style="margin-top: 2rem; padding: 1.5rem; background: var(--bg-grey); border-radius: 8px; border: 1px solid var(--border-light);">
+                        <h4 style="margin-top: 0; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-lock"></i> Change Password
+                        </h4>
+                        <div class="form-group">
+                            <label for="profile-current-password">Current Password</label>
+                            <input type="password" id="profile-current-password" name="current_password" autocomplete="current-password">
+                            <small style="color: var(--text-muted); font-size: 0.8rem;">Required when changing password</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="profile-password">New Password</label>
+                            <input type="password" id="profile-password" name="password" autocomplete="new-password">
+                            <small style="color: var(--text-muted); font-size: 0.8rem;">Leave blank to keep your current password</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="profile-confirm-password">Confirm New Password</label>
+                            <input type="password" id="profile-confirm-password" name="confirm_password" autocomplete="new-password">
+                        </div>
                     </div>
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
+
+                    <button type="submit" class="btn btn-primary" style="margin-top: 1.5rem;">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
                 </form>
             </div>
 

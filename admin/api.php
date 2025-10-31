@@ -382,12 +382,91 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     if (!$email)
                         throw new Exception('Invalid email format.');
                     $phone = $_POST['phone'];
+                    $gender = $_POST['gender'] ?? null;
+                    $date_of_birth = $_POST['date_of_birth'] ?? null;
 
                     $sql_parts = ["name = ?", "email = ?", "phone = ?"];
                     $params = [$name, $email, $phone];
                     $types = "sss";
 
+                    // Handle gender
+                    if (!empty($gender)) {
+                        $sql_parts[] = "gender = ?";
+                        $params[] = $gender;
+                        $types .= "s";
+                    }
+
+                    // Handle date of birth
+                    if (!empty($date_of_birth)) {
+                        $sql_parts[] = "date_of_birth = ?";
+                        $params[] = $date_of_birth;
+                        $types .= "s";
+                    }
+
+                    // Handle profile picture upload
+                    if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] === UPLOAD_ERR_OK) {
+                        $file = $_FILES['profile_picture'];
+                        $allowed_types = ['image/jpeg', 'image/png', 'image/jpg'];
+                        $max_size = 2 * 1024 * 1024; // 2MB
+
+                        if (!in_array($file['type'], $allowed_types)) {
+                            throw new Exception('Invalid file type. Only JPG and PNG are allowed.');
+                        }
+                        if ($file['size'] > $max_size) {
+                            throw new Exception('File size exceeds 2MB limit.');
+                        }
+
+                        // Generate unique filename
+                        $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
+                        $new_filename = 'profile_' . $id . '_' . time() . '.' . $extension;
+                        $upload_path = '../uploads/profile_pictures/' . $new_filename;
+
+                        // Delete old profile picture if not default
+                        $stmt_old = $conn->prepare("SELECT profile_picture FROM users WHERE id = ?");
+                        $stmt_old->bind_param("i", $id);
+                        $stmt_old->execute();
+                        $old_pic = $stmt_old->get_result()->fetch_assoc()['profile_picture'];
+                        if ($old_pic && $old_pic !== 'default.png' && file_exists('../uploads/profile_pictures/' . $old_pic)) {
+                            unlink('../uploads/profile_pictures/' . $old_pic);
+                        }
+
+                        // Upload new file
+                        if (move_uploaded_file($file['tmp_name'], $upload_path)) {
+                            $sql_parts[] = "profile_picture = ?";
+                            $params[] = $new_filename;
+                            $types .= "s";
+                        } else {
+                            throw new Exception('Failed to upload profile picture.');
+                        }
+                    }
+
+                    // Handle password change with validation
                     if (!empty($_POST['password'])) {
+                        // Require current password when changing password
+                        if (empty($_POST['current_password'])) {
+                            throw new Exception('Current password is required to change password.');
+                        }
+
+                        // Verify current password
+                        $stmt_verify = $conn->prepare("SELECT password FROM users WHERE id = ?");
+                        $stmt_verify->bind_param("i", $id);
+                        $stmt_verify->execute();
+                        $current_hash = $stmt_verify->get_result()->fetch_assoc()['password'];
+                        
+                        if (!password_verify($_POST['current_password'], $current_hash)) {
+                            throw new Exception('Current password is incorrect.');
+                        }
+
+                        // Verify password confirmation
+                        if ($_POST['password'] !== $_POST['confirm_password']) {
+                            throw new Exception('New passwords do not match.');
+                        }
+
+                        // Validate password strength
+                        if (strlen($_POST['password']) < 8) {
+                            throw new Exception('New password must be at least 8 characters long.');
+                        }
+
                         $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
                         $sql_parts[] = "password = ?";
                         $params[] = $hashed_password;
@@ -407,6 +486,33 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         $response = ['success' => true, 'message' => 'Your profile has been updated successfully.'];
                     } else {
                         throw new Exception('Failed to update your profile.');
+                    }
+                    break;
+
+                case 'removeOwnProfilePicture':
+                    $id = $_SESSION['user_id'];
+                    
+                    // Fetch current profile picture
+                    $stmt_old = $conn->prepare("SELECT profile_picture FROM users WHERE id = ?");
+                    $stmt_old->bind_param("i", $id);
+                    $stmt_old->execute();
+                    $user_data = $stmt_old->get_result()->fetch_assoc();
+
+                    if ($user_data && $user_data['profile_picture'] !== 'default.png') {
+                        $pfp_path = "../uploads/profile_pictures/" . $user_data['profile_picture'];
+                        if (file_exists($pfp_path)) {
+                            unlink($pfp_path);
+                        }
+                    }
+
+                    $stmt = $conn->prepare("UPDATE users SET profile_picture = 'default.png' WHERE id = ?");
+                    $stmt->bind_param("i", $id);
+                    
+                    if ($stmt->execute()) {
+                        log_activity($conn, $admin_user_id_for_log, 'remove_own_profile_picture', $id, 'Admin removed their own profile picture.');
+                        $response = ['success' => true, 'message' => 'Profile picture removed successfully.'];
+                    } else {
+                        throw new Exception('Failed to remove profile picture.');
                     }
                     break;
 
@@ -1394,11 +1500,23 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
 
                 case 'my_profile':
                     $admin_id = $_SESSION['user_id'];
-                    $stmt = $conn->prepare("SELECT name, email, phone, username FROM users WHERE id = ?");
+                    $stmt = $conn->prepare("SELECT name, email, phone, username, gender, date_of_birth, profile_picture FROM users WHERE id = ?");
                     $stmt->bind_param("i", $admin_id);
                     $stmt->execute();
                     $result = $stmt->get_result();
                     $data = $result->fetch_assoc();
+
+                    // Fetch last login info from ip_tracking
+                    $stmt_ip = $conn->prepare("SELECT ip_address, login_time, name FROM ip_tracking WHERE user_id = ? ORDER BY login_time DESC LIMIT 1");
+                    $stmt_ip->bind_param("i", $admin_id);
+                    $stmt_ip->execute();
+                    $ip_result = $stmt_ip->get_result();
+                    $ip_data = $ip_result->fetch_assoc();
+                    
+                    $data['last_login_ip'] = $ip_data['ip_address'] ?? 'N/A';
+                    $data['last_login_time'] = $ip_data['login_time'] ?? null;
+                    $data['last_login_device'] = $ip_data['name'] ?? 'Unknown';
+
                     $response = ['success' => true, 'data' => $data];
                     break;
 
