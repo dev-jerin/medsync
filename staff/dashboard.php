@@ -728,7 +728,7 @@ require_once 'api.php';
     <input type="hidden" id="current-user-id" value="<?php echo $_SESSION['user_id']; ?>">
     
     <div class="modal-overlay" id="user-management-modal">
-        <div class="modal-container">
+        <div class="modal-container modal-lg">
             <div class="modal-header">
                 <h4 id="user-modal-title">Add New User</h4>
                 <button class="modal-close-btn">&times;</button>
@@ -738,69 +738,115 @@ require_once 'api.php';
                     <input type="hidden" name="id" id="user-id">
                     <input type="hidden" name="action" id="user-form-action">
                     
-                    <div class="form-group">
-                        <label for="user-name">Full Name</label>
-                        <input type="text" id="user-name" name="name" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="user-username">Username</label>
-                        <input type="text" id="user-username" name="username" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="user-email">Email</label>
-                        <input type="email" id="user-email" name="email" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="user-phone">Phone Number</label>
-                        <input type="tel" id="user-phone" name="phone" placeholder="+919876543210" maxlength="13">
-                        <small class="validation-error" id="user-phone-error"></small>
-                    </div>
-                    <div class="form-group">
-                        <label for="user-gender">Gender</label>
-                        <select id="user-gender" name="gender" required>
-                            <option value="">-- Select Gender --</option>
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="user-dob">Date of Birth</label>
-                        <input type="date" id="user-dob" name="date_of_birth" max="<?php echo date('Y-m-d'); ?>">
-                        <small class="validation-error" id="user-dob-error"></small>
-                    </div>
-                    <div class="form-group" id="active-group" style="display: none;">
-                        <label for="user-active">Account Status</label>
-                        <select id="user-active" name="active">
-                            <option value="1">Active</option>
-                            <option value="0">Inactive</option>
-                        </select>
-                    </div>
-                    <div class="form-group" id="password-group">
-                        <label for="user-password">Password</label>
-                        <input type="password" id="user-password" name="password" required>
-                        <small>Required for new users. Leave blank when editing to keep the same password.</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="user-role">Role</label>
-                        <select id="user-role" name="role" required>
-                            <option value="user">Patient</option>
-                            <option value="doctor">Doctor</option>
-                        </select>
+                    <!-- Basic Information Section -->
+                    <div class="form-section">
+                        <h5 class="form-section-title"><i class="fas fa-user"></i> Basic Information</h5>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="user-name"><span class="required">*</span> Full Name</label>
+                                <input type="text" id="user-name" name="name" placeholder="Enter full name" required>
+                                <small class="field-hint">Legal name as per ID documents</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="user-username"><span class="required">*</span> Username</label>
+                                <input type="text" id="user-username" name="username" placeholder="Choose a username" required>
+                                <small class="field-hint">Unique identifier for login (cannot be changed later)</small>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="user-email"><span class="required">*</span> Email Address</label>
+                                <input type="email" id="user-email" name="email" placeholder="user@example.com" required>
+                                <small class="field-hint">Primary email for notifications</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="user-phone">Phone Number</label>
+                                <input type="tel" id="user-phone" name="phone" placeholder="+919876543210" maxlength="13">
+                                <small class="validation-error" id="user-phone-error"></small>
+                                <small class="field-hint">Format: +91XXXXXXXXXX</small>
+                            </div>
+                        </div>
                     </div>
                     
-                    <div id="doctor-fields" style="display:none; border-top: 1px solid var(--border-color); margin-top: 1rem; padding-top: 1rem;">
-                        <div class="form-group">
-                            <label for="doctor-specialty">Specialty</label>
-                            <select id="doctor-specialty" name="specialty_id">
+                    <!-- Personal Details Section -->
+                    <div class="form-section">
+                        <h5 class="form-section-title"><i class="fas fa-id-card"></i> Personal Details</h5>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="user-gender"><span class="required">*</span> Gender</label>
+                                <select id="user-gender" name="gender" required>
+                                    <option value="">-- Select Gender --</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
                                 </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="user-dob">Date of Birth</label>
+                                <input type="date" id="user-dob" name="date_of_birth" max="<?php echo date('Y-m-d'); ?>">
+                                <small class="validation-error" id="user-dob-error"></small>
+                                <small class="field-hint">Age will be calculated automatically</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Account Settings Section -->
+                    <div class="form-section">
+                        <h5 class="form-section-title"><i class="fas fa-cog"></i> Account Settings</h5>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="user-role"><span class="required">*</span> Account Type</label>
+                                <select id="user-role" name="role" required>
+                                    <option value="user">Patient</option>
+                                    <option value="doctor">Doctor</option>
+                                </select>
+                                <small class="field-hint">User role determines access permissions</small>
+                            </div>
+                            <div class="form-group" id="active-group" style="display: none;">
+                                <label for="user-active">Account Status</label>
+                                <select id="user-active" name="active">
+                                    <option value="1">✓ Active</option>
+                                    <option value="0">✗ Inactive</option>
+                                </select>
+                                <small class="field-hint">Inactive accounts cannot login</small>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row" id="password-group">
+                            <div class="form-group">
+                                <label for="user-password"><span class="required">*</span> Password</label>
+                                <div class="password-wrapper">
+                                    <input type="password" id="user-password" name="password" placeholder="Enter password" required>
+                                    <i class="fas fa-eye toggle-password" onclick="togglePasswordVisibility('user-password')"></i>
+                                </div>
+                                <small class="field-hint">Minimum 6 characters. Leave blank when editing to keep current password.</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Doctor-Specific Fields -->
+                    <div id="doctor-fields" class="form-section" style="display:none;">
+                        <h5 class="form-section-title"><i class="fas fa-user-md"></i> Doctor Information</h5>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="doctor-specialty">Medical Specialty</label>
+                                <select id="doctor-specialty" name="specialty_id">
+                                    <option value="">-- Select Specialty --</option>
+                                </select>
+                                <small class="field-hint">Doctor's area of specialization</small>
+                            </div>
                         </div>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary modal-close-btn">Cancel</button>
-                <button type="submit" form="user-management-form" class="btn btn-primary">Save User</button>
+                <button type="button" class="btn btn-secondary modal-close-btn">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="submit" form="user-management-form" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Save User
+                </button>
             </div>
         </div>
     </div>

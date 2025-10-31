@@ -1242,7 +1242,8 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
 
                         $name = trim($_POST['name']);
                         $email = filter_var(trim($_POST['email']), FILTER_VALIDATE_EMAIL);
-                        $phone = trim($_POST['phone']);
+                        $phone = !empty($_POST['phone']) ? trim($_POST['phone']) : null;
+                        $gender = !empty($_POST['gender']) ? trim($_POST['gender']) : null;
                         $date_of_birth = !empty($_POST['date_of_birth']) ? trim($_POST['date_of_birth']) : null;
                         $active = isset($_POST['active']) ? (int)$_POST['active'] : 1;
 
@@ -1260,8 +1261,8 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             throw new Exception("Name and Email fields are required.");
                         }
 
-                        $stmt_update = $conn->prepare("UPDATE users SET name = ?, email = ?, phone = ?, date_of_birth = ?, is_active = ? WHERE id = ?");
-                        $stmt_update->bind_param("ssssii", $name, $email, $phone, $date_of_birth, $active, $target_user_id);
+                        $stmt_update = $conn->prepare("UPDATE users SET name = ?, email = ?, phone = ?, gender = ?, date_of_birth = ?, is_active = ? WHERE id = ?");
+                        $stmt_update->bind_param("sssssii", $name, $email, $phone, $gender, $date_of_birth, $active, $target_user_id);
                         $stmt_update->execute();
                         $stmt_update->close();
 

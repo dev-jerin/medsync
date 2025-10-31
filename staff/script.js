@@ -1272,7 +1272,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 userForm.querySelector('#user-username').value = userData.username;
                 userForm.querySelector('#user-username').disabled = true; // Username cannot be changed
                 userForm.querySelector('#user-email').value = userData.email;
-                userForm.querySelector('#user-email').disabled = true; // Email cannot be changed for security
+                // Email is now editable for staff
                 userForm.querySelector('#user-phone').value = userData.phone || '';
                 userForm.querySelector('#user-gender').value = userData.gender || '';
                 userForm.querySelector('#user-dob').value = userData.date_of_birth || '';
@@ -3290,3 +3290,23 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 });
+
+// --- Global Utility Functions ---
+
+/**
+ * Toggle password visibility
+ */
+function togglePasswordVisibility(inputId) {
+    const input = document.getElementById(inputId);
+    const icon = input.parentElement.querySelector('.toggle-password');
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+    } else {
+        input.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+    }
+}

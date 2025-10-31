@@ -13,7 +13,7 @@ Staff members have **limited permissions** when managing user accounts to ensure
 - ✅ Set initial username, password, email, and profile details
 
 ### 2. **Edit Patient & Doctor Accounts**
-- ✅ Update name, phone number, date of birth, gender
+- ✅ Update name, email, phone number, date of birth, gender
 - ✅ Modify basic profile information
 - ✅ View patient medical history and lab orders
 - ✅ Update activity status (active/inactive)
@@ -40,7 +40,6 @@ Staff members have **limited permissions** when managing user accounts to ensure
 
 ### 2. **Security-Sensitive Fields**
 - ❌ Change **usernames** (locked after creation)
-- ❌ Change **email addresses** (security risk - locked for existing users)
 - ❌ Change **user roles** (Patient ↔ Doctor ↔ Admin transitions blocked)
 - ❌ Reset passwords directly (users must use "Forgot Password" flow)
 
@@ -94,7 +93,7 @@ Located in: `staff/script.js`, `staff/dashboard.php`
 | **Age/DOB** | ✅ Yes | Date of birth (age calculated) |
 | **Phone** | ✅ Yes | Format: +91xxxxxxxxxx |
 | **Role** | ❌ No | Locked after creation |
-| **Email** | ⚠️ Create Only | Cannot be changed after creation |
+| **Email** | ✅ Yes | Primary contact email |
 | **Status** | ✅ Yes | Active/Inactive toggle |
 | **Last Active** | ❌ No | System-tracked, read-only |
 
@@ -110,7 +109,7 @@ Located in: `staff/script.js`, `staff/dashboard.php`
    - Maintains audit trail integrity
 
 2. **Data Integrity**
-   - Username/email changes can break authentication
+   - Username changes can break authentication
    - Role changes could compromise access control
    - Prevents accidental administrative lockouts
 

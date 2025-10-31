@@ -702,27 +702,172 @@ body.dark-theme .send-btn:disabled {
     box-shadow: 0 5px 15px rgba(0,0,0,0.5); 
     width: 100%; 
     max-width: 700px;
-    max-height: 90vh; /* Set max height to allow scrolling */
-    display: flex; /* Use flexbox for better internal layout */
+    max-height: 90vh;
+    display: flex;
     flex-direction: column;
+}
+
+.modal-container.modal-lg {
+    max-width: 900px;
 }
 
 .modal-header { 
     display: flex; 
     justify-content: space-between; 
     align-items: center; 
-    border-bottom: 1px solid var(--border-color); 
+    border-bottom: 2px solid var(--primary-color); 
     padding-bottom: 1rem; 
     margin-bottom: 1.5rem; 
-    flex-shrink: 0; /* Header should not shrink */
+    flex-shrink: 0;
 }
-.modal-header h4 { margin: 0; font-weight: 600; }
-.modal-close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); }
+.modal-header h4 { 
+    margin: 0; 
+    font-weight: 600; 
+    font-size: 1.4rem;
+    color: var(--primary-color);
+}
+.modal-close-btn { 
+    background: none; 
+    border: none; 
+    font-size: 1.8rem; 
+    cursor: pointer; 
+    color: var(--text-muted); 
+    transition: all 0.3s;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
+.modal-close-btn:hover {
+    background-color: var(--danger-color);
+    color: white;
+}
 
 .modal-body {
-    overflow-y: auto; /* Allow this section to scroll if content overflows */
-    padding-right: 1rem; /* Add some padding to avoid scrollbar overlapping content */
-    margin-right: -1rem;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+    margin-right: -0.5rem;
+}
+
+/* Form Sections */
+.form-section {
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.form-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.form-section-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    margin-bottom: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.form-section-title i {
+    color: var(--primary-color);
+    font-size: 1rem;
+}
+
+/* Form Rows - Two Column Layout */
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.form-row:last-child {
+    margin-bottom: 0;
+}
+
+/* Form Groups */
+.form-group { 
+    display: flex; 
+    flex-direction: column;
+    position: relative;
+}
+
+.form-group label {
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    font-size: 0.95rem;
+    color: var(--text-dark);
+}
+
+.form-group label .required {
+    color: var(--danger-color);
+    margin-right: 2px;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+    padding: 0.75rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    font-family: 'Poppins', sans-serif;
+    background-color: var(--background-input);
+    color: var(--text-dark);
+    width: 100%;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(26, 188, 156, 0.1);
+}
+
+.form-group input:disabled,
+.form-group select:disabled {
+    background-color: var(--background-body);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.field-hint {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-top: 0.3rem;
+    font-style: italic;
+}
+
+/* Password Wrapper */
+.password-wrapper { 
+    position: relative; 
+}
+
+.password-wrapper input { 
+    width: 100%; 
+    padding-right: 2.5rem; 
+}
+
+.toggle-password { 
+    position: absolute; 
+    top: 50%; 
+    right: 1rem; 
+    transform: translateY(-50%); 
+    cursor: pointer; 
+    color: var(--text-muted);
+    transition: color 0.3s;
+}
+
+.toggle-password:hover {
+    color: var(--primary-color);
 }
 
 .modal-footer { 
@@ -732,16 +877,29 @@ body.dark-theme .send-btn:disabled {
     margin-top: 1.5rem; 
     padding-top: 1.5rem;
     border-top: 1px solid var(--border-color);
-    flex-shrink: 0; /* Footer should not shrink */
+    flex-shrink: 0;
 }
 
-/* Specific styling for secondary (cancel) buttons in modals to make them smaller */
+.modal-footer .btn {
+    min-width: 120px;
+}
+
 .modal-footer .btn-secondary {
     background-color: var(--background-body);
-    color: var(--text-muted);
+    color: var(--text-dark);
     border: 1px solid var(--border-color);
-    padding: 0.5rem 1rem;
-    font-size: 0.9rem;
+    padding: 0.65rem 1.2rem;
+    font-size: 0.95rem;
+}
+
+.modal-footer .btn-secondary:hover {
+    background-color: var(--border-color);
+    color: var(--text-dark);
+}
+
+.modal-footer .btn-primary {
+    padding: 0.65rem 1.2rem;
+    font-size: 0.95rem;
 }
 .modal-footer .btn-secondary:hover {
     background-color: var(--border-color);
@@ -778,6 +936,43 @@ body.dark-theme .send-btn:disabled {
     .data-table td:last-child { border-bottom: none; }
     .data-table td::before { content: attr(data-label); font-weight: 600; text-align: left; padding-right: 1rem; }
     .page-header, .profile-tabs { flex-direction: column; align-items: flex-start; gap: 1rem; }
+    
+    /* Modal Responsive Styles */
+    .modal-container {
+        padding: 1.5rem;
+        max-height: 95vh;
+    }
+    
+    .modal-container.modal-lg {
+        max-width: 100%;
+    }
+    
+    .modal-header h4 {
+        font-size: 1.2rem;
+    }
+    
+    /* Form Row becomes single column */
+    .form-row {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .form-section {
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+    }
+    
+    .form-section-title {
+        font-size: 1rem;
+    }
+    
+    .modal-footer {
+        flex-direction: column-reverse;
+    }
+    
+    .modal-footer .btn {
+        width: 100%;
+    }
 }
 
 /* --- Patient Search Component --- */
