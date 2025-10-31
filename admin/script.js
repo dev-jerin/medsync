@@ -204,6 +204,54 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     applyTheme(localStorage.getItem('theme') || 'light-mode');
 
+    // --- USER PROFILE DROPDOWN ---
+    const profileDropdownTrigger = document.getElementById('user-profile-dropdown-trigger');
+    const profileDropdownMenu = document.getElementById('user-dropdown-menu');
+
+    if (profileDropdownTrigger && profileDropdownMenu) {
+        profileDropdownTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            profileDropdownTrigger.classList.toggle('active');
+            profileDropdownMenu.classList.toggle('show');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!profileDropdownTrigger.contains(e.target)) {
+                profileDropdownTrigger.classList.remove('active');
+                profileDropdownMenu.classList.remove('show');
+            }
+        });
+
+        // Handle dropdown navigation items
+        profileDropdownMenu.querySelectorAll('.dropdown-nav-link').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                const target = item.getAttribute('data-target');
+                
+                // Close dropdown
+                profileDropdownTrigger.classList.remove('active');
+                profileDropdownMenu.classList.remove('show');
+                
+                // Navigate to panel - find the nav link element
+                if (target) {
+                    const navLink = document.querySelector(`.nav-link[data-target="${target}"]`);
+                    if (navLink) {
+                        handlePanelSwitch(navLink);
+                    }
+                }
+            });
+        });
+
+        // Close dropdown for non-navigation items (like logout)
+        profileDropdownMenu.querySelectorAll('.dropdown-item:not(.dropdown-nav-link)').forEach(item => {
+            item.addEventListener('click', () => {
+                profileDropdownTrigger.classList.remove('active');
+                profileDropdownMenu.classList.remove('show');
+            });
+        });
+    }
+
 
     // --- SIDEBAR & NAVIGATION ---
     const toggleMenu = () => {

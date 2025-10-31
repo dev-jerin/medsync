@@ -209,6 +209,8 @@ body.dark-mode .nav-dropdown a {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 2rem;
+    position: relative;
+    z-index: 50;
 }
 
 .main-header .title-group {
@@ -232,6 +234,8 @@ body.dark-mode .nav-dropdown a {
     display: flex;
     align-items: center;
     gap: 1rem;
+    position: relative;
+    z-index: 100;
 }
 
 .user-profile-widget {
@@ -244,6 +248,10 @@ body.dark-mode .nav-dropdown a {
     box-shadow: var(--shadow-md);
     border: 1px solid var(--border-light);
     transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+    z-index: 100;
 }
 
 .user-profile-widget:hover {
@@ -251,9 +259,165 @@ body.dark-mode .nav-dropdown a {
     transform: translateY(-2px);
 }
 
+.user-profile-widget .profile-avatar {
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--primary-color);
+    transition: all 0.3s ease;
+}
+
+.user-profile-widget:hover .profile-avatar {
+    border-color: var(--primary-color-dark);
+    transform: scale(1.05);
+}
+
+.user-profile-widget .dropdown-arrow {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    transition: transform 0.3s ease;
+}
+
+.user-profile-widget.active .dropdown-arrow {
+    transform: rotate(180deg);
+}
+
 .user-profile-widget i {
     font-size: 1.5rem;
     color: var(--primary-color);
+}
+
+/* User Dropdown Menu */
+.user-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    background-color: var(--bg-light);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    box-shadow: var(--shadow-xl);
+    width: 280px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: all 0.3s ease;
+    z-index: 1100;
+    overflow: hidden;
+}
+
+.user-dropdown-menu.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.dropdown-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-color-dark) 100%);
+    color: white;
+}
+
+.dropdown-avatar {
+    width: 55px;
+    height: 55px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    flex-shrink: 0;
+}
+
+.dropdown-user-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex-grow: 1;
+    overflow: hidden;
+}
+
+.dropdown-user-info strong {
+    font-size: 1rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-role-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    background-color: rgba(255, 255, 255, 0.25);
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    width: fit-content;
+}
+
+.user-email {
+    font-size: 0.75rem;
+    opacity: 0.9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dropdown-divider {
+    height: 1px;
+    background-color: var(--border-light);
+    margin: 0;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1.25rem;
+    color: var(--text-dark);
+    text-decoration: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.dropdown-item:hover {
+    background-color: var(--bg-grey);
+}
+
+.dropdown-item i {
+    font-size: 1rem;
+    width: 20px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.dropdown-item:hover i {
+    color: var(--primary-color);
+}
+
+.dropdown-item span {
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.dropdown-item.logout-item {
+    border-top: 1px solid var(--border-light);
+    color: var(--danger-color);
+}
+
+.dropdown-item.logout-item i {
+    color: var(--danger-color);
+}
+
+.dropdown-item.logout-item:hover {
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+body.dark-mode .dropdown-item.logout-item:hover {
+    background-color: rgba(239, 68, 68, 0.15);
 }
 
 .content-panel {
@@ -915,6 +1079,16 @@ input:checked+.slider:before { transform: translateX(24px); }
     .header-actions { gap: 0.5rem; }
     .user-profile-widget { padding: 0.5rem; }
     .user-profile-widget .user-info { display: none; }
+    .user-profile-widget .profile-avatar { 
+        width: 38px; 
+        height: 38px; 
+    }
+    .user-profile-widget .dropdown-arrow {
+        display: none;
+    }
+    .user-dropdown-menu {
+        width: 260px;
+    }
     .modal-content { padding: 1.5rem; }
     .user-detail-header { flex-direction: column; text-align: center; }
 }

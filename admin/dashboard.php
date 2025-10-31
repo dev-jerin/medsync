@@ -46,14 +46,16 @@ $_SESSION['loggedin_time'] = time();
 $conn = getDbConnection();
 $admin_id = $_SESSION['user_id'];
 
-// Fetch admin's full name for the welcome message
-$stmt = $conn->prepare("SELECT name, display_user_id FROM users WHERE id = ?");
+// Fetch admin's full name and profile picture for the welcome message
+$stmt = $conn->prepare("SELECT name, display_user_id, profile_picture, email FROM users WHERE id = ?");
 $stmt->bind_param("i", $admin_id);
 $stmt->execute();
 $result = $stmt->get_result();
 $admin_user = $result->fetch_assoc();
 $admin_name = $admin_user ? htmlspecialchars($admin_user['name']) : 'Admin';
 $display_user_id = $admin_user ? htmlspecialchars($admin_user['display_user_id']) : 'N/A';
+$admin_profile_picture = $admin_user && $admin_user['profile_picture'] ? htmlspecialchars($admin_user['profile_picture']) : 'default.png';
+$admin_email = $admin_user ? htmlspecialchars($admin_user['email']) : '';
 $stmt->close();
 
 
@@ -198,12 +200,45 @@ $conn->close();
                         <i class="fas fa-moon"></i>
                     </div>
 
-                    <div class="user-profile-widget">
-                        <i class="fas fa-user-crown"></i>
+                    <div class="user-profile-widget" id="user-profile-dropdown-trigger">
+                        <img src="../uploads/profile_pictures/<?php echo $admin_profile_picture; ?>" 
+                             alt="Profile" 
+                             class="profile-avatar"
+                             onerror="this.src='../uploads/profile_pictures/default.png'">
                         <div class="user-info">
                             <strong><?php echo $admin_name; ?></strong><br>
                             <span style="color: var(--text-muted); font-size: 0.8rem;">ID:
                                 <?php echo $display_user_id; ?></span>
+                        </div>
+                        <i class="fas fa-chevron-down dropdown-arrow"></i>
+                        
+                        <!-- Dropdown Menu -->
+                        <div class="user-dropdown-menu" id="user-dropdown-menu">
+                            <div class="dropdown-header">
+                                <img src="../uploads/profile_pictures/<?php echo $admin_profile_picture; ?>" 
+                                     alt="Profile" 
+                                     class="dropdown-avatar"
+                                     onerror="this.src='../uploads/profile_pictures/default.png'">
+                                <div class="dropdown-user-info">
+                                    <strong><?php echo $admin_name; ?></strong>
+                                    <span class="user-role-badge">Admin</span>
+                                    <span class="user-email"><?php echo $admin_email; ?></span>
+                                </div>
+                            </div>
+                            <div class="dropdown-divider"></div>
+                            <a href="#" class="dropdown-item dropdown-nav-link" data-target="settings">
+                                <i class="fas fa-user-circle"></i>
+                                <span>View My Profile</span>
+                            </a>
+                            <a href="#" class="dropdown-item dropdown-nav-link" data-target="activity">
+                                <i class="fas fa-history"></i>
+                                <span>Activity Log</span>
+                            </a>
+                            <div class="dropdown-divider"></div>
+                            <a href="../logout.php" class="dropdown-item logout-item">
+                                <i class="fas fa-sign-out-alt"></i>
+                                <span>Logout</span>
+                            </a>
                         </div>
                     </div>
 
