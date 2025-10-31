@@ -2279,7 +2279,132 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pharmacy_bill') {
     $medsync_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($medsync_logo_path));
     $hospital_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($hospital_logo_path));
 
-    $html = '...'; // PDF HTML content remains the same
+    $html = '
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Pharmacy Bill</title>
+        <style>
+            @page { margin: 130px 20px 50px 20px; }
+            body { font-family: "DejaVu Sans", sans-serif; color: #333; }
+            .header { position: fixed; top: -110px; left: 0; right: 0; width: 100%; height: 120px; }
+            .medsync-logo { position: absolute; top: 10px; left: 20px; }
+            .medsync-logo img { width: 80px; }
+            .hospital-logo { position: absolute; top: 10px; right: 20px; }
+            .hospital-logo img { width: 70px; }
+            .hospital-details { text-align: center; margin-top: 0; }
+            .hospital-details h2 { margin: 0; font-size: 1.5em; color: #007BFF; }
+            .hospital-details p { margin: 2px 0; font-size: 0.85em; }
+            .bill-title { text-align: center; margin-top: 0; margin-bottom: 20px; }
+            .bill-title h1 { margin: 0; font-size: 1.8em; color: #333; }
+            .bill-title p { margin: 5px 0; font-size: 0.9em; color: #666; }
+            .bill-info { margin-bottom: 20px; }
+            .bill-info table { width: 100%; border-collapse: collapse; }
+            .bill-info td { padding: 5px; font-size: 0.9em; }
+            .bill-info td:first-child { font-weight: bold; width: 30%; }
+            .data-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            .data-table th, .data-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+            .data-table th { background-color: #007BFF; color: white; font-weight: 600; }
+            .data-table tr:nth-child(even) { background-color: #f9f9f9; }
+            .total-section { margin-top: 20px; text-align: right; }
+            .total-section table { float: right; border-collapse: collapse; }
+            .total-section td { padding: 8px 15px; font-size: 1em; }
+            .total-section .total-row { font-weight: bold; font-size: 1.2em; background-color: #f0f0f0; }
+            .footer { position: fixed; bottom: -30px; left: 0; right: 0; text-align: center; font-size: 0.8em; color: #666; border-top: 1px solid #ddd; padding-top: 10px; }
+            .payment-info { margin-top: 30px; padding: 10px; background-color: #f9f9f9; border-left: 4px solid #28a745; }
+            .payment-info p { margin: 5px 0; font-size: 0.9em; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="medsync-logo">
+                <img src="' . $medsync_logo_base64 . '" alt="MedSync Logo">
+            </div>
+            <div class="hospital-details">
+                <h2>Calysta Health Institute</h2>
+                <p>Kerala, India</p>
+                <p>+91 45235 31245 | medsync.calysta@gmail.com</p>
+            </div>
+            <div class="hospital-logo">
+                <img src="' . $hospital_logo_base64 . '" alt="Hospital Logo">
+            </div>
+        </div>
+
+        <div class="bill-title">
+            <h1>Pharmacy Bill</h1>
+            <p>Bill ID: PB-' . str_pad($bill_id, 5, '0', STR_PAD_LEFT) . ' | Date: ' . date('Y-m-d H:i:s') . '</p>
+        </div>
+
+        <div class="bill-info">
+            <table>
+                <tr>
+                    <td>Patient Name:</td>
+                    <td>' . htmlspecialchars($bill_data['patient_name']) . ' (' . htmlspecialchars($bill_data['patient_display_id']) . ')</td>
+                    <td>Doctor Name:</td>
+                    <td>' . htmlspecialchars($bill_data['doctor_name']) . '</td>
+                </tr>
+                <tr>
+                    <td>Prescription ID:</td>
+                    <td>PRES-' . str_pad($bill_data['prescription_id'], 4, '0', STR_PAD_LEFT) . '</td>
+                    <td>Prescription Date:</td>
+                    <td>' . htmlspecialchars($bill_data['prescription_date']) . '</td>
+                </tr>
+                <tr>
+                    <td>Dispensed By:</td>
+                    <td>' . htmlspecialchars($bill_data['staff_name']) . '</td>
+                    <td>Payment Mode:</td>
+                    <td>' . htmlspecialchars(ucfirst($bill_data['payment_mode'])) . '</td>
+                </tr>
+            </table>
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Medicine Name</th>
+                    <th>Quantity</th>
+                    <th>Unit Price (Rs.)</th>
+                    <th>Subtotal (Rs.)</th>
+                </tr>
+            </thead>
+            <tbody>';
+    
+    $item_number = 1;
+    foreach ($items_data as $item) {
+        $html .= '<tr>
+                    <td>' . $item_number++ . '</td>
+                    <td>' . htmlspecialchars($item['name']) . '</td>
+                    <td>' . htmlspecialchars($item['quantity_dispensed']) . '</td>
+                    <td>Rs. ' . number_format($item['unit_price'], 2) . '</td>
+                    <td>Rs. ' . number_format($item['subtotal'], 2) . '</td>
+                </tr>';
+    }
+    
+    $html .= '</tbody>
+        </table>
+
+        <div class="total-section">
+            <table>
+                <tr class="total-row">
+                    <td>Total Amount:</td>
+                    <td>Rs. ' . number_format($bill_data['total_amount'], 2) . '</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="payment-info">
+            <p><strong>Payment Status:</strong> PAID</p>
+            <p><strong>Transaction ID:</strong> TXN-' . str_pad($bill_data['transaction_id'], 6, '0', STR_PAD_LEFT) . '</p>
+            <p><strong>Note:</strong> This is a computer-generated bill and does not require a signature.</p>
+        </div>
+
+        <div class="footer">
+            MedSync Healthcare Platform | &copy; ' . date('Y') . ' Calysta Health Institute | Thank you for choosing our pharmacy services
+        </div>
+    </body>
+    </html>';
 
     $options = new Options();
     $options->set('isHtml5ParserEnabled', true);

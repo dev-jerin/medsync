@@ -1050,34 +1050,70 @@ body.dark-theme .send-btn:disabled {
 
 /* --- Pharmacy Billing Modal Styles --- */
 .billing-patient-info {
-    margin-bottom: 1.5rem;
-    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
     border-bottom: 1px solid var(--border-color);
 }
 .billing-patient-info p {
-    margin: 0.25rem 0;
-    font-size: 1.1rem;
+    margin: 0.2rem 0;
+    font-size: 1rem;
 }
 .billing-summary {
     text-align: right;
-    margin-top: 1.5rem;
-    padding-top: 1.5rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
     border-top: 1px solid var(--border-color);
 }
 .billing-summary h4 {
-    font-size: 1.5rem;
+    font-size: 1.3rem;
     font-weight: 600;
     color: var(--primary-color);
+    margin: 0;
 }
 
 .dispense-qty-input {
-    width: 80px;
-    padding: 0.5rem;
+    width: 70px;
+    padding: 0.4rem;
     border: 1px solid var(--border-color);
     border-radius: 6px;
     text-align: center;
     background-color: var(--background-input);
     color: var(--text-dark);
+}
+
+/* Optimize pharmacy modal layout to reduce scrolling */
+#pharmacy-billing-modal .modal-container {
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+#pharmacy-billing-modal .modal-body {
+    padding: 1rem 1.5rem;
+    max-height: calc(90vh - 140px);
+    overflow-y: auto;
+}
+
+#pharmacy-billing-modal .data-table th,
+#pharmacy-billing-modal .data-table td {
+    padding: 0.6rem;
+    font-size: 0.9rem;
+}
+
+#pharmacy-billing-modal .form-group {
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+#view-prescription-modal .modal-body {
+    padding: 1rem 1.5rem;
+    max-height: calc(80vh - 140px);
+    overflow-y: auto;
+}
+
+#view-prescription-modal .data-table th,
+#view-prescription-modal .data-table td {
+    padding: 0.6rem;
+    font-size: 0.9rem;
 }
 
 /* --- Live Token Styles --- */
