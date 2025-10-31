@@ -2244,34 +2244,210 @@ staffSearchInput.addEventListener('keyup', () => {
     }
 
     // --- IP MANAGEMENT ---
+    // --- IP MANAGEMENT ---
     const ipManagementPanel = document.getElementById('ip-management-panel');
 
-    const fetchAndRenderTrackedIps = () => {
-        fetchAndRender({
-            endpoint: 'api.php?fetch=getTrackedIps',
-            target: document.getElementById('ip-tracking-table-body'),
-            renderRow: (ip) => `
-                <tr>
-                    <td data-label="IP Address">${ip.ip_address}</td>
-                    <td data-label="Name/Label">${ip.name || 'N/A'}</td>
-                    <td data-label="Associated Users">${ip.usernames}</td>
-                    <td data-label="Last Login">${new Date(ip.last_login).toLocaleString()}</td>
-                    <td data-label="Status"><span class="status-badge ${ip.is_blocked == 1 ? 'inactive' : 'active'}">${ip.is_blocked == 1 ? 'Blocked' : 'Active'}</span></td>
-                    <td data-label="Actions" class="action-buttons">
-                        <button class="btn-edit-ip-name btn-edit" data-ip="${ip.ip_address}" data-name="${ip.name || ''}" title="Edit Name"><i class="fas fa-tag"></i></button>
-                        ${ip.is_blocked == 1
-                            ? `<button class="btn-unblock-ip btn-delete" data-ip="${ip.ip_address}" title="Unblock"><i class="fas fa-check-circle"></i></button>`
-                            : `<button class="btn-block-ip btn-delete" data-ip="${ip.ip_address}" title="Block"><i class="fas fa-ban"></i></button>`
-                        }
-                    </td>
-                </tr>
-            `,
-            columns: 6,
-            emptyMessage: 'No IP addresses have been tracked yet.'
-        });
+    let ipCurrentSort = { column: 'last_login', order: 'DESC' };
+    let ipCurrentFilters = {
+        search: '',
+        status: 'all',
+        dateFrom: '',
+        dateTo: ''
     };
 
-    document.querySelector('.nav-link[data-target="ip-management"]').addEventListener('click', fetchAndRenderTrackedIps);
+    const fetchAndRenderTrackedIps = (filters = ipCurrentFilters, sort = ipCurrentSort) => {
+        const params = new URLSearchParams({
+            fetch: 'getTrackedIps',
+            search: filters.search || '',
+            status: filters.status || 'all',
+            date_from: filters.dateFrom || '',
+            date_to: filters.dateTo || '',
+            sort_by: sort.column,
+            sort_order: sort.order
+        });
+
+        fetch(`api.php?${params.toString()}`)
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    const tbody = document.getElementById('ip-tracking-table-body');
+                    const data = result.data;
+                    const stats = result.stats;
+
+                    // Update statistics
+                    document.getElementById('total-ips-stat').textContent = stats.total_ips;
+                    document.getElementById('blocked-ips-stat').textContent = stats.blocked_ips;
+                    document.getElementById('active-ips-stat').textContent = stats.active_ips;
+
+                    // Update sort icons
+                    document.querySelectorAll('#ip-management-panel .sortable').forEach(th => {
+                        const icon = th.querySelector('i');
+                        icon.className = 'fas fa-sort';
+                        if (th.dataset.sort === sort.column) {
+                            icon.className = sort.order === 'ASC' ? 'fas fa-sort-up' : 'fas fa-sort-down';
+                        }
+                    });
+
+                    // Render table
+                    if (data.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                            <i class="fas fa-network-wired" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;"></i>
+                            <p>No IP addresses found matching your criteria.</p>
+                        </td></tr>`;
+                    } else {
+                        tbody.innerHTML = data.map(ip => `
+                            <tr>
+                                <td data-label="IP Address">
+                                    <strong style="font-family: monospace;">${ip.ip_address}</strong>
+                                    <button class="btn" style="background: none; border: none; padding: 0.25rem 0.5rem; cursor: pointer; color: var(--primary-color);" 
+                                            onclick="navigator.clipboard.writeText('${ip.ip_address}'); showNotification('IP copied to clipboard!', 'success');"
+                                            title="Copy IP">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </td>
+                                <td data-label="Name/Label">${ip.name || '<span style="color: var(--text-muted); font-style: italic;">No label</span>'}</td>
+                                <td data-label="User Count">
+                                    <span style="background: var(--primary-color); color: white; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
+                                        ${ip.user_count}
+                                    </span>
+                                </td>
+                                <td data-label="Associated Users">
+                                    <span style="font-size: 0.9rem;">${ip.usernames.length > 50 ? ip.usernames.substring(0, 50) + '...' : ip.usernames}</span>
+                                </td>
+                                <td data-label="Last Login">${new Date(ip.last_login).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</td>
+                                <td data-label="Login Count">
+                                    <span style="color: var(--primary-color); font-weight: 600;">${ip.login_count}</span>
+                                </td>
+                                <td data-label="Status">
+                                    <span class="status-badge ${ip.is_blocked == 1 ? 'inactive' : 'active'}">
+                                        ${ip.is_blocked == 1 ? 'Blocked' : 'Active'}
+                                    </span>
+                                    ${ip.is_blocked == 1 && ip.block_reason ? `<br><small style="color: var(--text-muted); font-size: 0.75rem;" title="${ip.block_reason}">Reason: ${ip.block_reason.substring(0, 30)}${ip.block_reason.length > 30 ? '...' : ''}</small>` : ''}
+                                </td>
+                                <td data-label="Actions" class="action-buttons">
+                                    <button class="btn-edit-ip-name btn-edit" data-ip="${ip.ip_address}" data-name="${ip.name || ''}" title="Edit Name"><i class="fas fa-tag"></i></button>
+                                    ${ip.is_blocked == 1
+                                        ? `<button class="btn-unblock-ip btn-delete" data-ip="${ip.ip_address}" title="Unblock"><i class="fas fa-check-circle"></i></button>`
+                                        : `<button class="btn-block-ip btn-delete" data-ip="${ip.ip_address}" title="Block"><i class="fas fa-ban"></i></button>`
+                                    }
+                                </td>
+                            </tr>
+                        `).join('');
+                    }
+                } else {
+                    showNotification('Failed to load IP tracking data.', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching IP data:', error);
+                showNotification('Error loading IP data.', 'error');
+            });
+    };
+
+    // Apply filters
+    document.getElementById('ip-apply-filters-btn')?.addEventListener('click', () => {
+        ipCurrentFilters = {
+            search: document.getElementById('ip-search-input').value.trim(),
+            status: document.getElementById('ip-status-filter').value,
+            dateFrom: document.getElementById('ip-date-from').value,
+            dateTo: document.getElementById('ip-date-to').value
+        };
+        fetchAndRenderTrackedIps(ipCurrentFilters, ipCurrentSort);
+    });
+
+    // Reset filters
+    document.getElementById('ip-reset-filters-btn')?.addEventListener('click', () => {
+        document.getElementById('ip-search-input').value = '';
+        document.getElementById('ip-status-filter').value = 'all';
+        document.getElementById('ip-date-from').value = '';
+        document.getElementById('ip-date-to').value = new Date().toISOString().split('T')[0];
+        
+        ipCurrentFilters = { search: '', status: 'all', dateFrom: '', dateTo: '' };
+        ipCurrentSort = { column: 'last_login', order: 'DESC' };
+        fetchAndRenderTrackedIps(ipCurrentFilters, ipCurrentSort);
+    });
+
+    // Search on Enter key
+    document.getElementById('ip-search-input')?.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') {
+            document.getElementById('ip-apply-filters-btn').click();
+        }
+    });
+
+    // Column sorting
+    document.querySelectorAll('#ip-management-panel .sortable').forEach(th => {
+        th.addEventListener('click', () => {
+            const column = th.dataset.sort;
+            if (ipCurrentSort.column === column) {
+                ipCurrentSort.order = ipCurrentSort.order === 'ASC' ? 'DESC' : 'ASC';
+            } else {
+                ipCurrentSort.column = column;
+                ipCurrentSort.order = 'DESC';
+            }
+            fetchAndRenderTrackedIps(ipCurrentFilters, ipCurrentSort);
+        });
+    });
+
+    // Export to CSV
+    document.getElementById('ip-export-csv-btn')?.addEventListener('click', () => {
+        const params = new URLSearchParams({
+            fetch: 'getTrackedIps',
+            search: ipCurrentFilters.search || '',
+            status: ipCurrentFilters.status || 'all',
+            date_from: ipCurrentFilters.dateFrom || '',
+            date_to: ipCurrentFilters.dateTo || '',
+            sort_by: ipCurrentSort.column,
+            sort_order: ipCurrentSort.order
+        });
+
+        fetch(`api.php?${params.toString()}`)
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    const data = result.data;
+                    
+                    // Create CSV content
+                    const headers = ['IP Address', 'Name/Label', 'User Count', 'Associated Users', 'Last Login', 'Login Count', 'Status', 'Block Reason'];
+                    const csvContent = [
+                        headers.join(','),
+                        ...data.map(row => [
+                            row.ip_address,
+                            `"${row.name || 'N/A'}"`,
+                            row.user_count,
+                            `"${row.usernames}"`,
+                            new Date(row.last_login).toLocaleString(),
+                            row.login_count,
+                            row.is_blocked == 1 ? 'Blocked' : 'Active',
+                            `"${row.block_reason || 'N/A'}"`
+                        ].join(','))
+                    ].join('\n');
+
+                    // Download CSV
+                    const blob = new Blob([csvContent], { type: 'text/csv' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `ip_tracking_${new Date().toISOString().split('T')[0]}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+
+                    showNotification('IP data exported successfully!', 'success');
+                } else {
+                    showNotification('Failed to export data.', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error exporting data:', error);
+                showNotification('Error exporting data.', 'error');
+            });
+    });
+
+    // Load IP management when panel is opened
+    document.querySelector('.nav-link[data-target="ip-management"]').addEventListener('click', () => {
+        fetchAndRenderTrackedIps(ipCurrentFilters, ipCurrentSort);
+    });
 
     document.getElementById('ip-tracking-table-body').addEventListener('click', async (e) => {
         const button = e.target.closest('button');

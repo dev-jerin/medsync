@@ -1780,20 +1780,97 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
 
                 case 'getTrackedIps':
-                $sql = "SELECT 
-                            it.ip_address, 
-                            MAX(it.name) as name, 
-                            GROUP_CONCAT(DISTINCT u.username SEPARATOR ', ') as usernames, 
-                            MAX(it.login_time) as last_login, 
-                            EXISTS(SELECT 1 FROM ip_blocks ib WHERE ib.ip_address = it.ip_address) as is_blocked
-                        FROM ip_tracking it
-                        JOIN users u ON it.user_id = u.id
-                        GROUP BY it.ip_address
-                        ORDER BY last_login DESC";
-                $result = $conn->query($sql);
-                $data = $result->fetch_all(MYSQLI_ASSOC);
-                $response = ['success' => true, 'data' => $data];
-                break;
+                    $search = $_GET['search'] ?? '';
+                    $status = $_GET['status'] ?? 'all'; // all, active, blocked
+                    $dateFrom = $_GET['date_from'] ?? null;
+                    $dateTo = $_GET['date_to'] ?? null;
+                    $sortBy = $_GET['sort_by'] ?? 'last_login';
+                    $sortOrder = $_GET['sort_order'] ?? 'DESC';
+
+                    // Validate sort column
+                    $allowedSorts = ['ip_address', 'name', 'last_login', 'user_count', 'login_count'];
+                    if (!in_array($sortBy, $allowedSorts)) {
+                        $sortBy = 'last_login';
+                    }
+                    $sortOrder = strtoupper($sortOrder) === 'ASC' ? 'ASC' : 'DESC';
+
+                    $sql = "SELECT 
+                                it.ip_address, 
+                                MAX(it.name) as name, 
+                                COUNT(DISTINCT it.user_id) as user_count,
+                                GROUP_CONCAT(DISTINCT u.username ORDER BY u.username SEPARATOR ', ') as usernames, 
+                                MAX(it.login_time) as last_login,
+                                COUNT(it.id) as login_count,
+                                EXISTS(SELECT 1 FROM ip_blocks ib WHERE ib.ip_address = it.ip_address) as is_blocked,
+                                (SELECT reason FROM ip_blocks WHERE ip_address = it.ip_address LIMIT 1) as block_reason
+                            FROM ip_tracking it
+                            JOIN users u ON it.user_id = u.id";
+
+                    $whereConditions = [];
+                    $params = [];
+                    $types = "";
+
+                    // Search filter
+                    if (!empty($search)) {
+                        $whereConditions[] = "(it.ip_address LIKE ? OR it.name LIKE ? OR u.username LIKE ?)";
+                        $searchTerm = "%{$search}%";
+                        array_push($params, $searchTerm, $searchTerm, $searchTerm);
+                        $types .= "sss";
+                    }
+
+                    // Date range filter
+                    if (!empty($dateFrom)) {
+                        $whereConditions[] = "it.login_time >= ?";
+                        $params[] = $dateFrom . ' 00:00:00';
+                        $types .= "s";
+                    }
+                    if (!empty($dateTo)) {
+                        $whereConditions[] = "it.login_time <= ?";
+                        $params[] = $dateTo . ' 23:59:59';
+                        $types .= "s";
+                    }
+
+                    if (!empty($whereConditions)) {
+                        $sql .= " WHERE " . implode(" AND ", $whereConditions);
+                    }
+
+                    $sql .= " GROUP BY it.ip_address";
+
+                    // Status filter (applied after grouping)
+                    if ($status === 'blocked') {
+                        $sql .= " HAVING is_blocked = 1";
+                    } elseif ($status === 'active') {
+                        $sql .= " HAVING is_blocked = 0";
+                    }
+
+                    // Sorting
+                    $sql .= " ORDER BY {$sortBy} {$sortOrder}";
+
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $data = $result->fetch_all(MYSQLI_ASSOC);
+
+                    // Calculate statistics
+                    $stats = [
+                        'total_ips' => count($data),
+                        'blocked_ips' => 0,
+                        'active_ips' => 0
+                    ];
+
+                    foreach ($data as $row) {
+                        if ($row['is_blocked'] == 1) {
+                            $stats['blocked_ips']++;
+                        } else {
+                            $stats['active_ips']++;
+                        }
+                    }
+
+                    $response = ['success' => true, 'data' => $data, 'stats' => $stats];
+                    break;
 
             }
         }

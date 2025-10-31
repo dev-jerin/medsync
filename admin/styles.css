@@ -686,6 +686,35 @@ body.dark-mode .stat-card.purple .icon {
     color: var(--text-muted);
 }
 
+.data-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.data-table th.sortable:hover {
+    background-color: var(--bg-grey);
+    color: var(--primary-color);
+}
+
+.data-table th.sortable i {
+    margin-left: 0.5rem;
+    font-size: 0.75rem;
+    opacity: 0.5;
+    transition: opacity 0.2s ease;
+}
+
+.data-table th.sortable:hover i {
+    opacity: 1;
+}
+
+.data-table th.sortable i.fa-sort-up,
+.data-table th.sortable i.fa-sort-down {
+    opacity: 1;
+    color: var(--primary-color);
+}
+
 .data-table tbody tr {
     transition: background-color var(--transition-speed);
 }

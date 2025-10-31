@@ -854,14 +854,109 @@ $conn->close();
         <h2>IP Address Management</h2>
         <button id="add-ip-block-btn" class="btn btn-danger"><i class="fas fa-ban"></i> Block New IP</button>
     </div>
+
+    <!-- Enhanced Filters Section -->
+    <div style="background: var(--bg-grey); padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+            <!-- Search Input -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="ip-search-input" style="font-size: 0.9rem; font-weight: 500;">Search</label>
+                <div class="search-container" style="position: relative;">
+                    <i class="fas fa-search search-icon" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted);"></i>
+                    <input type="text" 
+                           id="ip-search-input" 
+                           placeholder="Search by IP, username, or label..." 
+                           style="padding-left: 2.5rem; width: 100%;">
+                </div>
+            </div>
+
+            <!-- Status Filter -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="ip-status-filter" style="font-size: 0.9rem; font-weight: 500;">Status</label>
+                <select id="ip-status-filter">
+                    <option value="all">All IPs</option>
+                    <option value="active">Active Only</option>
+                    <option value="blocked">Blocked Only</option>
+                </select>
+            </div>
+
+            <!-- Date From -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="ip-date-from" style="font-size: 0.9rem; font-weight: 500;">Date From</label>
+                <input type="date" id="ip-date-from" max="<?php echo date('Y-m-d'); ?>">
+            </div>
+
+            <!-- Date To -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="ip-date-to" style="font-size: 0.9rem; font-weight: 500;">Date To</label>
+                <input type="date" id="ip-date-to" max="<?php echo date('Y-m-d'); ?>" value="<?php echo date('Y-m-d'); ?>">
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button id="ip-apply-filters-btn" class="btn btn-primary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">
+                <i class="fas fa-filter"></i> Apply Filters
+            </button>
+            <button id="ip-reset-filters-btn" class="btn btn-secondary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">
+                <i class="fas fa-redo"></i> Reset
+            </button>
+            <button id="ip-export-csv-btn" class="btn btn-secondary" style="font-size: 0.9rem; padding: 0.5rem 1rem; margin-left: auto;">
+                <i class="fas fa-download"></i> Export CSV
+            </button>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <i class="fas fa-network-wired" style="font-size: 2rem; opacity: 0.8;"></i>
+                <div>
+                    <div style="font-size: 1.8rem; font-weight: 700;" id="total-ips-stat">0</div>
+                    <div style="font-size: 0.85rem; opacity: 0.9;">Total IPs</div>
+                </div>
+            </div>
+        </div>
+        <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <i class="fas fa-ban" style="font-size: 2rem; opacity: 0.8;"></i>
+                <div>
+                    <div style="font-size: 1.8rem; font-weight: 700;" id="blocked-ips-stat">0</div>
+                    <div style="font-size: 0.85rem; opacity: 0.9;">Blocked IPs</div>
+                </div>
+            </div>
+        </div>
+        <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <i class="fas fa-check-circle" style="font-size: 2rem; opacity: 0.8;"></i>
+                <div>
+                    <div style="font-size: 1.8rem; font-weight: 700;" id="active-ips-stat">0</div>
+                    <div style="font-size: 0.85rem; opacity: 0.9;">Active IPs</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="table-container">
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>IP Address</th>
-                    <th>Name/Label</th>
+                    <th class="sortable" data-sort="ip_address">
+                        IP Address <i class="fas fa-sort"></i>
+                    </th>
+                    <th class="sortable" data-sort="name">
+                        Name/Label <i class="fas fa-sort"></i>
+                    </th>
+                    <th class="sortable" data-sort="user_count">
+                        User Count <i class="fas fa-sort"></i>
+                    </th>
                     <th>Associated Users</th>
-                    <th>Last Login</th>
+                    <th class="sortable" data-sort="last_login">
+                        Last Login <i class="fas fa-sort"></i>
+                    </th>
+                    <th class="sortable" data-sort="login_count">
+                        Login Count <i class="fas fa-sort"></i>
+                    </th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
