@@ -355,8 +355,6 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         // --- Audit Log: Compare and log changes ---
                         $email_changes = []; // For email notification
                         
-                        error_log("DEBUG: Starting change detection for user ID: {$id}");
-                        
                         if ($old_user_data['name'] !== $name) {
                             $changes[] = "name from '{$old_user_data['name']}' to '{$name}'";
                             $email_changes['Name'] = ['old' => $old_user_data['name'], 'new' => $name];
@@ -390,80 +388,33 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                             $email_changes['Password'] = 'Changed for security';
                         }
                         
-                        error_log("DEBUG: Changes detected: " . count($changes) . " | Email changes: " . count($email_changes));
-                        error_log("DEBUG: Email changes array: " . json_encode($email_changes));
-                        
-                        // Write to debug file
-                        $debug_msg = "[" . date('Y-m-d H:i:s') . "] User ID: {$id}, Changes: " . count($changes) . ", Email changes: " . count($email_changes) . "\n";
-                        $debug_msg .= "Email changes: " . json_encode($email_changes) . "\n";
-                        file_put_contents(__DIR__ . '/../debug_email.txt', $debug_msg, FILE_APPEND);
-                        
                         if (!empty($changes)) {
                             $log_details = "Updated user '{$username}': changed " . implode(', ', $changes) . ".";
                             log_activity($conn, $admin_user_id_for_log, 'update_user', $id, $log_details);
                             
                             // --- Send Email Notification ---
-                            error_log("DEBUG: Checking if email notification should be sent...");
                             if (!empty($email_changes)) {
-                                error_log("DEBUG: Email changes found, proceeding with notification...");
                                 try {
-                                    // Get admin name
-                                    $stmt_admin = $conn->prepare("SELECT name FROM users WHERE id = ?");
-                                    $stmt_admin->bind_param("i", $admin_user_id_for_log);
-                                    $stmt_admin->execute();
-                                    $admin_info = $stmt_admin->get_result()->fetch_assoc();
-                                    $admin_name = $admin_info['name'] ?? 'System Administrator';
-                                    
-                                    error_log("DEBUG: Admin name: {$admin_name}, Recipient email: {$email}");
-                                    
                                     $current_datetime = date('d M Y, h:i A');
-                                    $email_body = getAccountModificationTemplate($name, $username, $email_changes, $current_datetime, $admin_name);
-                                    
-                                    error_log("DEBUG: Email template generated, length: " . strlen($email_body));
+                                    $email_body = getAccountModificationTemplate($name, $username, $email_changes, $current_datetime, 'System Administrator');
                                     
                                     // Send to the updated email address
-                                    // Function signature: send_mail($name, $to, $subject, $body)
-                                    error_log("DEBUG: Calling send_mail('MedSync', '{$email}', 'Your MedSync Account Has Been Updated', [body])");
-                                    
-                                    // Write to debug file
-                                    file_put_contents(__DIR__ . '/../debug_email.txt', "[" . date('Y-m-d H:i:s') . "] About to send email to: {$email}\n", FILE_APPEND);
-                                    
-                                    $email_sent = send_mail('MedSync', $email, 'Your MedSync Account Has Been Updated', $email_body);
-                                    
-                                    // Write result to debug file
-                                    file_put_contents(__DIR__ . '/../debug_email.txt', "[" . date('Y-m-d H:i:s') . "] Email sent result: " . ($email_sent ? 'SUCCESS' : 'FAILED') . "\n", FILE_APPEND);
-                                    
-                                    if ($email_sent) {
-                                        error_log("SUCCESS: Account modification email sent successfully to: {$email}");
-                                    } else {
-                                        error_log("ERROR: Failed to send account modification email to: {$email}");
-                                    }
+                                    send_mail('MedSync', $email, 'Your MedSync Account Has Been Updated', $email_body);
                                     
                                     // If email was changed, also notify the old email
                                     if (isset($email_changes['Email']) && !empty($old_user_data['email'])) {
-                                        error_log("DEBUG: Email address was changed, sending to old email: {$old_user_data['email']}");
                                         $old_email_body = getAccountModificationTemplate(
                                             $old_user_data['name'], 
                                             $old_user_data['username'], 
                                             $email_changes, 
                                             $current_datetime, 
-                                            $admin_name
+                                            'System Administrator'
                                         );
-                                        $old_email_sent = send_mail('MedSync', $old_user_data['email'], 'Your MedSync Account Has Been Updated', $old_email_body);
-                                        
-                                        if ($old_email_sent) {
-                                            error_log("SUCCESS: Account modification email sent successfully to old email: {$old_user_data['email']}");
-                                        } else {
-                                            error_log("ERROR: Failed to send account modification email to old email: {$old_user_data['email']}");
-                                        }
+                                        send_mail('MedSync', $old_user_data['email'], 'Your MedSync Account Has Been Updated', $old_email_body);
                                     }
                                 } catch (Exception $email_error) {
                                     // Log but don't fail the update if email fails
-                                    error_log("EXCEPTION: Email notification error: " . $email_error->getMessage());
-                                    error_log("EXCEPTION: Stack trace: " . $email_error->getTraceAsString());
                                 }
-                            } else {
-                                error_log("DEBUG: No email-worthy changes detected, skipping notification");
                             }
                             // --- End Email Notification ---
                         }
@@ -622,13 +573,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                                 $email_body = getAccountModificationTemplate($name, $old_user_data['username'], $email_changes, $current_datetime, 'You (Self-Updated)');
                                 
                                 // Send to the updated email address
-                                $email_sent = send_mail('MedSync', $email, 'Your MedSync Account Has Been Updated', $email_body);
-                                
-                                if ($email_sent) {
-                                    error_log("SUCCESS: Own profile modification email sent successfully to: {$email}");
-                                } else {
-                                    error_log("ERROR: Failed to send own profile modification email to: {$email}");
-                                }
+                                send_mail('MedSync', $email, 'Your MedSync Account Has Been Updated', $email_body);
                                 
                                 // If email was changed, also notify the old email
                                 if (isset($email_changes['Email']) && !empty($old_user_data['email'])) {
@@ -639,16 +584,10 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                                         $current_datetime, 
                                         'You (Self-Updated)'
                                     );
-                                    $old_email_sent = send_mail('MedSync', $old_user_data['email'], 'Your MedSync Account Has Been Updated', $old_email_body);
-                                    
-                                    if ($old_email_sent) {
-                                        error_log("SUCCESS: Own profile modification email sent successfully to old email: {$old_user_data['email']}");
-                                    } else {
-                                        error_log("ERROR: Failed to send own profile modification email to old email: {$old_user_data['email']}");
-                                    }
+                                    send_mail('MedSync', $old_user_data['email'], 'Your MedSync Account Has Been Updated', $old_email_body);
                                 }
                             } catch (Exception $email_error) {
-                                error_log("EXCEPTION: Own profile email notification error: " . $email_error->getMessage());
+                                // Email sending failed, but don't block the update
                             }
                         }
                         // --- End Email Notification ---
