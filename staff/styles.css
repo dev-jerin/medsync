@@ -577,9 +577,50 @@ body.dark-theme .send-btn:disabled {
 .form-group label { margin-bottom: 0.5rem; font-weight: 500; }
 .form-group input, .form-group textarea, .form-group select { padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color); font-family: 'Poppins', sans-serif; background-color: var(--background-input); color: var(--text-dark); width: 100%; }
 .form-actions { margin-top: 2rem; text-align: right; }
-.profile-picture-editor { position: relative; width: 120px; height: 120px; margin: 0 auto 2rem; }
-.editable-profile-picture { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 4px solid var(--background-panel); box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-.edit-picture-btn { position: absolute; bottom: 5px; right: 5px; background-color: var(--primary-color); color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 2px solid white; }
+/* Profile Picture Editor */
+.profile-picture-section { margin-bottom: 2rem; }
+.profile-picture-editor { position: relative; width: 150px; height: 150px; margin: 0 auto 1rem; }
+.editable-profile-picture { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 4px solid var(--primary-color); box-shadow: 0 4px 15px rgba(0,0,0,0.15); transition: all 0.3s ease; }
+.profile-picture-editor:hover .editable-profile-picture { filter: brightness(0.7); }
+
+/* Profile Picture Overlay */
+.profile-picture-overlay { 
+    position: absolute; 
+    inset: 0; 
+    border-radius: 50%; 
+    display: flex; 
+    flex-direction: column;
+    align-items: center; 
+    justify-content: center; 
+    gap: 0.4rem; 
+    opacity: 0; 
+    transition: opacity 0.3s ease; 
+    background: rgba(0, 0, 0, 0.75); 
+    padding: 0.5rem;
+}
+.profile-picture-editor:hover .profile-picture-overlay { opacity: 1; }
+
+/* Picture Action Buttons */
+.picture-action-btn { 
+    width: 40px; 
+    height: 40px; 
+    border-radius: 50%; 
+    border: 2px solid white; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    cursor: pointer; 
+    transition: all 0.3s ease; 
+    font-size: 0.95rem;
+}
+.upload-btn { background: var(--primary-color); color: white; }
+.upload-btn:hover { background: #149178; transform: scale(1.15); box-shadow: 0 4px 12px rgba(22, 160, 133, 0.4); }
+.webcam-btn { background: var(--secondary-color); color: white; border: none; }
+.webcam-btn:hover { background: #2980b9; transform: scale(1.15); box-shadow: 0 4px 12px rgba(52, 152, 219, 0.4); }
+.remove-btn { background: var(--danger-color); color: white; border: none; }
+.remove-btn:hover { background: #c0392b; transform: scale(1.15); box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4); }
+
+.profile-picture-hint { text-align: center; color: var(--text-muted); font-size: 0.85rem; margin: 0; }
 #profile-picture-upload { display: none; }
 .password-wrapper { position: relative; }
 .password-wrapper input { width: 100%; padding-right: 2.5rem; }
@@ -909,3 +950,73 @@ body.dark-theme .send-btn:disabled {
     opacity: 0.6;
 }
 .token-card.status-skipped .token-status { background-color: var(--danger-color); }
+
+/* --- Webcam Modal Styles --- */
+.webcam-modal-content { 
+    max-width: 700px; 
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+.webcam-modal-body { 
+    padding: 2rem; 
+    background: var(--background-panel); 
+}
+.webcam-container { 
+    position: relative; 
+    width: 100%; 
+    max-width: 640px; 
+    margin: 0 auto; 
+    background: #000; 
+    border-radius: 16px; 
+    overflow: hidden; 
+    aspect-ratio: 4/3; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+#webcam-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+#webcam-canvas { display: none; }
+.webcam-preview { 
+    width: 100%; 
+    height: 100%; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    background: #000; 
+}
+.webcam-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.webcam-status { 
+    margin-top: 1.5rem; 
+    padding: 1rem; 
+    background: var(--background-secondary); 
+    border-radius: 10px; 
+    text-align: center; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    gap: 0.75rem; 
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    border-left: 4px solid var(--primary-color);
+}
+.webcam-status i { color: var(--primary-color); font-size: 1.2rem; }
+.webcam-status.success { 
+    background: rgba(22, 160, 133, 0.15); 
+    color: var(--primary-color); 
+    border-left-color: var(--primary-color);
+}
+.webcam-status.error { 
+    background: rgba(231, 76, 60, 0.15); 
+    color: var(--danger-color);
+    border-left-color: var(--danger-color);
+}
+.webcam-status.error i { color: var(--danger-color); }
+
+/* Webcam Modal Responsive */
+@media (max-width: 768px) {
+    .webcam-modal-content { max-width: 95%; }
+    .webcam-container { aspect-ratio: 3/4; max-width: 100%; }
+    .webcam-modal-body { padding: 1rem; }
+}

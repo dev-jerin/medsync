@@ -976,6 +976,32 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     }
                     break;
 
+                case 'removeProfilePicture':
+                    $stmt_select = $conn->prepare("SELECT profile_picture FROM users WHERE id = ?");
+                    $stmt_select->bind_param("i", $user_id);
+                    $stmt_select->execute();
+                    $current_picture = $stmt_select->get_result()->fetch_assoc()['profile_picture'];
+                    $stmt_select->close();
+
+                    if ($current_picture && $current_picture !== 'default.png') {
+                        $upload_dir = '../uploads/profile_pictures/';
+                        $old_file_path = $upload_dir . $current_picture;
+                        if (file_exists($old_file_path)) {
+                            unlink($old_file_path);
+                        }
+                    }
+
+                    $stmt_update = $conn->prepare("UPDATE users SET profile_picture = 'default.png' WHERE id = ?");
+                    $stmt_update->bind_param("i", $user_id);
+                    if ($stmt_update->execute()) {
+                        log_activity($conn, $user_id, 'remove_profile_picture', null, 'Staff removed their profile picture.');
+                        $response = ['success' => true, 'message' => 'Profile picture removed successfully.', 'new_image_url' => '../uploads/profile_pictures/default.png'];
+                    } else {
+                        throw new Exception('Failed to remove profile picture.');
+                    }
+                    $stmt_update->close();
+                    break;
+
                 case 'markCallbackContacted':
                     if (empty($_POST['id'])) {
                         throw new Exception('Callback request ID is required.');

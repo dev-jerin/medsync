@@ -561,14 +561,27 @@ require_once 'api.php';
                     <div id="personal-info-tab" class="profile-tab-content active">
                         <form id="personal-info-form" class="settings-form" novalidate>
                             <h4>Edit Your Personal Details</h4>
-                            <div class="profile-picture-editor">
-                                <img src="<?php echo $profile_picture_path; ?>?v=<?php echo time(); ?>"
-                                    alt="Staff Avatar" class="editable-profile-picture">
-                                <label for="profile-picture-upload" class="edit-picture-btn" title="Upload new picture">
-                                    <i class="fas fa-camera"></i>
-                                    <input type="file" id="profile-picture-upload"
-                                        accept="image/jpeg, image/png, image/gif">
-                                </label>
+                            <div class="profile-picture-section">
+                                <div class="profile-picture-editor">
+                                    <img src="<?php echo $profile_picture_path; ?>?v=<?php echo time(); ?>"
+                                        alt="Staff Avatar" class="editable-profile-picture" id="staff-profile-picture"
+                                        data-current-picture="<?php echo $profile_picture_filename; ?>">
+                                    <div class="profile-picture-overlay">
+                                        <label for="profile-picture-upload" class="picture-action-btn upload-btn" title="Upload from device">
+                                            <i class="fas fa-upload"></i>
+                                            <input type="file" id="profile-picture-upload"
+                                                accept="image/jpeg, image/png, image/gif">
+                                        </label>
+                                        <button type="button" class="picture-action-btn webcam-btn" id="open-webcam-btn" title="Take photo with webcam">
+                                            <i class="fas fa-camera"></i>
+                                        </button>
+                                        <button type="button" class="picture-action-btn remove-btn" id="remove-profile-picture-btn" 
+                                            title="Remove profile picture" <?php echo ($profile_picture_filename === 'default.png') ? 'style="display: none;"' : ''; ?>>
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <p class="profile-picture-hint">Hover to upload, take photo, or remove picture</p>
                             </div>
                             <div class="form-grid">
                                 <div class="form-group">
@@ -1185,6 +1198,40 @@ require_once 'api.php';
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary modal-close-btn">Cancel</button>
                 <button type="submit" form="process-payment-form" class="btn btn-primary">Confirm Payment</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Webcam Capture Modal -->
+    <div id="webcam-modal" class="modal-overlay">
+        <div class="modal-container webcam-modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-camera"></i> Capture Profile Picture</h3>
+                <button type="button" class="modal-close-btn" id="close-webcam-modal">&times;</button>
+            </div>
+            <div class="modal-body webcam-modal-body">
+                <div class="webcam-container">
+                    <video id="webcam-video" autoplay playsinline></video>
+                    <canvas id="webcam-canvas" style="display: none;"></canvas>
+                    <div id="webcam-preview" class="webcam-preview" style="display: none;">
+                        <img id="webcam-captured-image" alt="Captured">
+                    </div>
+                </div>
+                <div class="webcam-status" id="webcam-status">
+                    <i class="fas fa-info-circle"></i> <span>Initializing camera...</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="webcam-cancel-btn">Cancel</button>
+                <button type="button" class="btn btn-primary" id="webcam-capture-btn">
+                    <i class="fas fa-camera"></i> Capture
+                </button>
+                <button type="button" class="btn btn-warning" id="webcam-retake-btn" style="display: none;">
+                    <i class="fas fa-redo"></i> Retake
+                </button>
+                <button type="button" class="btn btn-success" id="webcam-use-btn" style="display: none;">
+                    <i class="fas fa-check"></i> Use This Photo
+                </button>
             </div>
         </div>
     </div>
