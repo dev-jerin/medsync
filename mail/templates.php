@@ -210,6 +210,85 @@ function getPasswordResetConfirmationTemplate($name, $datetime, $ip_address = nu
 </html>
 HTML;
 }
+
+/**
+ * Returns the HTML content for the account modification notification email.
+ *
+ * @param string $name The user's full name.
+ * @param string $username The user's username.
+ * @param array $changes Array of changes made (e.g., ['name' => ['old' => 'John', 'new' => 'Jane'], ...])
+ * @param string $datetime The date and time of the modification.
+ * @param string $admin_name The name of the administrator who made the changes.
+ * @return string The complete HTML email body.
+ */
+function getAccountModificationTemplate($name, $username, $changes, $datetime, $admin_name = 'System Administrator') {
+    $currentYear = date('Y');
+    
+    // Build the changes list HTML
+    $changesHtml = '';
+    foreach ($changes as $field => $change) {
+        $fieldLabel = ucwords(str_replace('_', ' ', $field));
+        if (is_array($change) && isset($change['old']) && isset($change['new'])) {
+            $changesHtml .= "<p><strong>{$fieldLabel}:</strong><br>
+                <span style='color: #e53e3e; text-decoration: line-through;'>{$change['old']}</span> 
+                → <span style='color: #38a169;'>{$change['new']}</span></p>";
+        } else {
+            $changesHtml .= "<p><strong>{$fieldLabel}:</strong> {$change}</p>";
+        }
+    }
+    
+    return <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Account Details Updated - MedSync</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+        body { margin: 0; padding: 0; width: 100% !important; font-family: 'Inter', Arial, sans-serif; background-color: #f7fafc; color: #4a5568; }
+        .main-content { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; margin: 20px auto; max-width: 600px; overflow: hidden; }
+        .header { background-color: #0067FF; color: #ffffff; padding: 40px 20px; text-align: center; border-bottom: 5px solid #00D9E9; }
+        .header h1 { margin: 0; font-size: 28px; }
+        .content-body { padding: 40px 35px; line-height: 1.6; }
+        .changes-box { background-color: #f7fafc; border-left: 4px solid #0067FF; margin: 25px 0; padding: 20px; border-radius: 8px; }
+        .changes-box p { margin: 10px 0; }
+        .alert-box { background-color: #fffbeb; border-left: 4px solid #ffc107; margin: 25px 0; padding: 15px 20px; border-radius: 8px; font-size: 14px; }
+        .contact-info { background-color: #e6f0ff; padding: 15px; border-radius: 8px; margin: 20px 0; }
+        .footer { text-align: center; padding: 25px; font-size: 13px; color: #a0aec0; }
+    </style>
+</head>
+<body>
+    <div class="main-content">
+        <div class="header"><h1>Account Update Notification</h1></div>
+        <div class="content-body">
+            <p>Dear <strong>{$name}</strong>,</p>
+            <p>This is to notify you that your MedSync account details have been updated by an administrator.</p>
+            
+            <div class="changes-box">
+                <h3 style="margin-top: 0; color: #0067FF;">Changes Made:</h3>
+                {$changesHtml}
+            </div>
+            
+            <div class="alert-box">
+                <p style="margin: 0;"><strong>📋 Modification Details:</strong></p>
+                <p style="margin: 5px 0 0 0;">Modified by: <strong>System Administrator</strong><br>
+                Date & Time: <strong>{$datetime}</strong></p>
+            </div>
+            
+            <div class="contact-info">
+                <p style="margin: 0; font-size: 14px;"><strong>ℹ️ Important:</strong></p>
+                <p style="margin: 5px 0 0 0; font-size: 14px;">If you did not expect these changes or have any concerns, please contact our support team immediately at <a href="mailto:medsync.calysta@gmail.com">medsync.calysta@gmail.com</a> or call us during business hours.</p>
+            </div>
+            
+            <p>Thank you for being a valued member of the MedSync community.</p>
+            <p>Sincerely,<br>The MedSync Team</p>
+        </div>
+    </div>
+    <div class="footer">&copy; {$currentYear} Calysta Health Institute. All Rights Reserved.</div>
+</body>
+</html>
+HTML;
+}
 ?>
 
 

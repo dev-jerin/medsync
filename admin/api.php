@@ -2,6 +2,8 @@
 // --- CONFIG & SESSION START ---
 require_once '../config.php'; //loads database connection
 require_once '../vendor/autoload.php'; //vendor files for phpmailer and dompdf
+require_once '../mail/send_mail.php'; //email sending functionality
+require_once '../mail/templates.php'; //email templates
 
 // ---classes from the Dompdf library---
 use Dompdf\Dompdf;
@@ -351,15 +353,119 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         }
 
                         // --- Audit Log: Compare and log changes ---
-                        if ($old_user_data['name'] !== $name) $changes[] = "name from '{$old_user_data['name']}' to '{$name}'";
-                        if ($old_user_data['username'] !== $username) $changes[] = "username from '{$old_user_data['username']}' to '{$username}'";
-                        if ($old_user_data['email'] !== $email) $changes[] = "email from '{$old_user_data['email']}' to '{$email}'";
-                        if ($old_user_data['phone'] !== $phone) $changes[] = "phone number";
-                        if ($old_user_data['is_active'] != $is_active) $changes[] = "status from " . ($old_user_data['is_active'] ? "'Active'" : "'Inactive'") . " to " . ($is_active ? "'Active'" : "'Inactive'");
+                        $email_changes = []; // For email notification
+                        
+                        error_log("DEBUG: Starting change detection for user ID: {$id}");
+                        
+                        if ($old_user_data['name'] !== $name) {
+                            $changes[] = "name from '{$old_user_data['name']}' to '{$name}'";
+                            $email_changes['Name'] = ['old' => $old_user_data['name'], 'new' => $name];
+                        }
+                        if ($old_user_data['username'] !== $username) {
+                            $changes[] = "username from '{$old_user_data['username']}' to '{$username}'";
+                            $email_changes['Username'] = ['old' => $old_user_data['username'], 'new' => $username];
+                        }
+                        if ($old_user_data['email'] !== $email) {
+                            $changes[] = "email from '{$old_user_data['email']}' to '{$email}'";
+                            $email_changes['Email'] = ['old' => $old_user_data['email'], 'new' => $email];
+                        }
+                        if ($old_user_data['phone'] !== $phone) {
+                            $changes[] = "phone number";
+                            $email_changes['Phone Number'] = ['old' => $old_user_data['phone'], 'new' => $phone];
+                        }
+                        if ($old_user_data['is_active'] != $is_active) {
+                            $changes[] = "status from " . ($old_user_data['is_active'] ? "'Active'" : "'Inactive'") . " to " . ($is_active ? "'Active'" : "'Inactive'");
+                            $email_changes['Account Status'] = ['old' => ($old_user_data['is_active'] ? 'Active' : 'Inactive'), 'new' => ($is_active ? 'Active' : 'Inactive')];
+                        }
+                        if (($old_user_data['gender'] ?? '') !== ($gender ?? '')) {
+                            $email_changes['Gender'] = ['old' => ($old_user_data['gender'] ?? 'Not set'), 'new' => ($gender ?? 'Not set')];
+                        }
+                        if (($old_user_data['date_of_birth'] ?? '') !== ($date_of_birth ?? '')) {
+                            $email_changes['Date of Birth'] = ['old' => ($old_user_data['date_of_birth'] ?? 'Not set'), 'new' => ($date_of_birth ?? 'Not set')];
+                        }
+                        if (in_array("profile picture", $changes)) {
+                            $email_changes['Profile Picture'] = 'Updated';
+                        }
+                        if (in_array("password", $changes)) {
+                            $email_changes['Password'] = 'Changed for security';
+                        }
+                        
+                        error_log("DEBUG: Changes detected: " . count($changes) . " | Email changes: " . count($email_changes));
+                        error_log("DEBUG: Email changes array: " . json_encode($email_changes));
+                        
+                        // Write to debug file
+                        $debug_msg = "[" . date('Y-m-d H:i:s') . "] User ID: {$id}, Changes: " . count($changes) . ", Email changes: " . count($email_changes) . "\n";
+                        $debug_msg .= "Email changes: " . json_encode($email_changes) . "\n";
+                        file_put_contents(__DIR__ . '/../debug_email.txt', $debug_msg, FILE_APPEND);
                         
                         if (!empty($changes)) {
                             $log_details = "Updated user '{$username}': changed " . implode(', ', $changes) . ".";
                             log_activity($conn, $admin_user_id_for_log, 'update_user', $id, $log_details);
+                            
+                            // --- Send Email Notification ---
+                            error_log("DEBUG: Checking if email notification should be sent...");
+                            if (!empty($email_changes)) {
+                                error_log("DEBUG: Email changes found, proceeding with notification...");
+                                try {
+                                    // Get admin name
+                                    $stmt_admin = $conn->prepare("SELECT name FROM users WHERE id = ?");
+                                    $stmt_admin->bind_param("i", $admin_user_id_for_log);
+                                    $stmt_admin->execute();
+                                    $admin_info = $stmt_admin->get_result()->fetch_assoc();
+                                    $admin_name = $admin_info['name'] ?? 'System Administrator';
+                                    
+                                    error_log("DEBUG: Admin name: {$admin_name}, Recipient email: {$email}");
+                                    
+                                    $current_datetime = date('d M Y, h:i A');
+                                    $email_body = getAccountModificationTemplate($name, $username, $email_changes, $current_datetime, $admin_name);
+                                    
+                                    error_log("DEBUG: Email template generated, length: " . strlen($email_body));
+                                    
+                                    // Send to the updated email address
+                                    // Function signature: send_mail($name, $to, $subject, $body)
+                                    error_log("DEBUG: Calling send_mail('MedSync', '{$email}', 'Your MedSync Account Has Been Updated', [body])");
+                                    
+                                    // Write to debug file
+                                    file_put_contents(__DIR__ . '/../debug_email.txt', "[" . date('Y-m-d H:i:s') . "] About to send email to: {$email}\n", FILE_APPEND);
+                                    
+                                    $email_sent = send_mail('MedSync', $email, 'Your MedSync Account Has Been Updated', $email_body);
+                                    
+                                    // Write result to debug file
+                                    file_put_contents(__DIR__ . '/../debug_email.txt', "[" . date('Y-m-d H:i:s') . "] Email sent result: " . ($email_sent ? 'SUCCESS' : 'FAILED') . "\n", FILE_APPEND);
+                                    
+                                    if ($email_sent) {
+                                        error_log("SUCCESS: Account modification email sent successfully to: {$email}");
+                                    } else {
+                                        error_log("ERROR: Failed to send account modification email to: {$email}");
+                                    }
+                                    
+                                    // If email was changed, also notify the old email
+                                    if (isset($email_changes['Email']) && !empty($old_user_data['email'])) {
+                                        error_log("DEBUG: Email address was changed, sending to old email: {$old_user_data['email']}");
+                                        $old_email_body = getAccountModificationTemplate(
+                                            $old_user_data['name'], 
+                                            $old_user_data['username'], 
+                                            $email_changes, 
+                                            $current_datetime, 
+                                            $admin_name
+                                        );
+                                        $old_email_sent = send_mail('MedSync', $old_user_data['email'], 'Your MedSync Account Has Been Updated', $old_email_body);
+                                        
+                                        if ($old_email_sent) {
+                                            error_log("SUCCESS: Account modification email sent successfully to old email: {$old_user_data['email']}");
+                                        } else {
+                                            error_log("ERROR: Failed to send account modification email to old email: {$old_user_data['email']}");
+                                        }
+                                    }
+                                } catch (Exception $email_error) {
+                                    // Log but don't fail the update if email fails
+                                    error_log("EXCEPTION: Email notification error: " . $email_error->getMessage());
+                                    error_log("EXCEPTION: Stack trace: " . $email_error->getTraceAsString());
+                                }
+                            } else {
+                                error_log("DEBUG: No email-worthy changes detected, skipping notification");
+                            }
+                            // --- End Email Notification ---
                         }
                         // --- End Audit Log ---
 
@@ -373,119 +479,188 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
 
                 case 'updateProfile':
-                    if (empty($_POST['name']) || empty($_POST['email'])) {
-                        throw new Exception('Name and Email are required.');
-                    }
-                    $id = $_SESSION['user_id'];
-                    $name = $_POST['name'];
-                    $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
-                    if (!$email)
-                        throw new Exception('Invalid email format.');
-                    $phone = $_POST['phone'];
-                    $gender = $_POST['gender'] ?? null;
-                    $date_of_birth = $_POST['date_of_birth'] ?? null;
-
-                    $sql_parts = ["name = ?", "email = ?", "phone = ?"];
-                    $params = [$name, $email, $phone];
-                    $types = "sss";
-
-                    // Handle gender
-                    if (!empty($gender)) {
-                        $sql_parts[] = "gender = ?";
-                        $params[] = $gender;
-                        $types .= "s";
-                    }
-
-                    // Handle date of birth
-                    if (!empty($date_of_birth)) {
-                        $sql_parts[] = "date_of_birth = ?";
-                        $params[] = $date_of_birth;
-                        $types .= "s";
-                    }
-
-                    // Handle profile picture upload
-                    if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] === UPLOAD_ERR_OK) {
-                        $file = $_FILES['profile_picture'];
-                        $allowed_types = ['image/jpeg', 'image/png', 'image/jpg'];
-                        $max_size = 2 * 1024 * 1024; // 2MB
-
-                        if (!in_array($file['type'], $allowed_types)) {
-                            throw new Exception('Invalid file type. Only JPG and PNG are allowed.');
+                    $conn->begin_transaction();
+                    try {
+                        if (empty($_POST['name']) || empty($_POST['email'])) {
+                            throw new Exception('Name and Email are required.');
                         }
-                        if ($file['size'] > $max_size) {
-                            throw new Exception('File size exceeds 2MB limit.');
-                        }
+                        $id = $_SESSION['user_id'];
+                        $name = $_POST['name'];
+                        $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
+                        if (!$email)
+                            throw new Exception('Invalid email format.');
+                        $phone = $_POST['phone'];
+                        $gender = $_POST['gender'] ?? null;
+                        $date_of_birth = $_POST['date_of_birth'] ?? null;
 
-                        // Generate unique filename
-                        $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
-                        $new_filename = 'profile_' . $id . '_' . time() . '.' . $extension;
-                        $upload_path = '../uploads/profile_pictures/' . $new_filename;
-
-                        // Delete old profile picture if not default
-                        $stmt_old = $conn->prepare("SELECT profile_picture FROM users WHERE id = ?");
+                        // --- Fetch current state for comparison ---
+                        $stmt_old = $conn->prepare("SELECT name, email, phone, gender, date_of_birth, profile_picture, username FROM users WHERE id = ?");
                         $stmt_old->bind_param("i", $id);
                         $stmt_old->execute();
-                        $old_pic = $stmt_old->get_result()->fetch_assoc()['profile_picture'];
-                        if ($old_pic && $old_pic !== 'default.png' && file_exists('../uploads/profile_pictures/' . $old_pic)) {
-                            unlink('../uploads/profile_pictures/' . $old_pic);
-                        }
+                        $old_user_data = $stmt_old->get_result()->fetch_assoc();
+                        // --- End Fetch ---
 
-                        // Upload new file
-                        if (move_uploaded_file($file['tmp_name'], $upload_path)) {
-                            $sql_parts[] = "profile_picture = ?";
-                            $params[] = $new_filename;
+                        $sql_parts = ["name = ?", "email = ?", "phone = ?"];
+                        $params = [$name, $email, $phone];
+                        $types = "sss";
+
+                        $email_changes = []; // Track changes for email notification
+
+                        // Handle gender
+                        if (!empty($gender)) {
+                            $sql_parts[] = "gender = ?";
+                            $params[] = $gender;
                             $types .= "s";
-                        } else {
-                            throw new Exception('Failed to upload profile picture.');
-                        }
-                    }
-
-                    // Handle password change with validation
-                    if (!empty($_POST['password'])) {
-                        // Require current password when changing password
-                        if (empty($_POST['current_password'])) {
-                            throw new Exception('Current password is required to change password.');
                         }
 
-                        // Verify current password
-                        $stmt_verify = $conn->prepare("SELECT password FROM users WHERE id = ?");
-                        $stmt_verify->bind_param("i", $id);
-                        $stmt_verify->execute();
-                        $current_hash = $stmt_verify->get_result()->fetch_assoc()['password'];
-                        
-                        if (!password_verify($_POST['current_password'], $current_hash)) {
-                            throw new Exception('Current password is incorrect.');
+                        // Handle date of birth
+                        if (!empty($date_of_birth)) {
+                            $sql_parts[] = "date_of_birth = ?";
+                            $params[] = $date_of_birth;
+                            $types .= "s";
                         }
 
-                        // Verify password confirmation
-                        if ($_POST['password'] !== $_POST['confirm_password']) {
-                            throw new Exception('New passwords do not match.');
+                        // Handle profile picture upload
+                        if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] === UPLOAD_ERR_OK) {
+                            $file = $_FILES['profile_picture'];
+                            $allowed_types = ['image/jpeg', 'image/png', 'image/jpg'];
+                            $max_size = 2 * 1024 * 1024; // 2MB
+
+                            if (!in_array($file['type'], $allowed_types)) {
+                                throw new Exception('Invalid file type. Only JPG and PNG are allowed.');
+                            }
+                            if ($file['size'] > $max_size) {
+                                throw new Exception('File size exceeds 2MB limit.');
+                            }
+
+                            // Generate unique filename
+                            $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
+                            $new_filename = 'profile_' . $id . '_' . time() . '.' . $extension;
+                            $upload_path = '../uploads/profile_pictures/' . $new_filename;
+
+                            // Delete old profile picture if not default
+                            $old_pic = $old_user_data['profile_picture'];
+                            if ($old_pic && $old_pic !== 'default.png' && file_exists('../uploads/profile_pictures/' . $old_pic)) {
+                                unlink('../uploads/profile_pictures/' . $old_pic);
+                            }
+
+                            // Upload new file
+                            if (move_uploaded_file($file['tmp_name'], $upload_path)) {
+                                $sql_parts[] = "profile_picture = ?";
+                                $params[] = $new_filename;
+                                $types .= "s";
+                                $email_changes['Profile Picture'] = 'Updated';
+                            } else {
+                                throw new Exception('Failed to upload profile picture.');
+                            }
                         }
 
-                        // Validate password strength
-                        if (strlen($_POST['password']) < 8) {
-                            throw new Exception('New password must be at least 8 characters long.');
+                        // Handle password change with validation
+                        if (!empty($_POST['password'])) {
+                            // Require current password when changing password
+                            if (empty($_POST['current_password'])) {
+                                throw new Exception('Current password is required to change password.');
+                            }
+
+                            // Verify current password
+                            $stmt_verify = $conn->prepare("SELECT password FROM users WHERE id = ?");
+                            $stmt_verify->bind_param("i", $id);
+                            $stmt_verify->execute();
+                            $current_hash = $stmt_verify->get_result()->fetch_assoc()['password'];
+                            
+                            if (!password_verify($_POST['current_password'], $current_hash)) {
+                                throw new Exception('Current password is incorrect.');
+                            }
+
+                            // Verify password confirmation
+                            if ($_POST['password'] !== $_POST['confirm_password']) {
+                                throw new Exception('New passwords do not match.');
+                            }
+
+                            // Validate password strength
+                            if (strlen($_POST['password']) < 8) {
+                                throw new Exception('New password must be at least 8 characters long.');
+                            }
+
+                            $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+                            $sql_parts[] = "password = ?";
+                            $params[] = $hashed_password;
+                            $types .= "s";
+                            $email_changes['Password'] = 'Changed for security';
                         }
 
-                        $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
-                        $sql_parts[] = "password = ?";
-                        $params[] = $hashed_password;
-                        $types .= "s";
-                    }
+                        $sql = "UPDATE users SET " . implode(", ", $sql_parts) . " WHERE id = ?";
+                        $params[] = $id;
+                        $types .= "i";
 
-                    $sql = "UPDATE users SET " . implode(", ", $sql_parts) . " WHERE id = ?";
-                    $params[] = $id;
-                    $types .= "i";
+                        $stmt = $conn->prepare($sql);
+                        $stmt->bind_param($types, ...$params);
+                        $stmt->execute();
 
-                    $stmt = $conn->prepare($sql);
-                    $stmt->bind_param($types, ...$params);
+                        // --- Compare and track changes ---
+                        if ($old_user_data['name'] !== $name) {
+                            $email_changes['Name'] = ['old' => $old_user_data['name'], 'new' => $name];
+                        }
+                        if ($old_user_data['email'] !== $email) {
+                            $email_changes['Email'] = ['old' => $old_user_data['email'], 'new' => $email];
+                        }
+                        if ($old_user_data['phone'] !== $phone) {
+                            $email_changes['Phone Number'] = ['old' => $old_user_data['phone'], 'new' => $phone];
+                        }
+                        if (($old_user_data['gender'] ?? '') !== ($gender ?? '')) {
+                            $email_changes['Gender'] = ['old' => ($old_user_data['gender'] ?? 'Not set'), 'new' => ($gender ?? 'Not set')];
+                        }
+                        if (($old_user_data['date_of_birth'] ?? '') !== ($date_of_birth ?? '')) {
+                            $email_changes['Date of Birth'] = ['old' => ($old_user_data['date_of_birth'] ?? 'Not set'), 'new' => ($date_of_birth ?? 'Not set')];
+                        }
+                        // --- End tracking ---
 
-                    if ($stmt->execute()) {
+                        // --- Send Email Notification ---
+                        if (!empty($email_changes)) {
+                            try {
+                                $current_datetime = date('d M Y, h:i A');
+                                $email_body = getAccountModificationTemplate($name, $old_user_data['username'], $email_changes, $current_datetime, 'You (Self-Updated)');
+                                
+                                // Send to the updated email address
+                                $email_sent = send_mail('MedSync', $email, 'Your MedSync Account Has Been Updated', $email_body);
+                                
+                                if ($email_sent) {
+                                    error_log("SUCCESS: Own profile modification email sent successfully to: {$email}");
+                                } else {
+                                    error_log("ERROR: Failed to send own profile modification email to: {$email}");
+                                }
+                                
+                                // If email was changed, also notify the old email
+                                if (isset($email_changes['Email']) && !empty($old_user_data['email'])) {
+                                    $old_email_body = getAccountModificationTemplate(
+                                        $old_user_data['name'], 
+                                        $old_user_data['username'], 
+                                        $email_changes, 
+                                        $current_datetime, 
+                                        'You (Self-Updated)'
+                                    );
+                                    $old_email_sent = send_mail('MedSync', $old_user_data['email'], 'Your MedSync Account Has Been Updated', $old_email_body);
+                                    
+                                    if ($old_email_sent) {
+                                        error_log("SUCCESS: Own profile modification email sent successfully to old email: {$old_user_data['email']}");
+                                    } else {
+                                        error_log("ERROR: Failed to send own profile modification email to old email: {$old_user_data['email']}");
+                                    }
+                                }
+                            } catch (Exception $email_error) {
+                                error_log("EXCEPTION: Own profile email notification error: " . $email_error->getMessage());
+                            }
+                        }
+                        // --- End Email Notification ---
+
                         $_SESSION['username'] = $name;
                         log_activity($conn, $admin_user_id_for_log, 'update_own_profile', $id, 'Admin updated their own profile details.');
+                        
+                        $conn->commit();
                         $response = ['success' => true, 'message' => 'Your profile has been updated successfully.'];
-                    } else {
-                        throw new Exception('Failed to update your profile.');
+                    } catch (Exception $e) {
+                        $conn->rollback();
+                        throw $e;
                     }
                     break;
 
