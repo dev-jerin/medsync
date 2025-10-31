@@ -424,8 +424,6 @@ CREATE TABLE `prescription_items` (
 
 --
 --Table for automated discharge process
-ALTER TABLE `discharge_clearance`
-ADD COLUMN `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `admission_id`;
 --
 CREATE TABLE `discharge_clearance` (
 `id` INT(11) NOT NULL AUTO_INCREMENT,
