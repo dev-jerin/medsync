@@ -1038,6 +1038,12 @@ const toggleRoleFields = () => {
             const profilePic = profile.profile_picture || 'default.png';
             document.getElementById('profile-picture-preview').src = `../uploads/profile_pictures/${profilePic}`;
             
+            // Show/hide remove button based on whether user has custom picture
+            const removeBtn = document.getElementById('remove-profile-picture-btn');
+            if (removeBtn) {
+                removeBtn.style.display = (profilePic !== 'default.png') ? 'flex' : 'none';
+            }
+            
             // Security information
             if (profile.last_login_time) {
                 const loginDate = new Date(profile.last_login_time);
@@ -1102,13 +1108,16 @@ const toggleRoleFields = () => {
             const reader = new FileReader();
             reader.onload = (event) => {
                 document.getElementById('profile-picture-preview').src = event.target.result;
+                // Show remove button since we now have a custom picture
+                removeProfilePictureBtn.style.display = 'flex';
             };
             reader.readAsDataURL(file);
         }
     });
 
     // Remove profile picture button
-    document.getElementById('remove-profile-picture-btn').addEventListener('click', async () => {
+    const removeProfilePictureBtn = document.getElementById('remove-profile-picture-btn');
+    removeProfilePictureBtn.addEventListener('click', async () => {
         const confirmed = await showConfirmation('Remove Profile Picture', 'Are you sure you want to remove your profile picture?');
         if (confirmed) {
             const formData = new FormData();
@@ -1136,8 +1145,9 @@ const toggleRoleFields = () => {
                     if (dropdownAvatar) {
                         dropdownAvatar.src = '../uploads/profile_pictures/default.png';
                     }
-                    // Clear file input
+                    // Clear file input and hide remove button
                     document.getElementById('profile-picture-input').value = '';
+                    removeProfilePictureBtn.style.display = 'none';
                 } else {
                     showNotification(result.message, 'error');
                 }
@@ -1146,6 +1156,150 @@ const toggleRoleFields = () => {
                 showNotification('Failed to remove profile picture.', 'error');
             }
         }
+    });
+
+    // --- WEBCAM CAPTURE FUNCTIONALITY ---
+    const adminWebcamModal = document.getElementById('admin-webcam-modal');
+    const adminWebcamVideo = document.getElementById('admin-webcam-video');
+    const adminWebcamCanvas = document.getElementById('admin-webcam-canvas');
+    const adminWebcamPreview = document.getElementById('admin-webcam-preview');
+    const adminWebcamCapturedImage = document.getElementById('admin-webcam-captured-image');
+    const adminWebcamStatus = document.getElementById('admin-webcam-status');
+    
+    const openAdminWebcamBtn = document.getElementById('admin-open-webcam-btn');
+    const closeAdminWebcamModal = document.getElementById('close-admin-webcam-modal');
+    const adminWebcamCancelBtn = document.getElementById('admin-webcam-cancel-btn');
+    const adminWebcamCaptureBtn = document.getElementById('admin-webcam-capture-btn');
+    const adminWebcamRetakeBtn = document.getElementById('admin-webcam-retake-btn');
+    const adminWebcamUseBtn = document.getElementById('admin-webcam-use-btn');
+    
+    let adminWebcamStream = null;
+    let adminCapturedBlob = null;
+
+    const updateAdminWebcamStatus = (message, type = 'info') => {
+        adminWebcamStatus.className = `webcam-status ${type}`;
+        const icon = type === 'error' ? 'fa-exclamation-circle' : type === 'success' ? 'fa-check-circle' : 'fa-info-circle';
+        adminWebcamStatus.innerHTML = `<i class="fas ${icon}"></i> <span>${message}</span>`;
+    };
+
+    const startAdminWebcam = async () => {
+        try {
+            updateAdminWebcamStatus('Starting camera...', 'info');
+            adminWebcamStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: 'user'
+                } 
+            });
+            adminWebcamVideo.srcObject = adminWebcamStream;
+            adminWebcamVideo.style.display = 'block';
+            adminWebcamPreview.style.display = 'none';
+            adminWebcamCaptureBtn.style.display = 'inline-block';
+            adminWebcamRetakeBtn.style.display = 'none';
+            adminWebcamUseBtn.style.display = 'none';
+            updateAdminWebcamStatus('Camera ready! Click "Capture" to take a photo.', 'success');
+        } catch (error) {
+            console.error('Webcam error:', error);
+            updateAdminWebcamStatus('Unable to access camera. Please check permissions.', 'error');
+        }
+    };
+
+    const stopAdminWebcam = () => {
+        if (adminWebcamStream) {
+            adminWebcamStream.getTracks().forEach(track => track.stop());
+            adminWebcamStream = null;
+            adminWebcamVideo.srcObject = null;
+        }
+    };
+
+    const captureAdminPhoto = () => {
+        const context = adminWebcamCanvas.getContext('2d');
+        adminWebcamCanvas.width = adminWebcamVideo.videoWidth;
+        adminWebcamCanvas.height = adminWebcamVideo.videoHeight;
+        context.drawImage(adminWebcamVideo, 0, 0);
+        
+        adminWebcamCanvas.toBlob((blob) => {
+            adminCapturedBlob = blob;
+            const url = URL.createObjectURL(blob);
+            adminWebcamCapturedImage.src = url;
+            adminWebcamVideo.style.display = 'none';
+            adminWebcamPreview.style.display = 'flex';
+            adminWebcamCaptureBtn.style.display = 'none';
+            adminWebcamRetakeBtn.style.display = 'inline-block';
+            adminWebcamUseBtn.style.display = 'inline-block';
+            updateAdminWebcamStatus('Photo captured! Use it or retake.', 'success');
+        }, 'image/jpeg', 0.9);
+    };
+
+    const retakeAdminPhoto = () => {
+        adminWebcamVideo.style.display = 'block';
+        adminWebcamPreview.style.display = 'none';
+        adminWebcamCaptureBtn.style.display = 'inline-block';
+        adminWebcamRetakeBtn.style.display = 'none';
+        adminWebcamUseBtn.style.display = 'none';
+        adminCapturedBlob = null;
+        updateAdminWebcamStatus('Camera ready! Click "Capture" to take a photo.', 'success');
+    };
+
+    const uploadAdminCapturedPhoto = async () => {
+        if (!adminCapturedBlob) return;
+        
+        const formData = new FormData();
+        formData.append('profile_picture', adminCapturedBlob, 'webcam-capture.jpg');
+        // The profile form already handles this, we'll submit via the same mechanism
+        
+        try {
+            updateAdminWebcamStatus('Uploading photo...', 'info');
+            adminWebcamUseBtn.disabled = true;
+            
+            // Create a temporary file input to trigger the upload
+            const dataTransfer = new DataTransfer();
+            const file = new File([adminCapturedBlob], 'webcam-capture.jpg', { type: 'image/jpeg' });
+            dataTransfer.items.add(file);
+            
+            const fileInput = document.getElementById('profile-picture-input');
+            fileInput.files = dataTransfer.files;
+            
+            // Trigger the change event to show preview
+            const changeEvent = new Event('change', { bubbles: true });
+            fileInput.dispatchEvent(changeEvent);
+            
+            adminWebcamModal.classList.remove('show');
+            stopAdminWebcam();
+            
+            // Show remove button since we now have a custom picture
+            removeProfilePictureBtn.style.display = 'flex';
+            showNotification('Photo captured! Remember to save your profile to upload it.', 'success');
+        } catch (error) {
+            updateAdminWebcamStatus(error.message, 'error');
+            adminWebcamUseBtn.disabled = false;
+        }
+    };
+
+    const closeAdminWebcam = () => {
+        adminWebcamModal.classList.remove('show');
+        stopAdminWebcam();
+        adminCapturedBlob = null;
+    };
+
+    // Event Listeners
+    if (openAdminWebcamBtn) {
+        openAdminWebcamBtn.addEventListener('click', () => {
+            adminWebcamModal.classList.add('show');
+            startAdminWebcam();
+        });
+    }
+
+    if (closeAdminWebcamModal) closeAdminWebcamModal.addEventListener('click', closeAdminWebcam);
+    if (adminWebcamCancelBtn) adminWebcamCancelBtn.addEventListener('click', closeAdminWebcam);
+    if (adminWebcamCaptureBtn) adminWebcamCaptureBtn.addEventListener('click', captureAdminPhoto);
+    if (adminWebcamRetakeBtn) adminWebcamRetakeBtn.addEventListener('click', retakeAdminPhoto);
+    if (adminWebcamUseBtn) adminWebcamUseBtn.addEventListener('click', uploadAdminCapturedPhoto);
+
+    // Close modal on outside click
+    adminWebcamModal?.addEventListener('click', (e) => {
+        if (e.target === adminWebcamModal) closeAdminWebcam();
     });
 
     document.getElementById('profile-form').addEventListener('submit', async (e) => {

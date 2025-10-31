@@ -224,6 +224,33 @@ HTML;
 function getAccountModificationTemplate($name, $username, $changes, $datetime, $admin_name = 'System Administrator') {
     $currentYear = date('Y');
     
+    // Determine if the user modified their own profile
+    // Check for various self-modification indicators
+    $isSelfModification = (
+        $admin_name === $name || 
+        $admin_name === 'Self' || 
+        $admin_name === $username ||
+        stripos($admin_name, 'You') !== false ||
+        stripos($admin_name, 'Self') !== false
+    );
+    
+    // Set appropriate messaging based on who made the change
+    if ($isSelfModification) {
+        $headerTitle = 'Profile Update Confirmation';
+        $introMessage = "This is to confirm that your MedSync profile has been successfully updated.";
+        $modifiedByLabel = 'Modified by';
+        $modifiedByValue = 'You';
+        $alertTitle = '✓ Update Confirmation';
+        $importantNote = "This email confirms the changes you made to your profile. If you did not make these changes, please contact our support team immediately.";
+    } else {
+        $headerTitle = 'Account Update Notification';
+        $introMessage = "This is to notify you that your MedSync account details have been updated by an administrator.";
+        $modifiedByLabel = 'Modified by';
+        $modifiedByValue = $admin_name;
+        $alertTitle = '📋 Modification Details';
+        $importantNote = "If you did not expect these changes or have any concerns, please contact our support team immediately.";
+    }
+    
     // Build the changes list HTML
     $changesHtml = '';
     foreach ($changes as $field => $change) {
@@ -259,10 +286,10 @@ function getAccountModificationTemplate($name, $username, $changes, $datetime, $
 </head>
 <body>
     <div class="main-content">
-        <div class="header"><h1>Account Update Notification</h1></div>
+        <div class="header"><h1>{$headerTitle}</h1></div>
         <div class="content-body">
             <p>Dear <strong>{$name}</strong>,</p>
-            <p>This is to notify you that your MedSync account details have been updated by an administrator.</p>
+            <p>{$introMessage}</p>
             
             <div class="changes-box">
                 <h3 style="margin-top: 0; color: #0067FF;">Changes Made:</h3>
@@ -270,14 +297,14 @@ function getAccountModificationTemplate($name, $username, $changes, $datetime, $
             </div>
             
             <div class="alert-box">
-                <p style="margin: 0;"><strong>📋 Modification Details:</strong></p>
-                <p style="margin: 5px 0 0 0;">Modified by: <strong>System Administrator</strong><br>
+                <p style="margin: 0;"><strong>{$alertTitle}:</strong></p>
+                <p style="margin: 5px 0 0 0;">{$modifiedByLabel}: <strong>{$modifiedByValue}</strong><br>
                 Date & Time: <strong>{$datetime}</strong></p>
             </div>
             
             <div class="contact-info">
                 <p style="margin: 0; font-size: 14px;"><strong>ℹ️ Important:</strong></p>
-                <p style="margin: 5px 0 0 0; font-size: 14px;">If you did not expect these changes or have any concerns, please contact our support team immediately at <a href="mailto:medsync.calysta@gmail.com">medsync.calysta@gmail.com</a> or call us during business hours.</p>
+                <p style="margin: 5px 0 0 0; font-size: 14px;">{$importantNote} Contact us at <a href="mailto:medsync.calysta@gmail.com">medsync.calysta@gmail.com</a> or call during business hours.</p>
             </div>
             
             <p>Thank you for being a valued member of the MedSync community.</p>

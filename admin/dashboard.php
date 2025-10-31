@@ -719,33 +719,31 @@ $conn->close();
                     <!-- Profile Picture Section -->
                     <div class="form-group" style="text-align: center; margin-bottom: 2rem;">
                         <label style="display: block; margin-bottom: 1rem; font-weight: 600;">Profile Picture</label>
-                        <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
-                            <div style="position: relative;">
+                        <div class="profile-picture-section">
+                            <div class="profile-picture-editor">
                                 <img id="profile-picture-preview" 
                                      src="../uploads/profile_pictures/default.png" 
                                      alt="Profile Picture" 
-                                     style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid var(--primary-color); box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                                <label for="profile-picture-input" 
-                                       style="position: absolute; bottom: 0; right: 0; background: var(--primary-color); color: white; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                                    <i class="fas fa-camera"></i>
-                                </label>
+                                     class="editable-profile-picture">
+                                <div class="profile-picture-overlay">
+                                    <label for="profile-picture-input" class="picture-action-btn upload-btn" title="Upload from device">
+                                        <i class="fas fa-upload"></i>
+                                        <input type="file" 
+                                               id="profile-picture-input" 
+                                               name="profile_picture" 
+                                               accept="image/jpeg,image/png,image/jpg" 
+                                               style="display: none;">
+                                    </label>
+                                    <button type="button" class="picture-action-btn webcam-btn" id="admin-open-webcam-btn" title="Take photo with webcam">
+                                        <i class="fas fa-camera"></i>
+                                    </button>
+                                    <button type="button" class="picture-action-btn remove-btn" id="remove-profile-picture-btn" 
+                                        title="Remove profile picture" style="display: none;">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </div>
                             </div>
-                            <input type="file" 
-                                   id="profile-picture-input" 
-                                   name="profile_picture" 
-                                   accept="image/jpeg,image/png,image/jpg" 
-                                   style="display: none;">
-                            <div style="display: flex; gap: 0.5rem;">
-                                <button type="button" 
-                                        id="remove-profile-picture-btn" 
-                                        class="btn" 
-                                        style="background: var(--danger-color); color: white; font-size: 0.85rem; padding: 0.4rem 0.8rem;">
-                                    <i class="fas fa-trash"></i> Remove Picture
-                                </button>
-                            </div>
-                            <small style="color: var(--text-muted); font-size: 0.8rem;">
-                                Accepted formats: JPG, PNG. Max size: 2MB
-                            </small>
+                            <p class="profile-picture-hint">Hover to upload, take photo, or remove picture</p>
                         </div>
                     </div>
 
@@ -1418,6 +1416,40 @@ $conn->close();
             <div class="confirm-buttons">
                 <button id="confirm-btn-cancel" class="btn btn-secondary">Cancel</button>
                 <button id="confirm-btn-ok" class="btn btn-danger">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Webcam Capture Modal -->
+    <div id="admin-webcam-modal" class="modal">
+        <div class="modal-content webcam-modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-camera"></i> Capture Profile Picture</h3>
+                <button type="button" class="modal-close-btn" id="close-admin-webcam-modal">&times;</button>
+            </div>
+            <div class="modal-body webcam-modal-body">
+                <div class="webcam-container">
+                    <video id="admin-webcam-video" autoplay playsinline></video>
+                    <canvas id="admin-webcam-canvas" style="display: none;"></canvas>
+                    <div id="admin-webcam-preview" class="webcam-preview" style="display: none;">
+                        <img id="admin-webcam-captured-image" alt="Captured">
+                    </div>
+                </div>
+                <div class="webcam-status" id="admin-webcam-status">
+                    <i class="fas fa-info-circle"></i> <span>Initializing camera...</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="admin-webcam-cancel-btn">Cancel</button>
+                <button type="button" class="btn btn-primary" id="admin-webcam-capture-btn">
+                    <i class="fas fa-camera"></i> Capture
+                </button>
+                <button type="button" class="btn btn-warning" id="admin-webcam-retake-btn" style="display: none;">
+                    <i class="fas fa-redo"></i> Retake
+                </button>
+                <button type="button" class="btn btn-success" id="admin-webcam-use-btn" style="display: none;">
+                    <i class="fas fa-check"></i> Use This Photo
+                </button>
             </div>
         </div>
     </div>
