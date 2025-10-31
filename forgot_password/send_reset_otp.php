@@ -4,13 +4,14 @@
  * Generates a 6-digit OTP, stores it in the session, and sends it to the user's email.
  */
 
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
+// We no longer need the PHPMailer 'use' statements here
+// use PHPMailer\PHPMailer\PHPMailer;
+// use PHPMailer\PHPMailer\Exception;
 
 require '../vendor/autoload.php';
 require_once '../config.php';
-// UPDATED: Include the new file with only the email template functions.
-require_once 'email_templates.php';
+// UPDATED: Include the centralized email templates file.
+require_once __DIR__ . '/../mail/templates.php';
 
 // --- Security Check: POST request and CSRF Token ---
 if ($_SERVER["REQUEST_METHOD"] !== "POST" || !isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
@@ -55,46 +56,28 @@ $_SESSION['password_reset'] = [
     'timestamp' => time() // To check for expiry
 ];
 
-// --- Send Email with PHPMailer ---
-$mail = new PHPMailer(true);
+// --- Send Email with Centralized Function ---
+require_once __DIR__ . '/../mail/send_mail.php';
+
 try {
-    $system_email = get_system_setting($conn, 'system_email');
-    $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
+    $subject = 'Your Password Reset Code for MedSync';
+    $body = getPasswordResetEmailTemplate($user_name, $otp, $_SERVER['REMOTE_ADDR']);
 
-    if (empty($system_email) || empty($gmail_app_password)) {
-        $_SESSION['status'] = ['type' => 'error', 'text' => "The mail service is not configured. Please contact support."];
-        header("Location: index.php");
+    if (send_mail('MedSync Support', $email, $subject, $body)) {
+        // Redirect to the OTP verification page on success
+        header("Location: ../forgot_password/verify_reset_otp.php");
         exit();
+    } else {
+        throw new Exception("Mail service failed. Please try again later.");
     }
-
-    $mail->isSMTP();
-    $mail->Host       = 'smtp.gmail.com';
-    $mail->SMTPAuth   = true;
-    $mail->Username   = $system_email;
-    $mail->Password   = $gmail_app_password;
-    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-    $mail->Port       = 587;
-
-    $mail->setFrom($system_email, 'MedSync Support');
-    $mail->addAddress($email, $user_name);
-    
-    $mail->isHTML(true);
-    $mail->Subject = 'Your Password Reset Code for MedSync';
-    $mail->Body    = getPasswordResetEmailTemplate($user_name, $otp);
-    $mail->AltBody = "Your password reset code for MedSync is: {$otp}. It is valid for 10 minutes.";
-
-    $mail->send();
-
-    // Redirect to the OTP verification page
-    header("Location: ../forgot_password/verify_reset_otp");
-    exit();
 
 } catch (Exception $e) {
     // Log the detailed error for the admin, but show a generic message to the user.
-    error_log("Mailer Error on password reset for {$email}: {$mail->ErrorInfo}");
+    error_log("Mailer Error on password reset for {$email}: " . $e->getMessage());
     $_SESSION['status'] = ['type' => 'error', 'text' => "Message could not be sent. Please try again later."];
     header("Location: index.php");
     exit();
 } finally {
     $conn->close();
 }
+?>

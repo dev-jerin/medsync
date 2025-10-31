@@ -4,12 +4,10 @@
  */
 
 // --- PHPMailer Inclusion ---
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
-
+// We no longer need the 'use' statements here as they are in send_mail.php
 require '../vendor/autoload.php';
 require_once '../config.php';
-require_once 'otp_email_template.php';
+require_once __DIR__ . '/../mail/templates.php'; // Centralized email templates
 
 // --- Security Checks ---
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
@@ -27,43 +25,31 @@ if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST
 // --- reCAPTCHA Validation ---
 if (!isset($_POST['g-recaptcha-response']) || empty($_POST['g-recaptcha-response'])) {
     $_SESSION['register_error'] = "Please complete the reCAPTCHA.";
-    // Persist form data
     $_SESSION['form_data'] = $_POST;
     unset($_SESSION['form_data']['password'], $_SESSION['form_data']['confirm_password']);
     header("Location: index.php");
     exit();
 }
 
+$recaptcha_secret = RECAPTCHA_SECRET_KEY; // Assuming this is defined in your config
 $recaptcha_response = $_POST['g-recaptcha-response'];
-$recaptcha_secret = RECAPTCHA_SECRET_KEY;
 $recaptcha_url = 'https://www.google.com/recaptcha/api/siteverify';
 $recaptcha_data = [
     'secret' => $recaptcha_secret,
     'response' => $recaptcha_response,
     'remoteip' => $_SERVER['REMOTE_ADDR'],
 ];
-
-$options = [
-    'http' => [
-        'header' => "Content-type: application/x-www-form-urlencoded\r\n",
-        'method' => 'POST',
-        'content' => http_build_query($recaptcha_data),
-    ],
-];
-
+$options = ['http' => ['header' => "Content-type: application/x-www-form-urlencoded\r\n", 'method' => 'POST', 'content' => http_build_query($recaptcha_data)]];
 $context = stream_context_create($options);
-$result = file_get_contents($recaptcha_url, false, $context);
-$result_json = json_decode($result, true);
+$result_json = json_decode(file_get_contents($recaptcha_url, false, $context), true);
 
 if ($result_json['success'] !== true) {
     $_SESSION['register_error'] = "reCAPTCHA verification failed. Please try again.";
-    // Persist form data
     $_SESSION['form_data'] = $_POST;
     unset($_SESSION['form_data']['password'], $_SESSION['form_data']['confirm_password']);
     header("Location: index.php");
     exit();
 }
-
 
 // --- Form Data Retrieval & Formatting ---
 $name = trim($_POST['name']);
@@ -74,35 +60,24 @@ $date_of_birth = trim($_POST['date_of_birth']);
 $gender = trim($_POST['gender']);
 $password = $_POST['password'];
 $confirm_password = $_POST['confirm_password'];
-$role_id = 1; // 'user' role has an ID of 1 in the schema.
+$role_id = 1; // 'user' role
 
 // --- Final Server-Side Validation ---
 $errors = [];
-// Required fields check
 if (empty($name) || empty($username) || empty($email) || empty($phone) || empty($date_of_birth) || empty($gender) || empty($password)) {
     $errors[] = "All fields are required.";
 }
-
-// Username validation
 if (strlen($username) < 3) {
     $errors[] = "Username must be at least 3 characters.";
 } elseif (preg_match('/[^\w.]/', $username)) {
     $errors[] = "Username can only contain letters, numbers, underscores, and dots.";
-} elseif (preg_match('/^(u|a|s|d)\d{4}$/i', $username)) {
-    $errors[] = "This username format is reserved.";
 }
-
-// Email validation
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     $errors[] = "Invalid email format.";
 }
-
-// Phone validation
 if (!preg_match('/^\+91\d{10}$/', $phone)) {
     $errors[] = "Phone number must be in the format +91 followed by 10 digits.";
 }
-
-// Password validation
 if (strlen($password) < 6) {
     $errors[] = "Password must be at least 6 characters long.";
 } elseif ($password !== $confirm_password) {
@@ -110,7 +85,7 @@ if (strlen($password) < 6) {
 }
 
 if (!empty($errors)) {
-    $_SESSION['register_error'] = implode('<br>', $errors); //implode acts like a glue to show more than 1 error
+    $_SESSION['register_error'] = implode('<br>', $errors);
     header("Location: index.php");
     exit();
 }
@@ -119,39 +94,24 @@ if (!empty($errors)) {
 $profile_picture_filename = 'default.png';
 if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == UPLOAD_ERR_OK) {
     $upload_dir = '../uploads/profile_pictures/';
+    // Basic security checks for the uploaded file
     $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
     $max_size = 2 * 1024 * 1024; // 2 MB
-
-    $file_info = new finfo(FILEINFO_MIME_TYPE);
-    $file_type = $file_info->file($_FILES['profile_picture']['tmp_name']);
-    $file_size = $_FILES['profile_picture']['size'];
-
-    if (in_array($file_type, $allowed_types) && $file_size <= $max_size) {
+    if (in_array(mime_content_type($_FILES['profile_picture']['tmp_name']), $allowed_types) && $_FILES['profile_picture']['size'] <= $max_size) {
         $file_extension = strtolower(pathinfo($_FILES['profile_picture']['name'], PATHINFO_EXTENSION));
         $new_filename = 'user_' . uniqid('', true) . '.' . $file_extension;
-        
-        if (!move_uploaded_file($_FILES['profile_picture']['tmp_name'], $upload_dir . $new_filename)) {
-            $_SESSION['register_error'] = "Could not upload profile picture. Please try again.";
-            header("Location: index.php");
-            exit();
+        if (move_uploaded_file($_FILES['profile_picture']['tmp_name'], $upload_dir . $new_filename)) {
+            $profile_picture_filename = $new_filename;
         }
-        $profile_picture_filename = $new_filename;
-    } else {
-        $_SESSION['register_error'] = "Invalid file type or size. Please upload a JPG, PNG, or GIF under 2MB.";
-        header("Location: index.php");
-        exit();
     }
 }
 
 // --- Check for Existing User in Database ---
 $conn = getDbConnection();
-$sql_check = "SELECT id FROM users WHERE username = ? OR email = ?";
-$stmt_check = $conn->prepare($sql_check);
+$stmt_check = $conn->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
 $stmt_check->bind_param("ss", $username, $email);
 $stmt_check->execute();
-$stmt_check->store_result();
-
-if ($stmt_check->num_rows > 0) {
+if ($stmt_check->get_result()->num_rows > 0) {
     $_SESSION['register_error'] = "Username or email is already taken.";
     $stmt_check->close();
     $conn->close();
@@ -178,44 +138,29 @@ $_SESSION['registration_data'] = [
     'timestamp' => time()
 ];
 
-// --- Email OTP using PHPMailer ---
-$mail = new PHPMailer(true);
+// --- Email OTP using Centralized Function ---
+require_once __DIR__ . '/../mail/send_mail.php';
+
 try {
-    $system_email = get_system_setting($conn, 'system_email');
-    $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
+    $subject = 'Your Verification Code for MedSync';
+    $body = getOtpEmailTemplate($name, $otp, $_SERVER['REMOTE_ADDR']);
 
-    if (empty($system_email) || empty($gmail_app_password)) {
-        throw new Exception("Mail service is not configured in system settings.");
+    // Call the centralized mail function
+    if (send_mail('MedSync', $email, $subject, $body)) {
+        $conn->close();
+        header("Location: verify_otp.php");
+        exit();
+    } else {
+        // This will trigger if send_mail returns false
+        throw new Exception("Could not send OTP email. Please check the email address and try again.");
     }
-
-    $mail->isSMTP();
-    $mail->Host = 'smtp.gmail.com';
-    $mail->SMTPAuth = true;
-    $mail->Username = $system_email;
-    $mail->Password = $gmail_app_password;
-    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-    $mail->Port = 587;
-
-    $mail->setFrom($system_email, 'MedSync');
-    $mail->addAddress($email, $name);
-
-    $mail->isHTML(true);
-    $mail->Subject = 'Your Verification Code for MedSync';
-    $mail->Body    = getOtpEmailTemplate($name, $otp);
-    $mail->AltBody = "Your OTP for MedSync is: $otp. It's valid for 10 minutes.";
-
-    $mail->send();
-    $conn->close();
-    header("Location: verify_otp.php");
-    exit();
 
 } catch (Exception $e) {
     // Clean up uploaded file if email fails
     if ($profile_picture_filename !== 'default.png') {
-        unlink('../uploads/profile_pictures/' . $profile_picture_filename);
+        @unlink('../uploads/profile_pictures/' . $profile_picture_filename);
     }
-    error_log("Mailer Error: " . $mail->ErrorInfo); // Log the detailed error for debugging
-    $_SESSION['register_error'] = "Could not send OTP email. Please check the email address and try again.";
+    $_SESSION['register_error'] = $e->getMessage();
     $conn->close();
     header("Location: index.php");
     exit();

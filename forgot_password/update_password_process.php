@@ -4,13 +4,14 @@
  * and sends a confirmation email.
  */
 
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
+// We no longer need the PHPMailer 'use' statements here
+// use PHPMailer\PHPMailer\PHPMailer;
+// use PHPMailer\PHPMailer\Exception;
 
 require '../vendor/autoload.php';
 require_once '../config.php';
 // UPDATED: Include the new file with only the email template functions.
-require_once 'email_templates.php';
+require_once __DIR__ . '/../mail/templates.php';
 
 
 // --- Security Checks ---
@@ -25,12 +26,12 @@ $confirm_password = $_POST['confirm_password'];
 
 if (empty($password) || empty($confirm_password)) {
     $_SESSION['status'] = ['type' => 'error', 'text' => 'Both password fields are required.'];
-    header("Location: create_new_password");
+    header("Location: create_new_password.php");
     exit();
 }
 if ($password !== $confirm_password) {
     $_SESSION['status'] = ['type' => 'error', 'text' => 'Passwords do not match.'];
-    header("Location: create_new_password");
+    header("Location: create_new_password.php");
     exit();
 }
 
@@ -53,37 +54,21 @@ if ($stmt_update->execute()) {
     $user_name = $user ? $user['name'] : 'Valued User';
     $stmt_get_user->close();
 
-    // --- Send Confirmation Email ---
-    $mail = new PHPMailer(true);
+    // --- Send Confirmation Email using Centralized Function ---
+    require_once __DIR__ . '/../mail/send_mail.php';
     try {
-        $system_email = get_system_setting($conn, 'system_email');
-        $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
+        $subject = 'Security Alert: Your MedSync Password Has Been Changed';
+        
+        date_default_timezone_set('Asia/Kolkata');
+        $current_datetime = date('F j, Y, g:i A T');
+        
+        $body = getPasswordResetConfirmationTemplate($user_name, $current_datetime, $_SERVER['REMOTE_ADDR']);
 
-        if (!empty($system_email) && !empty($gmail_app_password)) {
-            $mail->isSMTP();
-            $mail->Host       = 'smtp.gmail.com';
-            $mail->SMTPAuth   = true;
-            $mail->Username   = $system_email;
-            $mail->Password   = $gmail_app_password;
-            $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-            $mail->Port       = 587;
+        // Call the centralized function
+        send_mail('MedSync Security', $email, $subject, $body);
 
-            $mail->setFrom($system_email, 'MedSync Security');
-            $mail->addAddress($email, $user_name);
-
-            $mail->isHTML(true);
-            $mail->Subject = 'Security Alert: Your MedSync Password Has Been Changed';
-            
-            date_default_timezone_set('Asia/Kolkata');
-            $current_datetime = date('F j, Y, g:i A T');
-            
-            $mail->Body    = getPasswordResetConfirmationTemplate($user_name, $current_datetime);
-            $mail->AltBody = 'This is a confirmation that the password for your MedSync account was changed. If you did not make this change, please contact support immediately.';
-
-            $mail->send();
-        }
     } catch (Exception $e) {
-        error_log("Password reset confirmation email failed for {$email}: {$mail->ErrorInfo}");
+        error_log("Password reset confirmation email failed for {$email}: " . $e->getMessage());
     }
 
     // --- Clean up session and redirect ---
@@ -95,6 +80,7 @@ if ($stmt_update->execute()) {
     exit();
 } else {
     $_SESSION['status'] = ['type' => 'error', 'text' => 'Failed to update password. Please try again.'];
-    header("Location: create_new_password");
+    header("Location: create_new_password.php");
     exit();
 }
+?>

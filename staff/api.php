@@ -1850,17 +1850,21 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         }
                         $stmt->close();
                         
-                        $stmt_user = $conn->prepare("SELECT u.email FROM users u JOIN transactions t ON u.id = t.user_id WHERE t.id = ?");
+                        // UPDATED: Fetch patient's name and email for the new mail function
+                        $stmt_user = $conn->prepare("SELECT u.name, u.email FROM users u JOIN transactions t ON u.id = t.user_id WHERE t.id = ?");
                         $stmt_user->bind_param("i", $transaction_id);
                         $stmt_user->execute();
-                        $patient_email = $stmt_user->get_result()->fetch_assoc()['email'];
+                        $patient = $stmt_user->get_result()->fetch_assoc();
                         $stmt_user->close();
 
-                        if ($patient_email) {
-                            require_once '../send_mail.php'; 
+                        if ($patient && !empty($patient['email'])) {
+                            // UPDATED: Include the centralized mail function
+                            require_once __DIR__ . '/../mail/send_mail.php'; 
+                            
                             ob_start();
-                            include 'invoice_template.php'; 
+                            include '../mail/invoice_template.php'; 
                             $html = ob_get_clean();
+                            
                             $options = new Options();
                             $options->set('isRemoteEnabled', true);
                             $dompdf = new Dompdf($options);
@@ -1868,9 +1872,13 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $dompdf->setPaper('A4', 'portrait');
                             $dompdf->render();
                             $pdf_output = $dompdf->output();
+                            
                             $subject = "Your MedSync Hospital Bill (Invoice #" . $transaction_id . ")";
-                            $body = "Dear Patient,<br><br>Thank you for your payment. Please find your detailed bill attached.<br><br>Sincerely,<br>MedSync Hospital";
-                            send_mail($patient_email, $subject, $body, $pdf_output, 'invoice-' . $transaction_id . '.pdf');
+                            // UPDATED: Personalize the email body with the patient's name
+                            $body = "Dear " . htmlspecialchars($patient['name']) . ",<br><br>Thank you for your payment. Please find your detailed bill attached.<br><br>Sincerely,<br>MedSync Hospital";
+                            
+                            // UPDATED: Call the new centralized function with all required arguments
+                            send_mail('MedSync Billing', $patient['email'], $subject, $body, $pdf_output, 'invoice-' . $transaction_id . '.pdf');
                         }
 
                         $conn->commit();

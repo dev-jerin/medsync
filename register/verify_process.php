@@ -12,7 +12,7 @@ require '../vendor/autoload.php';
 
 // Include your existing configuration and email template files
 require_once '../config.php';
-require_once '../register/welcome_email_template.php';
+require_once __DIR__ . '/../mail/templates.php';
 
 /**
  * Generates a unique, sequential display ID for a new user.
@@ -102,66 +102,45 @@ $conn = getDbConnection();
 
 try {
     $role_name = $session_data['role'] ?? 'user';
-    // Since the registration form is only for 'user', we can assume the role_id is 1
-    // A more robust solution for other roles would be to query the `roles` table
     $role_id = 1; 
 
     $display_user_id = generateDisplayId($role_name, $conn);
 
-    // UPDATED SQL QUERY to use `role_id` instead of `role`
     $sql_insert = "INSERT INTO users (display_user_id, username, name, email, phone, password, role_id, date_of_birth, gender, profile_picture) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     $stmt_insert = $conn->prepare($sql_insert);
     
-    // UPDATED bind_param to use an integer `i` for role_id
     $stmt_insert->bind_param(
-        "ssssssisss", // Changed the 7th parameter from 's' to 'i'
+        "ssssssisss",
         $display_user_id,
         $session_data['username'],
         $session_data['name'],
         $session_data['email'],
         $session_data['phone'],
         $session_data['password'],
-        $role_id, // Pass the integer role_id
+        $role_id,
         $session_data['date_of_birth'],
         $session_data['gender'],
         $session_data['profile_picture']
     );
 
     if ($stmt_insert->execute()) {
-        // --- Send Welcome Email ---
-        $mail = new PHPMailer(true);
+        // --- Send Welcome Email using Centralized Function ---
+        require_once __DIR__ . '/../mail/send_mail.php';
         try {
-             $system_email = get_system_setting($conn, 'system_email');
-             $gmail_app_password = get_system_setting($conn, 'gmail_app_password');
- 
-             if (empty($system_email) || empty($gmail_app_password)) {
-                 // Don't block registration if email fails, just log it.
-                 error_log("Welcome email not sent: Mail service is not configured.");
-             } else {
-                 $mail->isSMTP();
-                 $mail->Host = 'smtp.gmail.com';
-                 $mail->SMTPAuth = true;
-                 $mail->Username = $system_email;
-                 $mail->Password = $gmail_app_password;
-                 $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-                 $mail->Port = 587;
-     
-                 $mail->setFrom($system_email, 'MedSync Welcome Team');
-                 $mail->addAddress($session_data['email'], $session_data['name']);
-     
-                 $mail->isHTML(true);
-                 $mail->Subject = 'Welcome to MedSync, ' . $session_data['name'] . '!';
-                 $mail->Body = getWelcomeEmailTemplate(
-                     $session_data['name'],
-                     $session_data['username'],
-                     $display_user_id
-                 );
-                 $mail->send();
-             }
+            $subject = 'Welcome to MedSync, ' . $session_data['name'] . '!';
+            $body = getWelcomeEmailTemplate(
+                $session_data['name'],
+                $session_data['username'],
+                $display_user_id,
+                $_SERVER['REMOTE_ADDR']
+            );
+
+            // The 'from' name is "MedSync Welcome Team"
+            send_mail('MedSync Welcome Team', $session_data['email'], $subject, $body);
 
         } catch (Exception $e) {
             // Log the email error but don't interrupt the user's successful registration
-            error_log("Welcome email could not be sent to {$session_data['email']}. Mailer Error: {$mail->ErrorInfo}");
+            error_log("Welcome email could not be sent to {$session_data['email']}. Error: {$e->getMessage()}");
         }
 
         // Clean up session and redirect to login with a success message
