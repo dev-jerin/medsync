@@ -1183,9 +1183,12 @@ document.addEventListener("DOMContentLoaded", function() {
                 </td>
                 <td data-label="Actions">
                     <button class="action-btn edit-user-btn"><i class="fas fa-edit"></i> Edit</button> 
-                    ${user.active == 1
-                        ? `<button class="action-btn danger remove-user-btn"><i class="fas fa-trash-alt"></i> Deactivate</button>`
-                        : `<button class="action-btn reactivate-user-btn"><i class="fas fa-check-circle"></i> Reactivate</button>`
+                    ${(user.role !== 'admin' && user.role !== 'staff') ? 
+                        (user.active == 1
+                            ? `<button class="action-btn danger remove-user-btn"><i class="fas fa-ban"></i> Deactivate</button>`
+                            : `<button class="action-btn reactivate-user-btn"><i class="fas fa-check-circle"></i> Reactivate</button>`
+                        ) :
+                        `<span style="font-size: 0.85em; color: #999; font-style: italic;">Protected Account</span>`
                     }
                 </td>
             </tr>
@@ -1243,6 +1246,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const openUserModal = async (mode, userData = {}) => {
             userForm.reset();
             userForm.querySelector('#user-username').disabled = false;
+            userForm.querySelector('#user-email').disabled = false; // Re-enable for add mode
             userForm.querySelector('#user-role').disabled = false;
             doctorFields.style.display = 'none';
             activeGroup.style.display = 'none';
@@ -1252,19 +1256,28 @@ document.addEventListener("DOMContentLoaded", function() {
                 userForm.querySelector('#user-form-action').value = 'addUser';
                 passwordGroup.style.display = 'block';
                 userForm.querySelector('#user-password').required = true;
+                
+                // Staff can only create patient and doctor accounts
+                const roleSelect = userForm.querySelector('#user-role');
+                roleSelect.innerHTML = `
+                    <option value="">Select Role</option>
+                    <option value="user">Patient</option>
+                    <option value="doctor">Doctor</option>
+                `;
             } else {
                 userModalTitle.textContent = `Edit ${userData.name}`;
                 userForm.querySelector('#user-form-action').value = 'updateUser';
                 userForm.querySelector('#user-id').value = userData.id;
                 userForm.querySelector('#user-name').value = userData.name;
                 userForm.querySelector('#user-username').value = userData.username;
-                userForm.querySelector('#user-username').disabled = true;
+                userForm.querySelector('#user-username').disabled = true; // Username cannot be changed
                 userForm.querySelector('#user-email').value = userData.email;
+                userForm.querySelector('#user-email').disabled = true; // Email cannot be changed for security
                 userForm.querySelector('#user-phone').value = userData.phone || '';
                 userForm.querySelector('#user-gender').value = userData.gender || '';
                 userForm.querySelector('#user-dob').value = userData.date_of_birth || '';
                 userForm.querySelector('#user-role').value = userData.role;
-                userForm.querySelector('#user-role').disabled = true;
+                userForm.querySelector('#user-role').disabled = true; // Role cannot be changed
                 passwordGroup.style.display = 'none';
                 userForm.querySelector('#user-password').required = false;
         
@@ -1295,12 +1308,47 @@ document.addEventListener("DOMContentLoaded", function() {
             if(e.target.closest('.edit-user-btn')) {
                 const row = e.target.closest('tr');
                 const userData = JSON.parse(row.dataset.user);
+                
+                // Check if user is allowed to edit this account type
+                if (userData.role === 'admin' || userData.role === 'staff') {
+                    showAlert('Permission Denied', `You are not authorized to edit ${userData.role} accounts. Only patients and doctors can be edited by staff.`, 'warning');
+                    return;
+                }
+                
                 openUserModal('edit', userData);
             }
             if(e.target.closest('.remove-user-btn')) {
                 const row = e.target.closest('tr');
                 const userData = JSON.parse(row.dataset.user);
+                
+                // Additional permission check
+                if (userData.role === 'admin' || userData.role === 'staff') {
+                    showAlert('Permission Denied', `You are not authorized to deactivate ${userData.role} accounts.`, 'warning');
+                    return;
+                }
+                
                 showConfirmation('Deactivate User', `Are you sure you want to deactivate ${userData.name}? This will make their account inactive.`)
+                    .then(confirmed => {
+                        if (confirmed) {
+                           const formData = new FormData();
+                           formData.append('action', 'removeUser');
+                           formData.append('id', userData.id);
+                           formData.append('csrf_token', csrfToken);
+                           handleUserFormSubmit(formData);
+                        }
+                    });
+            }
+            if(e.target.closest('.reactivate-user-btn')) {
+                const row = e.target.closest('tr');
+                const userData = JSON.parse(row.dataset.user);
+                
+                // Additional permission check
+                if (userData.role === 'admin' || userData.role === 'staff') {
+                    showAlert('Permission Denied', `You are not authorized to reactivate ${userData.role} accounts.`, 'warning');
+                    return;
+                }
+                
+                showConfirmation('Reactivate User', `Are you sure you want to reactivate ${userData.name}? Their account will become active.`)
                     .then(confirmed => {
                         if (confirmed) {
                            const formData = new FormData();

@@ -466,6 +466,18 @@ require_once 'api.php';
                         <h3><i class="fas fa-users-cog"></i> User Management</h3><button class="btn btn-primary"
                             id="add-new-user-btn"><i class="fas fa-user-plus"></i> Add New User</button>
                     </div>
+                    
+                    <!-- Staff Permission Info -->
+                    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px 16px; margin-bottom: 20px; border-radius: 4px;">
+                        <div style="display: flex; align-items: start; gap: 10px;">
+                            <i class="fas fa-info-circle" style="color: #856404; margin-top: 2px;"></i>
+                            <div style="font-size: 0.9em; color: #856404;">
+                                <strong>Staff Permissions:</strong> You can create and edit <strong>Patient</strong> and <strong>Doctor</strong> accounts only. 
+                                Admin and Staff accounts are protected and cannot be modified.
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="filters">
                         <input type="text" id="user-search" class="search-bar" placeholder="Search by name, ID, email, or phone...">
                         <select id="user-role-filter">
