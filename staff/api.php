@@ -7,6 +7,13 @@
  * - Initializes session variables and fetches user data for the frontend.
  * - Handles AJAX API requests for Profile Settings, Callback Requests, and Messenger.
  * - UPDATED: Refined the discharge request logic to enforce workflow order.
+ * 
+ * SECURITY ENHANCEMENTS:
+ * - Rate Limiting: All API endpoints are protected with rate limiting (100 requests/60 seconds per action)
+ * - CSRF Protection: All POST requests validate CSRF tokens using hash_equals()
+ * - SQL Injection Prevention: All user inputs are sanitized and validated before database queries
+ * - Input Validation: Search queries and filters are validated against whitelists
+ * - Query Result Limiting: All queries have LIMIT clauses to prevent resource exhaustion
  */
 
 // config.php should be included first to initialize the session and db connection.
@@ -26,6 +33,86 @@ function log_activity($conn, $user_id, $action, $target_user_id = null, $details
     $stmt = $conn->prepare("INSERT INTO activity_logs (user_id, action, target_user_id, details) VALUES (?, ?, ?, ?)");
     $stmt->bind_param("isis", $user_id, $action, $target_user_id, $details);
     return $stmt->execute();
+}
+
+/**
+ * Rate limiting function to prevent API abuse
+ * Implements a simple token bucket algorithm
+ */
+function check_rate_limit($user_id, $action = 'api_call', $max_requests = 60, $time_window = 60) {
+    if (!isset($_SESSION['rate_limit'])) {
+        $_SESSION['rate_limit'] = [];
+    }
+    
+    $key = $user_id . '_' . $action;
+    $current_time = time();
+    
+    if (!isset($_SESSION['rate_limit'][$key])) {
+        $_SESSION['rate_limit'][$key] = [
+            'count' => 1,
+            'reset_time' => $current_time + $time_window
+        ];
+        return true;
+    }
+    
+    $rate_data = &$_SESSION['rate_limit'][$key];
+    
+    // Reset if time window has passed
+    if ($current_time > $rate_data['reset_time']) {
+        $rate_data['count'] = 1;
+        $rate_data['reset_time'] = $current_time + $time_window;
+        return true;
+    }
+    
+    // Check if limit exceeded
+    if ($rate_data['count'] >= $max_requests) {
+        http_response_code(429);
+        header('Retry-After: ' . ($rate_data['reset_time'] - $current_time));
+        return false;
+    }
+    
+    $rate_data['count']++;
+    return true;
+}
+
+/**
+ * Validates CSRF token for POST requests
+ */
+function validate_csrf_token() {
+    if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token'])) {
+        http_response_code(403);
+        throw new Exception('Invalid security token. Please refresh the page and try again.');
+    }
+    
+    if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+        http_response_code(403);
+        throw new Exception('Security token mismatch. Please refresh the page and try again.');
+    }
+    
+    return true;
+}
+
+/**
+ * Sanitizes search input to prevent SQL injection
+ */
+function sanitize_search_input($input, $max_length = 100) {
+    // Remove any potential SQL injection attempts
+    $input = trim($input);
+    $input = strip_tags($input);
+    $input = substr($input, 0, $max_length);
+    
+    // Remove SQL keywords and special characters
+    $dangerous_patterns = [
+        '/(\s|^)(union|select|insert|update|delete|drop|create|alter|exec|execute|script|javascript|eval)(\s|$)/i',
+        '/[;\x00\x1a]/',
+        '/(--|\#|\/\*)/',
+    ];
+    
+    foreach ($dangerous_patterns as $pattern) {
+        $input = preg_replace($pattern, '', $input);
+    }
+    
+    return $input;
 }
 
 /**
@@ -117,6 +204,14 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
         exit();
     }
 
+    // Apply rate limiting
+    $rate_limit_action = isset($_GET['fetch']) ? 'fetch_' . ($_GET['fetch'] ?? 'unknown') : 'post_' . ($_POST['action'] ?? 'unknown');
+    if (!check_rate_limit($_SESSION['user_id'], $rate_limit_action, 100, 60)) {
+        $response['message'] = 'Too many requests. Please slow down and try again later.';
+        echo json_encode($response);
+        exit();
+    }
+
     $conn = getDbConnection();
     $user_id = $_SESSION['user_id'];
     $user_role = $_SESSION['role'];
@@ -201,7 +296,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 
                 // This is the NEW code
                 case 'active_doctors':
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $sql = "
                         SELECT u.id, u.name, u.display_user_id
                         FROM users u 
@@ -366,7 +461,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
 
                 case 'get_users':
                     $role_filter = $_GET['role'] ?? 'all';
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $status_filter = $_GET['status'] ?? 'all'; // New status filter
                     $allowed_roles = ['user', 'doctor'];
 
@@ -450,7 +545,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     break;
 
                 case 'medicines':
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $sql = "SELECT id, name, description, quantity, unit_price, low_stock_threshold, updated_at FROM medicines";
                     $params = [];
                     $types = "";
@@ -542,7 +637,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     break;
                 
                 case 'admissions':
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $sql = "
                         SELECT 
                             a.id, p.display_user_id AS patient_display_id, p.name AS patient_name, doc_user.name AS doctor_name,
@@ -580,8 +675,14 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
 
                 // --- START: LAB WORKFLOW UPDATE ---
                 case 'lab_orders': // Renamed from lab_results
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $status_filter = $_GET['status'] ?? 'all';
+                    
+                    // Validate status filter
+                    $allowed_statuses = ['all', 'ordered', 'pending', 'processing', 'completed'];
+                    if (!in_array($status_filter, $allowed_statuses)) {
+                        $status_filter = 'all';
+                    }
                     
                     $sql = "
                         SELECT 
@@ -647,7 +748,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 // --- END: LAB WORKFLOW UPDATE ---
 
                 case 'search_patients':
-                    $query = $_GET['query'] ?? '';
+                    $query = isset($_GET['query']) ? sanitize_search_input($_GET['query']) : '';
                     if (empty($query)) {
                          $response = ['success' => true, 'data' => []];
                          break;
@@ -665,8 +766,14 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 
                 // --- START: MODIFIED DISCHARGE REQUESTS LOGIC ---
                 case 'discharge_requests':
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $status_filter = $_GET['status'] ?? 'all';
+                    
+                    // Validate status filter
+                    $allowed_statuses = ['all', 'nursing', 'pharmacy', 'billing'];
+                    if (!in_array($status_filter, $allowed_statuses)) {
+                        $status_filter = 'all';
+                    }
                     
                     $sql = "
                         SELECT 
@@ -725,7 +832,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 // --- END: MODIFIED DISCHARGE REQUESTS LOGIC ---
 
                 case 'billable_patients':
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $sql = "
                         SELECT a.id as admission_id, p.id as patient_id, p.display_user_id as patient_display_id, p.name as patient_name
                         FROM admissions a JOIN users p ON a.patient_id = p.id
@@ -740,7 +847,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $params[] = $search_term; $params[] = $search_term;
                         $types .= "ss";
                     }
-                    $sql .= " ORDER BY a.admission_date DESC";
+                    $sql .= " ORDER BY a.admission_date DESC LIMIT 200";
                     
                     $stmt = $conn->prepare($sql);
                     if (!empty($params)) {
@@ -754,7 +861,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     break;
 
                 case 'invoices':
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $sql = "SELECT t.id, u.name as patient_name, t.amount, t.created_at, t.status FROM transactions t JOIN users u ON t.user_id = u.id";
                     $params = [];
                     $types = "";
@@ -766,7 +873,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $params[] = $search_term; $params[] = $search_id;
                         $types .= "ss";
                     }
-                    $sql .= " ORDER BY t.created_at DESC";
+                    $sql .= " ORDER BY t.created_at DESC LIMIT 500";
                     
                     $stmt = $conn->prepare($sql);
                     if (!empty($params)) {
@@ -780,8 +887,14 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     break;
                 
                 case 'pending_prescriptions':
-                    $search_query = $_GET['search'] ?? '';
-                    $status_filter = $_GET['status'] ?? 'all';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
+                    $status_filter = isset($_GET['status']) ? $_GET['status'] : 'all';
+                    // Validate status filter
+                    $allowed_statuses = ['all', 'pending', 'completed'];
+                    if (!in_array($status_filter, $allowed_statuses)) {
+                        $status_filter = 'all';
+                    }
+                    
                     $sql = "
                         SELECT 
                             p.id, patient.name AS patient_name, patient.display_user_id AS patient_display_id,
@@ -848,10 +961,8 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
             }
         }
         elseif (isset($_POST['action'])) {
-            if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-                http_response_code(403);
-                throw new Exception('Invalid security token. Please refresh the page and try again.');
-            }
+            // Validate CSRF token for all POST requests
+            validate_csrf_token();
 
             switch ($_POST['action']) {
                 case 'updatePersonalInfo':
