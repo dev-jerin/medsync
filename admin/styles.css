@@ -11,24 +11,28 @@
     --text-muted: #6B7280;
 
     --bg-light: #FFFFFF;
-    --bg-grey: #F3F4F6;
-    --border-light: #E5E7EB;
+    --bg-grey: #F8FAFC;
+    --bg-main: #F1F5F9;
+    --border-light: #E2E8F0;
 
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.08);
+    --shadow-lg: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+    --shadow-xl: 0 25px 50px -12px rgb(0 0 0 / 0.15);
     --border-radius: 12px;
     --transition-speed: 0.3s;
 }
 
 body.dark-mode {
-    --primary-color: #3B82F6;      /* Changed: Active color is now blue */
-    --primary-color-dark: #2563EB; /* Changed: A darker blue for hover states */
-    --text-dark: #F9FAFB;          /* Unchanged */
-    --text-light: #1F2937;         /* Unchanged */
-    --text-muted: #94A3B8;         /* Unchanged */
-    --bg-light: #1b232d;           /* Changed: Sidebar/card background to a dark charcoal */
-    --bg-grey: #0f1521;            /* Changed: Main background to a very dark, near-black color */
-    --border-light: #262c37;       /* Changed: Borders adjusted for the new darker theme */
+    --primary-color: #3B82F6;
+    --primary-color-dark: #2563EB;
+    --text-dark: #F9FAFB;
+    --text-light: #1F2937;
+    --text-muted: #94A3B8;
+    --bg-light: #1E293B;
+    --bg-grey: #0F172A;
+    --bg-main: #020617;
+    --border-light: #334155;
 }
 
 /* --- BASE STYLES --- */
@@ -40,7 +44,7 @@ body.dark-mode {
 
 body {
     font-family: 'Poppins', sans-serif;
-    background-color: var(--bg-grey);
+    background-color: var(--bg-main);
     color: var(--text-dark);
     transition: background-color var(--transition-speed), color var(--transition-speed);
     font-size: 16px;
@@ -55,7 +59,7 @@ body {
 .sidebar {
     width: 280px;
     background-color: var(--bg-light);
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-xl);
     display: flex;
     flex-direction: column;
     padding: 1.5rem;
@@ -235,9 +239,16 @@ body.dark-mode .nav-dropdown a {
     align-items: center;
     gap: 1rem;
     background-color: var(--bg-light);
-    padding: 0.5rem 1rem;
-    border-radius: var(--border-radius);
+    padding: 0.75rem 1.25rem;
+    border-radius: 12px;
     box-shadow: var(--shadow-md);
+    border: 1px solid var(--border-light);
+    transition: all 0.3s ease;
+}
+
+.user-profile-widget:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
 }
 
 .user-profile-widget i {
@@ -248,9 +259,10 @@ body.dark-mode .nav-dropdown a {
 .content-panel {
     display: none;
     background-color: var(--bg-light);
-    padding: 2rem;
-    border-radius: var(--border-radius);
-    box-shadow: var(--shadow-md);
+    padding: 2.5rem;
+    border-radius: 16px;
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--border-light);
 }
 
 .content-panel.active {
@@ -267,42 +279,50 @@ body.dark-mode .nav-dropdown a {
 
 .stat-card {
     background: var(--bg-light);
-    padding: 1.5rem;
-    border-radius: var(--border-radius);
+    padding: 1.75rem;
+    border-radius: 16px;
     box-shadow: var(--shadow-md);
     display: flex;
     align-items: center;
     gap: 1.5rem;
     border-left: 5px solid var(--primary-color);
-    transition: transform 0.2s, box-shadow 0.2s;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border-light);
 }
 
 .stat-card:hover {
-    transform: translateY(-5px);
-    box-shadow: var(--shadow-lg);
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: var(--shadow-xl);
 }
 
 .stat-card .icon {
-    font-size: 2rem;
-    padding: 1rem;
-    border-radius: 50%;
+    font-size: 2.25rem;
+    padding: 1.25rem;
+    border-radius: 16px;
     color: var(--primary-color);
     background-color: var(--bg-grey);
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s ease;
+}
+
+.stat-card:hover .icon {
+    transform: scale(1.1);
 }
 
 /* In admin/styles.css */
 .stat-card.blue { 
-    border-left-color: #3e90f5; /* Lighter blue for the border */
+    border-left-color: #3B82F6;
 }
 .stat-card.blue .icon { 
-    color: #3B82F6; /* Blue for the icon itself */
-    background-color: #DBEAFE; /* Very light blue for the icon background in light mode */
+    color: #3B82F6;
+    background-color: #EFF6FF;
 }
 
-/* Improve icon color in dark mode for better contrast */
 body.dark-mode .stat-card.blue .icon {
-    color: #6098d8;
-    background-color: #141a24;
+    color: #60A5FA;
+    background-color: #1E3A8A;
 }
 
 /* Add this new rule to the end of your admin/styles.css file */
@@ -313,17 +333,60 @@ body.dark-mode .stat-card.blue .icon {
 }
 
 body.dark-mode .user-count-link {
-    color: #93C5FD; /* A lighter, more readable blue for dark mode */
+    color: #93C5FD;
 }
 
-.stat-card.green { border-left-color: var(--success-color); }
-.stat-card.green .icon { color: var(--success-color); }
-.stat-card.orange { border-left-color: var(--warning-color); }
-.stat-card.orange .icon { color: var(--warning-color); }
-.stat-card.red { border-left-color: var(--danger-color); }
-.stat-card.red .icon { color: var(--danger-color); }
-.stat-card.purple { border-left-color: #8B5CF6; }
-.stat-card.purple .icon { color: #8B5CF6; }
+.stat-card.green { 
+    border-left-color: var(--success-color);
+}
+.stat-card.green .icon { 
+    color: var(--success-color);
+    background-color: #F0FDF4;
+}
+
+body.dark-mode .stat-card.green .icon {
+    color: #4ADE80;
+    background-color: #14532D;
+}
+
+.stat-card.orange { 
+    border-left-color: var(--warning-color);
+}
+.stat-card.orange .icon { 
+    color: var(--warning-color);
+    background-color: #FFF7ED;
+}
+
+body.dark-mode .stat-card.orange .icon {
+    color: #FB923C;
+    background-color: #7C2D12;
+}
+
+.stat-card.red { 
+    border-left-color: var(--danger-color);
+}
+.stat-card.red .icon { 
+    color: var(--danger-color);
+    background-color: #FEF2F2;
+}
+
+body.dark-mode .stat-card.red .icon {
+    color: #F87171;
+    background-color: #7F1D1D;
+}
+
+.stat-card.purple { 
+    border-left-color: #8B5CF6;
+}
+.stat-card.purple .icon { 
+    color: #8B5CF6;
+    background-color: #FAF5FF;
+}
+
+body.dark-mode .stat-card.purple .icon {
+    color: #A78BFA;
+    background-color: #4C1D95;
+}
 
 
 .stat-card .info .value {
@@ -345,9 +408,16 @@ body.dark-mode .user-count-link {
 
 .grid-card {
     background-color: var(--bg-light);
-    padding: 1.5rem;
-    border-radius: var(--border-radius);
+    padding: 2rem;
+    border-radius: 16px;
     box-shadow: var(--shadow-md);
+    transition: all 0.3s ease;
+    border: 1px solid var(--border-light);
+}
+
+.grid-card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-4px);
 }
 
 .grid-card h3 {
@@ -367,21 +437,24 @@ body.dark-mode .user-count-link {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 1.2rem 1rem;
-    border-radius: var(--border-radius);
+    padding: 1.5rem 1rem;
+    border-radius: 16px;
     background-color: var(--bg-grey);
     color: var(--text-dark);
     text-decoration: none;
     font-weight: 500;
     text-align: center;
-    transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s, color 0.2s;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 2px solid var(--border-light);
+    box-shadow: var(--shadow-sm);
 }
 
 .quick-actions .action-btn:hover {
-    transform: translateY(-5px);
+    transform: translateY(-8px) scale(1.05);
     box-shadow: var(--shadow-lg);
     background-color: var(--primary-color);
     color: white;
+    border-color: var(--primary-color);
 }
 
 .quick-actions .action-btn i {
