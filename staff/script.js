@@ -2134,6 +2134,28 @@ document.addEventListener("DOMContentLoaded", function() {
 
         document.getElementById('clear-selected-doctor-btn').addEventListener('click', clearSelectedLabDoctor);
 
+        // Add file size validation for lab attachment
+        const labAttachmentInput = document.getElementById('lab-attachment');
+        if (labAttachmentInput) {
+            labAttachmentInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    // Check file size (5MB max)
+                    if (file.size > 5242880) {
+                        alert('File is too large. Maximum size is 5MB.');
+                        e.target.value = ''; // Clear the file input
+                        return;
+                    }
+                    // Check file type
+                    if (file.type !== 'application/pdf') {
+                        alert('Invalid file type. Only PDF files are allowed.');
+                        e.target.value = ''; // Clear the file input
+                        return;
+                    }
+                }
+            });
+        }
+
         fetchAndRenderLabOrders(searchInput.value, statusFilter.value);
         labOrdersInitialized = true;
     }

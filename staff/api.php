@@ -12,6 +12,8 @@
 // config.php should be included first to initialize the session and db connection.
 require_once '../config.php';
 require_once '../vendor/autoload.php'; // Autoload Composer dependencies
+require_once '../mail/send_mail.php'; // Email sending functionality
+require_once '../mail/templates.php'; // Email templates
 
 // All 'use' statements must be at the top of the file.
 use Dompdf\Dompdf;
@@ -1571,6 +1573,15 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 // --- START: LAB WORKFLOW UPDATE ---
                 case 'addLabOrder': // Renamed from addLabResult
                 case 'updateLabOrder': // Renamed from updateLabResult
+                    /**
+                     * Lab Order Status Workflow:
+                     * - 'ordered': Initial state when a doctor orders a test (default for new orders)
+                     * - 'pending': Test is scheduled/awaiting sample collection
+                     * - 'processing': Lab is actively processing the test
+                     * - 'completed': Results are ready and report is available
+                     * 
+                     * Note: Staff can update status at any stage. No strict workflow enforcement.
+                     */
                     $conn->begin_transaction();
                     $transaction_active = true;
                     try {
@@ -1581,11 +1592,27 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $test_date = !empty(trim($_POST['test_date'])) ? trim($_POST['test_date']) : null;
                         $doctor_id = !empty($_POST['doctor_id']) ? (int)$_POST['doctor_id'] : null;
                         $result_details = !empty($_POST['result_details']) ? trim($_POST['result_details']) : null;
-                        $cost = isset($_POST['cost']) && is_numeric($_POST['cost']) ? (float)$_POST['cost'] : 0.00;
+                        $cost = isset($_POST['cost']) && is_numeric($_POST['cost']) && (float)$_POST['cost'] >= 0 ? (float)$_POST['cost'] : 0.00;
                         $status = in_array($_POST['status'], ['ordered', 'pending', 'processing', 'completed']) ? $_POST['status'] : 'pending';
                         
                         if (empty($patient_id) || empty($test_name)) {
                             throw new Exception("Patient and test name are required.");
+                        }
+                        
+                        if ($cost < 0) {
+                            throw new Exception("Cost cannot be negative.");
+                        }
+                        
+                        // Validate test date if provided
+                        if ($test_date) {
+                            $date_obj = DateTime::createFromFormat('Y-m-d', $test_date);
+                            if (!$date_obj || $date_obj->format('Y-m-d') !== $test_date) {
+                                throw new Exception("Invalid test date format.");
+                            }
+                            // Optionally prevent future dates (uncomment if needed)
+                            // if ($date_obj > new DateTime()) {
+                            //     throw new Exception("Test date cannot be in the future.");
+                            // }
                         }
 
                         $attachment_filename = null;
@@ -1645,13 +1672,69 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $stmt->execute();
                             $stmt->close();
                             
-                            // *** NEW: Notification logic on completion ***
-                            if ($status === 'completed' && $doctor_id) {
-                                $stmt_notify = $conn->prepare("INSERT INTO notifications (sender_id, recipient_user_id, message) VALUES (?, ?, ?)");
-                                $message = "Lab result for test '{$test_name}' for patient ID {$patient_id} is ready for review.";
-                                $stmt_notify->bind_param("iis", $user_id, $doctor_id, $message);
-                                $stmt_notify->execute();
-                                $stmt_notify->close();
+                            // *** IMPROVED: Notification logic on completion ***
+                            if ($status === 'completed') {
+                                // Get patient details for email notification
+                                $stmt_patient = $conn->prepare("SELECT name, email FROM users WHERE id = ?");
+                                $stmt_patient->bind_param("i", $patient_id);
+                                $stmt_patient->execute();
+                                $patient_data = $stmt_patient->get_result()->fetch_assoc();
+                                $stmt_patient->close();
+                                
+                                // Notify the doctor if one is assigned
+                                if ($doctor_id) {
+                                    $stmt_notify = $conn->prepare("INSERT INTO notifications (sender_id, recipient_user_id, message) VALUES (?, ?, ?)");
+                                    $message = "Lab result for test '{$test_name}' for patient ID {$patient_id} is ready for review.";
+                                    $stmt_notify->bind_param("iis", $user_id, $doctor_id, $message);
+                                    $stmt_notify->execute();
+                                    $stmt_notify->close();
+                                }
+                                
+                                // ALWAYS notify the patient when their results are ready (in-app notification)
+                                $stmt_notify_patient = $conn->prepare("INSERT INTO notifications (sender_id, recipient_user_id, message) VALUES (?, ?, ?)");
+                                $patient_message = "Your lab test result for '{$test_name}' is now ready. Please check your dashboard for details.";
+                                $stmt_notify_patient->bind_param("iis", $user_id, $patient_id, $patient_message);
+                                $stmt_notify_patient->execute();
+                                $stmt_notify_patient->close();
+                                
+                                // Send email notification to patient
+                                if ($patient_data && !empty($patient_data['email'])) {
+                                    try {
+                                        $current_datetime = date('d M Y, h:i A');
+                                        $email_body = getLabResultReadyTemplate(
+                                            $patient_data['name'],
+                                            $test_name,
+                                            $test_date,
+                                            'Completed',
+                                            $current_datetime
+                                        );
+                                        
+                                        $email_sent = send_mail(
+                                            'MedSync Lab Services',
+                                            $patient_data['email'],
+                                            'Your Lab Results Are Ready - MedSync',
+                                            $email_body
+                                        );
+                                        
+                                        if (!$email_sent) {
+                                            $error_msg = "Failed to send lab result email to patient (ID: {$patient_id}, Email: {$patient_data['email']}). Check email configuration in system settings.";
+                                            error_log($error_msg);
+                                            log_activity($conn, $user_id, 'email_error', $patient_id, "Lab result email failed: Email system may not be configured");
+                                        } else {
+                                            log_activity($conn, $user_id, 'email_sent', $patient_id, "Lab result notification email sent to {$patient_data['email']}");
+                                        }
+                                    } catch (Exception $email_error) {
+                                        // Log email error but don't fail the lab order update
+                                        $error_msg = "Lab result email notification failed for patient ID {$patient_id}: " . $email_error->getMessage();
+                                        error_log($error_msg);
+                                        log_activity($conn, $user_id, 'email_error', $patient_id, $error_msg);
+                                    }
+                                } else {
+                                    // Patient doesn't have an email address
+                                    if ($patient_data && empty($patient_data['email'])) {
+                                        log_activity($conn, $user_id, 'email_skipped', $patient_id, "Lab result email not sent: Patient has no email address on file");
+                                    }
+                                }
                             }
                             
                             // UPDATED: More descriptive log message
