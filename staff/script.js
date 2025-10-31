@@ -10,12 +10,21 @@ document.addEventListener("DOMContentLoaded", function() {
     const pages = document.querySelectorAll('.main-content .page');
     const mainHeaderTitle = document.getElementById('main-header-title');
 
-    // --- DASHBOARD LOGIC (NEW & UPDATED) ---
-    let bedChartInstance = null; // To hold the chart object
+    // This variable will hold our auto-refresh timer for the discharge page.
+    let dischargeRefreshInterval = null;
 
+    // The event listener for the discharge form is moved here to ensure it's always active
+    // and correctly prevents the page from reloading on submission.
+    const dischargeClearanceForm = document.getElementById('discharge-clearance-form');
+    if (dischargeClearanceForm) {
+        dischargeClearanceForm.addEventListener('submit', handleDischargeClearanceSubmit);
+    }
+
+    // --- DASHBOARD LOGIC ---
+    let bedChartInstance = null;
     async function fetchDashboardData() {
         const dashboardPage = document.getElementById('dashboard-page');
-        if (!dashboardPage.classList.contains('active')) return; // Only run if dashboard is visible
+        if (!dashboardPage.classList.contains('active')) return;
 
         const availableBedsEl = document.getElementById('stat-available-beds');
         const lowStockEl = document.getElementById('stat-low-stock');
@@ -25,7 +34,6 @@ document.addEventListener("DOMContentLoaded", function() {
         const activityFeedContainer = document.getElementById('activity-feed-container');
         const chartCanvas = document.getElementById('bedOccupancyChart');
 
-        // Set initial loading state only once
         if (availableBedsEl.textContent !== '...') {
             availableBedsEl.textContent = '...';
             lowStockEl.textContent = '...';
@@ -42,13 +50,11 @@ document.addEventListener("DOMContentLoaded", function() {
             if (result.success) {
                 const stats = result.data;
                 
-                // Update stat cards
                 availableBedsEl.textContent = stats.available_beds;
                 lowStockEl.textContent = stats.low_stock_items;
                 pendingDischargesEl.textContent = stats.pending_discharges;
                 activePatientsEl.textContent = stats.active_patients;
 
-                // Update pending discharges table
                 if (stats.discharge_table_data.length > 0) {
                     dischargeTableBody.innerHTML = stats.discharge_table_data.map(req => {
                         let statusText = '';
@@ -71,7 +77,6 @@ document.addEventListener("DOMContentLoaded", function() {
                     dischargeTableBody.innerHTML = `<tr><td colspan="4" style="text-align: center;">No pending clearances.</td></tr>`;
                 }
                 
-                // Update activity feed
                 if(stats.recent_activity.length > 0) {
                      activityFeedContainer.innerHTML = stats.recent_activity.map(log => `
                         <div style="padding-bottom: 10px; border-bottom: 1px solid var(--border-color); margin-bottom: 10px;">
@@ -83,9 +88,8 @@ document.addEventListener("DOMContentLoaded", function() {
                     activityFeedContainer.innerHTML = `<p class="no-items-message" style="text-align:center;">No recent activity.</p>`;
                 }
 
-                // Update bed occupancy chart
                 if (bedChartInstance) {
-                    bedChartInstance.destroy(); // Destroy old chart before creating new one
+                    bedChartInstance.destroy();
                 }
                 const occupancyData = stats.occupancy_data;
                 const ctx = chartCanvas.getContext('2d');
@@ -130,12 +134,10 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
     
-    // Helper function to navigate pages from dashboard buttons
     window.navigateToDischargePage = function() {
         document.querySelector('.nav-link[data-page="discharge"]').click();
     };
 
-    // --- Sidebar Navigation & Menu Toggling ---
     function toggleMenu() {
         sidebar.classList.toggle('active');
         overlay.classList.toggle('active');
@@ -151,17 +153,19 @@ document.addEventListener("DOMContentLoaded", function() {
             e.preventDefault();
             const pageId = link.getAttribute('data-page');
             
-            // Activate the correct page
+            if (pageId !== 'discharge' && dischargeRefreshInterval) {
+                clearInterval(dischargeRefreshInterval);
+                dischargeRefreshInterval = null;
+            }
+            
             pages.forEach(page => page.classList.remove('active'));
             document.getElementById(pageId + '-page').classList.add('active');
-
             navLinks.forEach(navLink => navLink.classList.remove('active'));
             link.classList.add('active');
 
             const pageTitle = link.querySelector('span') ? link.querySelector('span').textContent.trim() : link.textContent.trim().replace(link.querySelector('i').textContent, '').trim();
             mainHeaderTitle.textContent = pageTitle;
 
-            // Fetch data for specific pages when their link is clicked
             if (pageId === 'dashboard') fetchDashboardData();
             if (pageId === 'live-tokens') initializeLiveTokens();
             if (pageId === 'callbacks') fetchCallbackRequests();
@@ -170,7 +174,7 @@ document.addEventListener("DOMContentLoaded", function() {
             if (pageId === 'user-management') fetchUsers();
             if (pageId === 'bed-management') initializeBedManagement();
             if (pageId === 'admissions') initializeAdmissions();
-            if (pageId === 'labs') initializeLabOrders(); // UPDATED
+            if (pageId === 'labs') initializeLabOrders();
             if (pageId === 'notifications') fetchAndRenderNotifications(document.querySelector('#notifications-page .notification-list-container'));
             if (pageId === 'discharge') initializeDischarge();
             if (pageId === 'billing') initializeBilling();
@@ -183,12 +187,10 @@ document.addEventListener("DOMContentLoaded", function() {
     hamburgerBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
     overlay.addEventListener('click', closeMenu);
     
-    // --- Theme Toggle, and Profile Widget Logic ---
     const themeToggle = document.getElementById('theme-toggle-checkbox');
     themeToggle.addEventListener('change', function() {
         document.body.classList.toggle('dark-theme', this.checked);
         localStorage.setItem('theme', this.checked ? 'dark-theme' : 'light-theme');
-        // Re-render chart with new theme colors if dashboard is active
         if (document.getElementById('dashboard-page').classList.contains('active')) {
              fetchDashboardData();
         }
@@ -198,7 +200,6 @@ document.addEventListener("DOMContentLoaded", function() {
         document.body.classList.add('dark-theme');
     }
 
-    // --- Helper function for showing alerts/messages ---
     function showFeedback(form, message, isSuccess) {
         let feedbackEl = form.querySelector('.form-feedback');
         if (!feedbackEl) {
@@ -212,7 +213,6 @@ document.addEventListener("DOMContentLoaded", function() {
         setTimeout(() => { feedbackEl.textContent = ''; feedbackEl.style.marginBottom = '0'; }, 5000);
     }
 
-    // --- Confirmation Dialog Helper ---
     const confirmDialog = document.getElementById('confirmation-dialog');
     const showConfirmation = (title, message) => {
         document.getElementById('confirm-title').textContent = title;
@@ -234,7 +234,6 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     };
     
-    // --- NOTIFICATION WIDGET LOGIC ---
     const notificationBell = document.getElementById('notification-bell');
     const notificationBadge = document.getElementById('notification-badge');
     const notificationPanel = document.getElementById('notification-panel');
@@ -270,7 +269,6 @@ document.addEventListener("DOMContentLoaded", function() {
         if (interval > 1) return Math.floor(interval) + " minutes ago";
         return Math.floor(seconds) + " seconds ago";
     }
-
 
     const renderNotifications = (notifications, container) => {
         if (!container) return;
@@ -356,7 +354,6 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    // --- QUICK ACTIONS LOGIC (NEW) ---
     document.getElementById('quick-action-admit')?.addEventListener('click', (e) => {
         e.preventDefault();
         document.querySelector('.nav-link[data-page="bed-management"]').click();
@@ -376,15 +373,11 @@ document.addEventListener("DOMContentLoaded", function() {
         setTimeout(() => document.getElementById('add-new-bed-btn')?.click(), 100);
     });
 
-
-    // --- INITIAL DATA FETCHES ---
     fetchUnreadNotificationCount();
     setInterval(fetchUnreadNotificationCount, 60000);
-    fetchDashboardData(); // Initial call for dashboard
-    setInterval(fetchDashboardData, 90000); // Auto-refresh every 90 seconds
+    fetchDashboardData();
+    setInterval(fetchDashboardData, 90000);
 
-
-    // --- CALLBACK REQUESTS LOGIC ---
     const callbacksTableBody = document.getElementById('callbacks-table-body');
 
     async function fetchCallbackRequests() {
@@ -460,7 +453,6 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
     }
-
     // --- MESSENGER LOGIC ---
     const messengerPage = document.getElementById('messenger-page');
     let messengerInitialized = false;
@@ -521,7 +513,6 @@ document.addEventListener("DOMContentLoaded", function() {
     
     function renderSearchResultItem(user) {
         const avatarUrl = user.avatar_url;
-        // Check for an existing conversation and last message, otherwise show the user's role
         const conversationData = user.conversation_id ? `data-conversation-id="${user.conversation_id}"` : '';
         const displayMessage = user.last_message || `${user.role} - ${user.display_user_id}`;
 
@@ -740,7 +731,6 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-
     // --- PROFILE SETTINGS PAGE LOGIC ---
     const profilePage = document.getElementById('profile-page');
     if (profilePage) {
@@ -783,7 +773,6 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
 
-        // UPDATED: This function now handles the richer data from the API
         function renderAuditLog(data, tableBody) {
             if (data.length === 0) {
                 tableBody.innerHTML = `<tr><td colspan="3" style="text-align: center;">No recent activity found.</td></tr>`;
@@ -791,7 +780,6 @@ document.addEventListener("DOMContentLoaded", function() {
             }
 
             tableBody.innerHTML = data.map(log => {
-                // Prepend target user info to the details if it exists
                 const details = log.target_user_display_id
                     ? `Target: <strong>${log.target_user_name} (${log.target_user_display_id})</strong>. ${log.details}`
                     : log.details;
@@ -932,7 +920,6 @@ document.addEventListener("DOMContentLoaded", function() {
             });
         });
     }
-
     // --- USER MANAGEMENT LOGIC ---
     const userManagementPage = document.getElementById('user-management-page');
     let userFetchDebounce;
@@ -953,7 +940,6 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     };
     
-    // Moved renderUsers function to the outer scope
     const renderUsers = (users) => {
         const userTableBody = document.getElementById('users-table')?.querySelector('tbody');
         if (!userTableBody) return;
@@ -982,10 +968,9 @@ document.addEventListener("DOMContentLoaded", function() {
         `).join('');
     };
 
-    // Moved fetchUsers function to the outer scope to make it accessible
     const fetchUsers = async () => {
         const userTableBody = document.getElementById('users-table')?.querySelector('tbody');
-        if (!userTableBody) return; // Exit if the table body isn't on the page
+        if (!userTableBody) return;
 
         const roleFilter = document.getElementById('user-role-filter');
         const searchInput = document.getElementById('user-search');
@@ -1057,7 +1042,7 @@ document.addEventListener("DOMContentLoaded", function() {
         
                 if (userData.role === 'doctor') {
                     doctorFields.style.display = 'block';
-                    await fetchSpecialities(); // Wait for specialties to load
+                    await fetchSpecialities();
                     userForm.querySelector('#doctor-specialty').value = userData.specialty_id || '';
                 }
                 activeGroup.style.display = 'block';
@@ -1348,12 +1333,12 @@ document.addEventListener("DOMContentLoaded", function() {
     // --- BED MANAGEMENT LOGIC (REVISED) ---
     const bedManagementPage = document.getElementById('bed-management-page');
     let bedManagementInitialized = false;
-    let bedManagementData = {}; // To store fetched data
+    let bedManagementData = {};
     let bedSearchDebounce;
 
     async function initializeBedManagement() {
         if (bedManagementInitialized) {
-            await fetchAndRenderBedData(); // Always refresh data on tab click
+            await fetchAndRenderBedData();
             return;
         }
 
@@ -1575,7 +1560,7 @@ document.addEventListener("DOMContentLoaded", function() {
             form.querySelector('#bed-form-action').value = 'addBedOrRoom';
             form.querySelector('#bed-form-id').value = '';
             typeSelect.disabled = false;
-        } else { // 'edit' mode
+        } else {
             const type = entity.type;
             const number = entity.number;
             title.textContent = `Edit ${type.charAt(0).toUpperCase() + type.slice(1)} ${number}`;
@@ -1621,13 +1606,11 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
     
-    // REPLACE the old openAssignModal function with this one
     function openAssignModal(entity) {
         const modal = document.getElementById('bed-assign-modal');
         const form = document.getElementById('bed-assign-form');
         form.reset();
 
-        // --- Helper function to clear search selections ---
         const clearSelection = (type) => {
             document.getElementById(`bed-assign-selected-${type}`).style.display = 'none';
             document.getElementById(`bed-assign-${type}-search`).style.display = 'block';
@@ -1635,7 +1618,6 @@ document.addEventListener("DOMContentLoaded", function() {
             document.getElementById(`bed-assign-${type}-id`).value = '';
         };
 
-        // Clear previous selections
         clearSelection('patient');
         clearSelection('doctor');
 
@@ -1652,7 +1634,6 @@ document.addEventListener("DOMContentLoaded", function() {
         const submitBtn = document.getElementById('bed-assign-submit-btn');
         const dischargeBtn = document.getElementById('bed-discharge-btn');
         
-        // --- Logic for searching patients ---
         const patientSearchInput = document.getElementById('bed-assign-patient-search');
         const patientResultsContainer = document.getElementById('bed-assign-patient-results');
         let patientDebounce;
@@ -1690,7 +1671,6 @@ document.addEventListener("DOMContentLoaded", function() {
         
         document.getElementById('bed-assign-clear-patient-btn').addEventListener('click', () => clearSelection('patient'));
         
-        // --- Logic for searching doctors ---
         const doctorSearchInput = document.getElementById('bed-assign-doctor-search');
         const doctorResultsContainer = document.getElementById('bed-assign-doctor-results');
         let doctorDebounce;
@@ -1861,7 +1841,6 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!tableBody) return;
 
         if (admissions.length === 0) {
-            // Update colspan to 6 to account for the new column
             tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No admissions found matching your criteria.</td></tr>`;
             return;
         }
@@ -1872,7 +1851,6 @@ document.addEventListener("DOMContentLoaded", function() {
                 : '<span class="status admitted">Admitted</span>';
             
             const admissionDate = new Date(adm.admission_date).toLocaleDateString('en-CA');
-            // ADD THIS LINE to format the discharge date or show 'N/A'
             const dischargeDate = adm.discharge_date ? new Date(adm.discharge_date).toLocaleDateString('en-CA') : 'N/A';
             const location = adm.location ? `${adm.location_type} ${adm.location}` : 'N/A';
 
@@ -1887,13 +1865,12 @@ document.addEventListener("DOMContentLoaded", function() {
             `;
         }).join('');
     }
-
-    // --- START: LAB WORKFLOW UPDATE ---
+    // --- LAB WORKFLOW UPDATE ---
     const labsPage = document.getElementById('labs-page');
     let labOrdersInitialized = false;
     let labOrderSearchDebounce;
     let labPatientSearchDebounce;
-    let labFormData = null; // Cache for doctors
+    let labFormData = null;
 
     function initializeLabOrders() {
         if (labOrdersInitialized || !labsPage) return;
@@ -1967,7 +1944,6 @@ document.addEventListener("DOMContentLoaded", function() {
         document.getElementById('clear-selected-patient-btn').addEventListener('click', clearSelectedPatient);
         document.getElementById('add-finding-btn').addEventListener('click', () => createFindingRow());
         
-        // --- START: Add these listeners for the new doctor search ---
         const doctorSearchInput = document.getElementById('lab-doctor-search');
         const doctorSearchResults = document.getElementById('doctor-search-results');
         let labDoctorSearchDebounce;
@@ -1985,7 +1961,6 @@ document.addEventListener("DOMContentLoaded", function() {
         });
 
         document.getElementById('clear-selected-doctor-btn').addEventListener('click', clearSelectedLabDoctor);
-        // --- END: Add these listeners for the new doctor search ---
 
         fetchAndRenderLabOrders(searchInput.value, statusFilter.value);
         labOrdersInitialized = true;
@@ -2070,7 +2045,7 @@ document.addEventListener("DOMContentLoaded", function() {
             title.textContent = 'Add Walk-in Lab Order';
             document.getElementById('lab-form-action').value = 'addLabOrder';
             document.getElementById('lab-order-id').value = '';
-        } else { // 'edit'
+        } else {
             title.textContent = `Manage Lab Order for ${data.patient_name}`;
             document.getElementById('lab-form-action').value = 'updateLabOrder';
             document.getElementById('lab-order-id').value = data.id;
@@ -2160,7 +2135,6 @@ document.addEventListener("DOMContentLoaded", function() {
         document.getElementById('selected-patient-display').style.display = 'none';
     }
 
-    // --- START: New functions for Doctor Search in Lab Modal ---
     async function handleLabDoctorSearch(query) {
         const resultsContainer = document.getElementById('doctor-search-results');
         if (query.length < 2) {
@@ -2173,7 +2147,6 @@ document.addEventListener("DOMContentLoaded", function() {
         resultsContainer.style.display = 'block';
     
         try {
-            // This uses the 'active_doctors' endpoint which you already have!
             const response = await fetch(`api.php?fetch=active_doctors&search=${encodeURIComponent(query)}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
@@ -2208,7 +2181,6 @@ document.addEventListener("DOMContentLoaded", function() {
         document.getElementById('lab-doctor-search').style.display = 'block';
         document.getElementById('selected-doctor-display').style.display = 'none';
     }
-    // --- END: New functions for Doctor Search in Lab Modal ---
 
     async function handleLabOrderFormSubmit(e) {
         e.preventDefault();
@@ -2266,7 +2238,6 @@ document.addEventListener("DOMContentLoaded", function() {
             alert('Error: ' + error.message);
         }
     }
-    // --- END: LAB WORKFLOW UPDATE ---
 
     // --- DISCHARGE MANAGEMENT LOGIC ---
     const dischargePage = document.getElementById('discharge-page');
@@ -2274,49 +2245,65 @@ document.addEventListener("DOMContentLoaded", function() {
     let dischargeSearchDebounce;
 
     function initializeDischarge() {
-        if (dischargeInitialized || !dischargePage) return;
-
-        const searchInput = document.getElementById('discharge-search');
-        searchInput.addEventListener('input', () => {
-            clearTimeout(dischargeSearchDebounce);
-            dischargeSearchDebounce = setTimeout(() => {
-                fetchAndRenderDischarges(searchInput.value, document.getElementById('discharge-status-filter').value);
-            }, 300);
-        });
-
-        const statusFilter = document.getElementById('discharge-status-filter');
-        statusFilter.addEventListener('change', () => {
-            fetchAndRenderDischarges(searchInput.value, statusFilter.value);
-        });
-
-        document.getElementById('discharge-table').addEventListener('click', (e) => {
-            const btn = e.target.closest('.process-clearance-btn');
-            if (btn) {
-                const dischargeId = btn.dataset.id;
-                openDischargeClearanceModal(dischargeId);
-            }
-        });
-        
-        const dischargeModal = document.getElementById('discharge-clearance-modal');
-        dischargeModal.querySelectorAll('.modal-close-btn').forEach(btn => btn.addEventListener('click', () => dischargeModal.classList.remove('show')));
-        document.getElementById('discharge-clearance-form').addEventListener('submit', handleDischargeClearanceSubmit);
-
-        fetchAndRenderDischarges();
-        dischargeInitialized = true;
+        if (!dischargePage) return;
+    
+        if (!dischargeInitialized) {
+            const searchInput = document.getElementById('discharge-search');
+            searchInput.addEventListener('input', () => {
+                clearTimeout(dischargeSearchDebounce);
+                dischargeSearchDebounce = setTimeout(() => {
+                    fetchAndRenderDischarges(searchInput.value, document.getElementById('discharge-status-filter').value);
+                }, 300);
+            });
+    
+            const statusFilter = document.getElementById('discharge-status-filter');
+            statusFilter.addEventListener('change', () => {
+                fetchAndRenderDischarges(searchInput.value, statusFilter.value);
+            });
+    
+            document.getElementById('discharge-table').addEventListener('click', (e) => {
+                const btn = e.target.closest('.process-clearance-btn');
+                if (btn) {
+                    const dischargeId = btn.dataset.id;
+                    openDischargeClearanceModal(dischargeId);
+                }
+            });
+            
+            const dischargeModal = document.getElementById('discharge-clearance-modal');
+            dischargeModal.querySelectorAll('.modal-close-btn').forEach(btn => btn.addEventListener('click', () => dischargeModal.classList.remove('show')));
+            
+            dischargeInitialized = true;
+        }
+    
+        if (dischargeRefreshInterval) {
+            clearInterval(dischargeRefreshInterval);
+        }
+    
+        fetchAndRenderDischarges(document.getElementById('discharge-search').value, document.getElementById('discharge-status-filter').value);
+    
+        dischargeRefreshInterval = setInterval(() => {
+            fetchAndRenderDischarges(document.getElementById('discharge-search').value, document.getElementById('discharge-status-filter').value, true);
+        }, 30000);
     }
-
-    async function fetchAndRenderDischarges(search = '', status = 'all') {
+    
+    async function fetchAndRenderDischarges(search = '', status = 'all', silent = false) {
         const tableBody = document.getElementById('discharge-table')?.querySelector('tbody');
         if (!tableBody) return;
-        tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">Loading discharge requests...</td></tr>`;
-
+    
+        if (!silent) {
+            tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">Loading discharge requests...</td></tr>`;
+        }
+    
         try {
             const response = await fetch(`api.php?fetch=discharge_requests&search=${encodeURIComponent(search)}&status=${status}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             renderDischarges(result.data);
         } catch (error) {
-            tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
+            console.error(error);
+            if (!silent) {
+                tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
+            }
         }
     }
 
@@ -2325,7 +2312,7 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!tableBody) return;
 
         if (data.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">No discharge requests found.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">No pending discharge requests found.</td></tr>`;
             return;
         }
 

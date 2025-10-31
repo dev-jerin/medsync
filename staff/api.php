@@ -6,6 +6,7 @@
  * - Enforces session security and role-based access.
  * - Initializes session variables and fetches user data for the frontend.
  * - Handles AJAX API requests for Profile Settings, Callback Requests, and Messenger.
+ * - UPDATED: Refined the discharge request logic to enforce workflow order.
  */
 
 // config.php should be included first to initialize the session and db connection.
@@ -637,9 +638,11 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $response = ['success' => true, 'data' => $patients];
                     break;
                 
+                // --- START: MODIFIED DISCHARGE REQUESTS LOGIC ---
                 case 'discharge_requests':
                     $search_query = $_GET['search'] ?? '';
                     $status_filter = $_GET['status'] ?? 'all';
+                    
                     $sql = "
                         SELECT 
                             dc.id as discharge_id, a.id as admission_id, p.name as patient_name, p.display_user_id as patient_display_id,
@@ -653,18 +656,32 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 
                     $params = [];
                     $types = "";
-                    $where_clauses = [];
+                    // We only want to show tasks that are not yet cleared.
+                    $where_clauses = ["dc.is_cleared = 0"];
+
                     if (!empty($search_query)) {
                         $where_clauses[] = "(p.name LIKE ? OR p.display_user_id LIKE ?)";
                         $search_term = "%{$search_query}%";
                         array_push($params, $search_term, $search_term);
                         $types .= "ss";
                     }
+
+                    // This is the improved logic to enforce the workflow
                     if ($status_filter !== 'all') {
-                        $where_clauses[] = "dc.clearance_step = ? AND dc.is_cleared = 0";
-                        $params[] = $status_filter;
-                        $types .= "s";
+                        // For 'billing' tasks, only show them if nursing and pharmacy are already done.
+                        if ($status_filter === 'billing') {
+                            $where_clauses[] = "dc.clearance_step = 'billing'";
+                            // This subquery checks that no uncleared nursing or pharmacy steps exist for the same admission.
+                            $where_clauses[] = "(SELECT COUNT(*) FROM discharge_clearance dc2 WHERE dc2.admission_id = dc.admission_id AND dc2.is_cleared = 0 AND dc2.clearance_step IN ('nursing', 'pharmacy')) = 0";
+                        } 
+                        // For 'nursing' or 'pharmacy', just filter by the step name.
+                        else if (in_array($status_filter, ['nursing', 'pharmacy'])) {
+                            $where_clauses[] = "dc.clearance_step = ?";
+                            $params[] = $status_filter;
+                            $types .= "s";
+                        }
                     }
+
                     if (!empty($where_clauses)) {
                         $sql .= " WHERE " . implode(" AND ", $where_clauses);
                     }
@@ -680,6 +697,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 
                     $response = ['success' => true, 'data' => $discharge_requests];
                     break;
+                // --- END: MODIFIED DISCHARGE REQUESTS LOGIC ---
 
                 case 'billable_patients':
                     $search_query = $_GET['search'] ?? '';
@@ -1760,7 +1778,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $stmt->close();
                     break;
 
-                case 'generateInvoice':
+                 case 'generateInvoice':
                     $conn->begin_transaction();
                     $transaction_active = true;
                     try {
@@ -1769,6 +1787,17 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         }
                         $admission_id = (int)$_POST['admission_id'];
                         
+                        // --- START: THIS IS THE FIX ---
+                        // Check if an unpaid invoice already exists for this admission
+                        $stmt_check = $conn->prepare("SELECT id FROM transactions WHERE admission_id = ? AND status = 'pending'");
+                        $stmt_check->bind_param("i", $admission_id);
+                        $stmt_check->execute();
+                        if ($stmt_check->get_result()->num_rows > 0) {
+                            throw new Exception("An unpaid invoice already exists for this admission. Please process the existing one.");
+                        }
+                        $stmt_check->close();
+                        // --- END: THIS IS THE FIX ---
+
                         $stmt_adm = $conn->prepare("
                             SELECT a.patient_id, a.admission_date, COALESCE(a.discharge_date, NOW()) as effective_discharge_date, acc.price_per_day
                             FROM admissions a LEFT JOIN accommodations acc ON a.accommodation_id = acc.id
@@ -1818,7 +1847,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $new_invoice_id = $conn->insert_id;
                         $stmt_insert->close();
                         
-                        // UPDATED: Added more context to log
                         log_activity($conn, $user_id, 'generate_invoice', $admission['patient_id'], "Generated invoice #{$new_invoice_id} for admission #{$admission_id}. Amount: ₹{$total_amount}.");
                         
                         $conn->commit();

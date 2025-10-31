@@ -428,6 +428,7 @@ CREATE TABLE `prescription_items` (
 CREATE TABLE `discharge_clearance` (
 `id` INT(11) NOT NULL AUTO_INCREMENT,
 `admission_id` INT(11) NOT NULL,
+`created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 `clearance_step` ENUM('nursing', 'pharmacy', 'billing') NOT NULL,
 `is_cleared` TINYINT(1) NOT NULL DEFAULT 0,
 `cleared_by_user_id` INT(11) DEFAULT NULL,

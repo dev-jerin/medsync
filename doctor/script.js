@@ -155,6 +155,156 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     
     // ===================================================================
+    // --- START: DISCHARGE PROCESS LOGIC ---
+    // ===================================================================
+    let allDischargeData = [];
+
+    /**
+     * Fetches all discharge requests from the API and renders them in the table.
+     */
+    async function loadDischargeRequests() {
+        const tableBody = document.querySelector('#discharge-requests-table tbody');
+        if (!tableBody) return;
+        tableBody.innerHTML = `<tr><td colspan="6" class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading discharge requests...</td></tr>`;
+
+        try {
+            const response = await fetch('api.php?action=get_discharge_requests');
+            const result = await response.json();
+
+            if (result.success) {
+                allDischargeData = result.data;
+                renderDischargeRequestsTable(allDischargeData);
+            } else {
+                tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">${result.message || 'No requests found.'}</td></tr>`;
+            }
+        } catch (error) {
+            console.error("Error loading discharge requests:", error);
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger-color);">Failed to load data.</td></tr>`;
+        }
+    }
+
+    /**
+     * Renders the discharge requests table with the provided data.
+     * @param {Array} requests An array of discharge request objects.
+     */
+    function renderDischargeRequestsTable(requests) {
+        const tableBody = document.querySelector('#discharge-requests-table tbody');
+        tableBody.innerHTML = '';
+        if (requests.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No discharge requests found.</td></tr>`;
+            return;
+        }
+
+        requests.forEach(req => {
+            const tr = document.createElement('tr');
+            const initiatedDate = new Date(req.initiated_at).toLocaleDateString();
+            
+            // Determine the CSS class for the status badge
+            let statusClass = 'pending';
+            if (req.status === 'Ready for Discharge') statusClass = 'ready-discharge';
+            if (req.status === 'Completed') statusClass = 'completed';
+
+            // Dynamically create action buttons based on the request's status
+            let actionsHtml = `<button class="action-btn view-discharge-status" data-id="${req.admission_id}" data-patient-name="${req.patient_name}"><i class="fas fa-tasks"></i> Status</button>`;
+            
+            if (req.status !== 'Completed') {
+                actionsHtml += `<button class="action-btn write-discharge-summary" data-id="${req.admission_id}" data-patient-name="${req.patient_name}" data-admission-date="${req.admission_date}"><i class="fas fa-file-medical-alt"></i> Summary</button>`;
+            }
+            // Allow downloading the summary if it's ready or completed
+            if (req.status === 'Ready for Discharge' || req.status === 'Completed') {
+                 actionsHtml += `<button class="action-btn download-discharge-summary" data-id="${req.admission_id}"><i class="fas fa-download"></i> PDF</button>`;
+            }
+
+            tr.innerHTML = `
+                <td data-label="Req. ID">ADM-${req.admission_id}</td>
+                <td data-label="Patient">${req.patient_name} (${req.display_user_id})</td>
+                <td data-label="Room/Bed">${req.room_bed || 'N/A'}</td>
+                <td data-label="Initiated">${initiatedDate}</td>
+                <td data-label="Status"><span class="status ${statusClass}">${req.status}</span></td>
+                <td data-label="Actions">${actionsHtml}</td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    }
+
+    /**
+     * Opens and populates the discharge status timeline modal.
+     * @param {string} admissionId The ID of the admission.
+     * @param {string} patientName The name of the patient.
+     */
+    async function openDischargeStatusModal(admissionId, patientName) {
+        const modal = document.getElementById('discharge-status-modal-overlay');
+        const timeline = modal.querySelector('.timeline');
+        
+        document.getElementById('discharge-modal-title').textContent = `Discharge Status for ${patientName}`;
+        timeline.innerHTML = `<li class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading status...</li>`;
+        openModalById('discharge-status-modal-overlay');
+
+        try {
+            const response = await fetch(`api.php?action=get_discharge_status&admission_id=${admissionId}`);
+            const result = await response.json();
+            timeline.innerHTML = '';
+
+            if (result.success) {
+                result.data.forEach(step => {
+                    const li = document.createElement('li');
+                    li.className = `timeline-item ${step.is_cleared ? 'complete' : 'pending'}`;
+                    const clearedAt = step.cleared_at ? new Date(step.cleared_at).toLocaleString() : 'Pending';
+                    
+                    li.innerHTML = `
+                        <div class="timeline-icon"><i class="fas ${step.is_cleared ? 'fa-check' : 'fa-clock'}"></i></div>
+                        <div class="timeline-content">
+                            <strong>${step.clearance_step.charAt(0).toUpperCase() + step.clearance_step.slice(1)} Clearance</strong>
+                            <p>${step.is_cleared ? `Cleared by ${step.cleared_by || 'System'}` : 'Awaiting clearance.'}</p>
+                            <span>${clearedAt}</span>
+                        </div>
+                    `;
+                    timeline.appendChild(li);
+                });
+            } else {
+                timeline.innerHTML = `<li>Error: ${result.message}</li>`;
+            }
+        } catch (error) {
+            console.error('Error fetching discharge status:', error);
+            timeline.innerHTML = `<li>Could not load status details.</li>`;
+        }
+    }
+
+    /**
+     * Opens and populates the discharge summary modal for editing.
+     * @param {string} admissionId The ID of the admission.
+     * @param {string} patientName The name of the patient.
+     * @param {string} admissionDate The date of admission.
+     */
+    async function openDischargeSummaryModal(admissionId, patientName, admissionDate) {
+        const modal = document.getElementById('discharge-summary-modal-overlay');
+        const form = document.getElementById('discharge-summary-form');
+        form.reset();
+        
+        // Set static info
+        document.getElementById('summary-admission-id').value = admissionId;
+        document.getElementById('summary-patient-name').textContent = patientName;
+        document.getElementById('summary-admission-date').textContent = new Date(admissionDate).toLocaleString();
+        
+        openModalById('discharge-summary-modal-overlay');
+
+        try {
+            // Fetch existing data to pre-fill the form
+            const response = await fetch(`api.php?action=get_discharge_summary_details&admission_id=${admissionId}`);
+            const result = await response.json();
+            
+            if (result.success && result.data) {
+                form.elements['discharge_date'].value = result.data.discharge_date || '';
+                form.elements['summary_text'].value = result.data.summary_text || '';
+            }
+        } catch (error) {
+            console.error("Could not pre-fill summary:", error);
+        }
+    }
+
+    // --- END: DISCHARGE PROCESS LOGIC ---
+
+    // ===================================================================
     // --- Patient Encounter Logic ---
     // ===================================================================
 
@@ -515,7 +665,7 @@ document.addEventListener("DOMContentLoaded", function() {
     if (quickDischargeBtn) {
         quickDischargeBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            const dischargeNavLink = document.querySelector('.nav-link[data-page="discharge"]');
+            const dischargeNavLink = document.querySelector('.nav-link[data-page="admissions"]');
             if (dischargeNavLink) {
                 dischargeNavLink.click();
             }
@@ -806,7 +956,8 @@ document.addEventListener("DOMContentLoaded", function() {
             tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger-color);">Failed to load admissions data.</td></tr>`;
         }
     }
-
+    
+    // --- MODIFIED: Added an "Initiate Discharge" button for active patients ---
     function renderAdmissionsTable(admissionsToRender) {
         const tableBody = document.querySelector('#admissions-table tbody');
         tableBody.innerHTML = '';
@@ -818,15 +969,21 @@ document.addEventListener("DOMContentLoaded", function() {
         admissionsToRender.forEach(adm => {
             const tr = document.createElement('tr');
             const admissionDate = new Date(adm.admission_date).toLocaleString();
+            
+            let actionsHtml = `<button class="action-btn view-record" data-id="${adm.patient_id}"><i class="fas fa-file-medical"></i> View Record</button>`;
+            
+            // If the patient is active (not discharged), add the initiate discharge button
+            if (adm.status === 'Active') {
+                actionsHtml += `<button class="action-btn initiate-discharge-btn" data-id="${adm.id}"><i class="fas fa-sign-out-alt"></i> Initiate Discharge</button>`;
+            }
+
             tr.innerHTML = `
                 <td data-label="Adm. ID">ADM-${adm.id}</td>
                 <td data-label="Patient Name">${adm.patient_name} (${adm.display_user_id})</td>
                 <td data-label="Room/Bed">${adm.room_bed}</td>
                 <td data-label="Adm. Date">${admissionDate}</td>
                 <td data-label="Status"><span class="status ${adm.status === 'Active' ? 'in-patient' : 'completed'}">${adm.status}</span></td>
-                <td data-label="Actions">
-                    <button class="action-btn view-record" data-id="${adm.patient_id}"><i class="fas fa-file-medical"></i> View Record</button>
-                </td>
+                <td data-label="Actions">${actionsHtml}</td>
             `;
             tableBody.appendChild(tr);
         });
@@ -1218,6 +1375,10 @@ document.addEventListener("DOMContentLoaded", function() {
             if (pageId === 'labs') {
                 loadLabOrders();
             }
+            // --- MODIFIED: Load data when Discharge Requests page is opened ---
+            if (pageId === 'discharge') {
+                loadDischargeRequests();
+            }
             if (pageId === 'messenger') {
                 initializeMessenger();
             }
@@ -1373,101 +1534,87 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-        // In script.js, find and replace the openViewLabReportModal function
+    async function openViewLabReportModal(reportId) {
+        try {
+            const response = await fetch(`api.php?action=get_lab_report_details&id=${reportId}`); // Fetches report data
+            if (!response.ok) throw new Error('Network error');
+            const result = await response.json();
 
-        async function openViewLabReportModal(reportId) {
-            try {
-                const response = await fetch(`api.php?action=get_lab_report_details&id=${reportId}`); // Fetches report data
-                if (!response.ok) throw new Error('Network error');
-                const result = await response.json();
-
-                if (result.success) {
-                    const report = result.data;
-                    const modal = document.getElementById('lab-report-view-modal-overlay');
-                    
-                    // --- Get the Download PDF Button ---
-                    const downloadPdfBtn = modal.querySelector('.btn-primary'); // Targets the download button
-                    const printBtn = modal.querySelector('.btn-secondary'); // Targets the print button
-                    
-                    // --- Fix the header alignment ---
-                    document.querySelector('#lab-report-view-title').textContent = `Laboratory Report for ${report.patient_name}`;
-                    
-                    // --- Populate all the data fields ---
-                    document.getElementById('report-patient-name').textContent = report.patient_name || 'N/A';
-                    document.getElementById('report-patient-id').textContent = report.patient_display_id || 'N/A';
-                    document.getElementById('report-patient-age-gender').textContent = `${report.patient_age || 'N/A'} / ${report.patient_gender || 'N/A'}`;
-                    document.getElementById('report-test-name').textContent = report.test_name || 'N/A';
-                    document.getElementById('report-id').textContent = `ORD-${report.id}`;
-                    document.getElementById('report-reported-date').textContent = new Date(report.ordered_at).toLocaleString();
-                    document.getElementById('report-verified-by').textContent = report.staff_name || 'Pending Verification';
-                    document.getElementById('report-summary-text').textContent = (report.result_details && report.result_details.summary) ? report.result_details.summary : 'No summary provided.';
-                    
-                    // --- Populate the Findings Table ---
-                    const findingsBody = document.getElementById('report-findings-tbody');
-                    findingsBody.innerHTML = '';
-                    if (report.result_details && Array.isArray(report.result_details.findings) && report.result_details.findings.length > 0) {
-                        report.result_details.findings.forEach(finding => {
-                            let flag = '';
-                            let resultClass = '';
-                            
-                            const resultValue = parseFloat(finding.result);
-                            if (!isNaN(resultValue)) {
-                                const rangeParts = (finding.range || '').split('-').map(p => parseFloat(p.trim()));
-                                if (rangeParts.length === 2 && !isNaN(rangeParts[0]) && !isNaN(rangeParts[1])) {
-                                    if (resultValue < rangeParts[0]) {
-                                        flag = 'L'; // Low
-                                        resultClass = 'abnormal-low';
-                                    } else if (resultValue > rangeParts[1]) {
-                                        flag = 'H'; // High
-                                        resultClass = 'abnormal-high';
-                                    }
+            if (result.success) {
+                const report = result.data;
+                const modal = document.getElementById('lab-report-view-modal-overlay');
+                
+                const downloadPdfBtn = modal.querySelector('.btn-primary');
+                const printBtn = modal.querySelector('.btn-secondary');
+                
+                document.querySelector('#lab-report-view-title').textContent = `Laboratory Report for ${report.patient_name}`;
+                
+                document.getElementById('report-patient-name').textContent = report.patient_name || 'N/A';
+                document.getElementById('report-patient-id').textContent = report.patient_display_id || 'N/A';
+                document.getElementById('report-patient-age-gender').textContent = `${report.patient_age || 'N/A'} / ${report.patient_gender || 'N/A'}`;
+                document.getElementById('report-test-name').textContent = report.test_name || 'N/A';
+                document.getElementById('report-id').textContent = `ORD-${report.id}`;
+                document.getElementById('report-reported-date').textContent = new Date(report.ordered_at).toLocaleString();
+                document.getElementById('report-verified-by').textContent = report.staff_name || 'Pending Verification';
+                document.getElementById('report-summary-text').textContent = (report.result_details && report.result_details.summary) ? report.result_details.summary : 'No summary provided.';
+                
+                const findingsBody = document.getElementById('report-findings-tbody');
+                findingsBody.innerHTML = '';
+                if (report.result_details && Array.isArray(report.result_details.findings) && report.result_details.findings.length > 0) {
+                    report.result_details.findings.forEach(finding => {
+                        let flag = '';
+                        let resultClass = '';
+                        
+                        const resultValue = parseFloat(finding.result);
+                        if (!isNaN(resultValue)) {
+                            const rangeParts = (finding.range || '').split('-').map(p => parseFloat(p.trim()));
+                            if (rangeParts.length === 2 && !isNaN(rangeParts[0]) && !isNaN(rangeParts[1])) {
+                                if (resultValue < rangeParts[0]) {
+                                    flag = 'L'; // Low
+                                    resultClass = 'abnormal-low';
+                                } else if (resultValue > rangeParts[1]) {
+                                    flag = 'H'; // High
+                                    resultClass = 'abnormal-high';
                                 }
                             }
+                        }
 
-                            findingsBody.innerHTML += `
-                                <tr class="${resultClass}">
-                                    <td>${finding.parameter || 'N/A'}</td>
-                                    <td><strong>${finding.result || 'N/A'}</strong></td>
-                                    <td>${finding.units || 'N/A'}</td>
-                                    <td>${finding.range || 'N/A'}</td>
-                                    <td class="flag">${flag}</td>
-                                </tr>`;
-                        });
-                    } else {
-                        findingsBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">No detailed findings were entered.</td></tr>`;
-                    }
-
-                    // --- CORRECTED LOGIC for the PDF buttons ---
-                    if (report.attachment_path) {
-                        // If a PDF exists, enable the download button and link it
-                        downloadPdfBtn.style.display = 'inline-flex'; // Show the button
-                        downloadPdfBtn.disabled = false;
-                        downloadPdfBtn.onclick = () => window.open(`../${report.attachment_path}`, '_blank'); // The path to the PDF file
-                        
-                        // Disable the print button for the manual view
-                        printBtn.disabled = true;
-                        printBtn.title = "Print the downloaded PDF instead";
-
-                    } else {
-                        // If no PDF exists, hide the download button
-                        downloadPdfBtn.style.display = 'none'; // Hide the button
-                        downloadPdfBtn.disabled = true;
-                        downloadPdfBtn.onclick = null;
-
-                        // Enable the print button for the manual view
-                        printBtn.disabled = false;
-                        printBtn.title = "Print this report";
-                    }
-                    
-                    openModalById('lab-report-view-modal-overlay'); // Opens the modal
+                        findingsBody.innerHTML += `
+                            <tr class="${resultClass}">
+                                <td>${finding.parameter || 'N/A'}</td>
+                                <td><strong>${finding.result || 'N/A'}</strong></td>
+                                <td>${finding.units || 'N/A'}</td>
+                                <td>${finding.range || 'N/A'}</td>
+                                <td class="flag">${flag}</td>
+                            </tr>`;
+                    });
                 } else {
-                    alert(`Error: ${result.message}`);
+                    findingsBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">No detailed findings were entered.</td></tr>`;
                 }
-            } catch (error) {
-                console.error('Error fetching report details:', error);
-                alert('Could not fetch report details.');
+
+                if (report.attachment_path) {
+                    downloadPdfBtn.style.display = 'inline-flex';
+                    downloadPdfBtn.disabled = false;
+                    downloadPdfBtn.onclick = () => window.open(`../${report.attachment_path}`, '_blank');
+                    printBtn.disabled = true;
+                    printBtn.title = "Print the downloaded PDF instead";
+                } else {
+                    downloadPdfBtn.style.display = 'none';
+                    downloadPdfBtn.disabled = true;
+                    downloadPdfBtn.onclick = null;
+                    printBtn.disabled = false;
+                    printBtn.title = "Print this report";
+                }
+                
+                openModalById('lab-report-view-modal-overlay');
+            } else {
+                alert(`Error: ${result.message}`);
             }
+        } catch (error) {
+            console.error('Error fetching report details:', error);
+            alert('Could not fetch report details.');
         }
+    }
     
     // ===================================================================
     // --- Messenger Page Logic ---
@@ -2148,6 +2295,33 @@ document.addEventListener("DOMContentLoaded", function() {
     
     const admissionsPage = document.getElementById('admissions-page');
     if (admissionsPage) {
+        // --- MODIFIED: Added event listener for the new discharge buttons ---
+        admissionsPage.addEventListener('click', async (e) => {
+            const initiateBtn = e.target.closest('.initiate-discharge-btn');
+            if (initiateBtn) {
+                e.preventDefault();
+                const admissionId = initiateBtn.dataset.id;
+                
+                if (confirm('Are you sure you want to initiate the discharge process for this patient?')) {
+                    const formData = new FormData();
+                    formData.append('action', 'initiate_discharge');
+                    formData.append('admission_id', admissionId);
+
+                    try {
+                        const response = await fetch('api.php', { method: 'POST', body: formData });
+                        const result = await response.json();
+                        alert(result.message);
+                        if (result.success) {
+                            // Optionally, switch to the discharge page
+                            document.querySelector('.nav-link[data-page="discharge"]').click();
+                        }
+                    } catch (error) {
+                        alert('A network error occurred.');
+                    }
+                }
+            }
+        });
+        
         document.getElementById('admit-patient-btn').addEventListener('click', openAdmitPatientModal);
         
         document.getElementById('admit-patient-form').addEventListener('submit', async function(e) {
@@ -2187,6 +2361,63 @@ document.addEventListener("DOMContentLoaded", function() {
             );
             renderAdmissionsTable(filteredData);
         });
+    }
+
+    // --- MODIFIED: Added event listener for discharge page actions ---
+    const dischargePage = document.getElementById('discharge-page');
+    if (dischargePage) {
+        dischargePage.addEventListener('click', (e) => {
+            const statusBtn = e.target.closest('.view-discharge-status');
+            const summaryBtn = e.target.closest('.write-discharge-summary');
+            const downloadBtn = e.target.closest('.download-discharge-summary');
+
+            if (statusBtn) {
+                openDischargeStatusModal(statusBtn.dataset.id, statusBtn.dataset.patientName);
+            }
+            if (summaryBtn) {
+                openDischargeSummaryModal(summaryBtn.dataset.id, summaryBtn.dataset.patientName, summaryBtn.dataset.admissionDate);
+            }
+            if (downloadBtn) {
+                window.open(`api.php?action=download_discharge_summary&admission_id=${downloadBtn.dataset.id}`, '_blank');
+            }
+        });
+        
+        // --- ADDED: Handle submission of the discharge summary form ---
+        const summaryForm = document.getElementById('discharge-summary-form');
+        if (summaryForm) {
+            summaryForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const saveButton = document.getElementById('save-summary-btn');
+                saveButton.disabled = true;
+                saveButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving...`;
+
+                const formData = new FormData(this);
+                formData.append('action', 'save_discharge_summary');
+
+                try {
+                    const response = await fetch('api.php', { method: 'POST', body: formData });
+                    const result = await response.json();
+
+                    alert(result.message);
+
+                    if (result.success) {
+                        document.getElementById('discharge-summary-modal-overlay').classList.remove('active');
+                        loadDischargeRequests(); // Refresh the list
+                        
+                        // Ask user if they want to download the PDF now
+                        if (confirm("Summary saved. Do you want to download the PDF now?")) {
+                             window.open(`api.php?action=download_discharge_summary&admission_id=${formData.get('admission_id')}`, '_blank');
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error saving summary:", error);
+                    alert("A network error occurred.");
+                } finally {
+                    saveButton.disabled = false;
+                    saveButton.innerHTML = "Save & Generate PDF";
+                }
+            });
+        }
     }
 
     const admitPatientSearch = document.getElementById('patient-search-admit');
