@@ -52,7 +52,7 @@ try {
     $stmt_get_name->close();
 
     $subject = 'Your New Password Reset Code for MedSync';
-    $body    = getPasswordResetEmailTemplate($user_name, $new_otp); 
+    $body    = getPasswordResetEmailTemplate($user_name, $new_otp, $_SERVER['REMOTE_ADDR']); 
     
     // Call the centralized mail function
     if (send_mail('MedSync Support', $session_data['email'], $subject, $body)) {

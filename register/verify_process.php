@@ -131,7 +131,8 @@ try {
             $body = getWelcomeEmailTemplate(
                 $session_data['name'],
                 $session_data['username'],
-                $display_user_id
+                $display_user_id,
+                $_SERVER['REMOTE_ADDR']
             );
 
             // The 'from' name is "MedSync Welcome Team"

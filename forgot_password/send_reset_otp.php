@@ -61,7 +61,7 @@ require_once __DIR__ . '/../mail/send_mail.php';
 
 try {
     $subject = 'Your Password Reset Code for MedSync';
-    $body = getPasswordResetEmailTemplate($user_name, $otp);
+    $body = getPasswordResetEmailTemplate($user_name, $otp, $_SERVER['REMOTE_ADDR']);
 
     if (send_mail('MedSync Support', $email, $subject, $body)) {
         // Redirect to the OTP verification page on success

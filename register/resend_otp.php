@@ -44,7 +44,7 @@ require_once __DIR__ . '/../mail/send_mail.php'; // Include the centralized mail
 
 try {
     $subject = 'Your New Verification Code for MedSync';
-    $body = getOtpEmailTemplate($session_data['name'], $new_otp);
+    $body = getOtpEmailTemplate($session_data['name'], $new_otp, $_SERVER['REMOTE_ADDR']);
 
     // Call the centralized mail function
     if (send_mail('MedSync', $session_data['email'], $subject, $body)) {

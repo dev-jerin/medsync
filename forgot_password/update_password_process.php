@@ -62,7 +62,7 @@ if ($stmt_update->execute()) {
         date_default_timezone_set('Asia/Kolkata');
         $current_datetime = date('F j, Y, g:i A T');
         
-        $body = getPasswordResetConfirmationTemplate($user_name, $current_datetime);
+        $body = getPasswordResetConfirmationTemplate($user_name, $current_datetime, $_SERVER['REMOTE_ADDR']);
 
         // Call the centralized function
         send_mail('MedSync Security', $email, $subject, $body);
