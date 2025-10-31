@@ -2192,6 +2192,55 @@ staffSearchInput.addEventListener('keyup', () => {
     });
 
     // --- MESSENGER LOGIC ---
+    
+    // Helper function to create skeleton for conversation list
+    function createConversationSkeleton(count = 5) {
+        let skeletonHtml = '';
+        for (let i = 0; i < count; i++) {
+            skeletonHtml += `
+                <div class="skeleton-conversation">
+                    <div class="skeleton skeleton-avatar"></div>
+                    <div class="skeleton-conversation-content">
+                        <div class="skeleton skeleton-text title"></div>
+                        <div class="skeleton skeleton-text subtitle"></div>
+                    </div>
+                    <div class="skeleton-conversation-meta">
+                        <div class="skeleton skeleton-time"></div>
+                    </div>
+                </div>
+            `;
+        }
+        return skeletonHtml;
+    }
+
+    // Helper function to create skeleton for messages
+    function createMessagesSkeleton() {
+        return `
+            <div class="skeleton-message">
+                <div class="skeleton-message-bubble received">
+                    <div class="skeleton skeleton-bubble-content"></div>
+                    <div class="skeleton skeleton-timestamp"></div>
+                </div>
+                <div class="skeleton-message-bubble sent">
+                    <div class="skeleton skeleton-bubble-content large"></div>
+                    <div class="skeleton skeleton-timestamp"></div>
+                </div>
+                <div class="skeleton-message-bubble received">
+                    <div class="skeleton skeleton-bubble-content"></div>
+                    <div class="skeleton skeleton-timestamp"></div>
+                </div>
+                <div class="skeleton-message-bubble received">
+                    <div class="skeleton skeleton-bubble-content large"></div>
+                    <div class="skeleton skeleton-timestamp"></div>
+                </div>
+                <div class="skeleton-message-bubble sent">
+                    <div class="skeleton skeleton-bubble-content"></div>
+                    <div class="skeleton skeleton-timestamp"></div>
+                </div>
+            </div>
+        `;
+    }
+
     function initializeMessenger() {
         if (messengerInitialized) return;
 
@@ -2227,41 +2276,50 @@ staffSearchInput.addEventListener('keyup', () => {
             return;
         }
         
-        listContainer.innerHTML = `<div class="loading-cell"><div class="spinner"></div><span>Searching...</span></div>`;
+        // Show skeleton loading state
+        listContainer.innerHTML = createConversationSkeleton(3);
         
         try {
             const data = await fetchAndRender({endpoint: `api.php?fetch=search_users&term=${encodeURIComponent(query)}`});
             if(data) {
-                listContainer.innerHTML = data.length > 0 ? data.map(user => {
+                const resultsHtml = data.length > 0 ? data.map(user => {
                     const avatarUrl = `../uploads/profile_pictures/${user.profile_picture || 'default.png'}`;
                     return `
-                        <div class="search-result-item" data-user-id="${user.id}" data-user-name="${user.name}" data-user-avatar="${avatarUrl}" data-user-display-id="${user.role}">
+                        <div class="search-result-item fade-in" data-user-id="${user.id}" data-user-name="${user.name}" data-user-avatar="${avatarUrl}" data-user-display-id="${user.role}">
                             <img src="${avatarUrl}" alt="${user.name}" class="user-avatar" onerror="this.src='../uploads/profile_pictures/default.png'">
                             <div class="conversation-details">
                                 <span class="user-name">${user.name}</span>
                                 <span class="last-message">${user.role} - ${user.display_user_id}</span>
                             </div>
                         </div>`;
-                }).join('') : `<p class="no-items-message">No users found.</p>`;
+                }).join('') : `<p class="no-items-message fade-in">No users found.</p>`;
+                
+                listContainer.innerHTML = resultsHtml;
             }
         } catch (error) {
             console.error("Search error:", error);
-            listContainer.innerHTML = `<p class="no-items-message" style="color: var(--danger-color)">Search failed.</p>`;
+            listContainer.innerHTML = `
+                <div class="no-items-message fade-in" style="color: var(--danger-color);">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 2rem; opacity: 0.5; margin-bottom: 0.5rem;"></i>
+                    <p>Search failed. Please try again.</p>
+                </div>`;
         }
     }
     
     async function fetchAndRenderConversations() {
         const listContainer = document.getElementById('conversation-list-items');
-        listContainer.innerHTML = `<div class="loading-cell"><div class="spinner"></div><span>Loading Conversations...</span></div>`;
+        
+        // Show skeleton loading state
+        listContainer.innerHTML = createConversationSkeleton(6);
 
         try {
             const data = await fetchAndRender({ endpoint: 'api.php?fetch=conversations' });
             if (data) {
-                listContainer.innerHTML = data.length > 0 ? data.map(conv => {
+                const conversationsHtml = data.length > 0 ? data.map(conv => {
                     const avatarUrl = `../uploads/profile_pictures/${conv.other_user_profile_picture || 'default.png'}`;
                     const lastMessageTime = conv.last_message_time ? new Date(conv.last_message_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
                     return `
-                        <div class="conversation-item ${conv.conversation_id === activeConversationId ? 'active' : ''}" data-conversation-id="${conv.conversation_id}" data-user-id="${conv.other_user_id}" data-user-name="${conv.other_user_name}" data-user-avatar="${avatarUrl}" data-user-display-id="${conv.other_user_role}">
+                        <div class="conversation-item fade-in ${conv.conversation_id === activeConversationId ? 'active' : ''}" data-conversation-id="${conv.conversation_id}" data-user-id="${conv.other_user_id}" data-user-name="${conv.other_user_name}" data-user-avatar="${avatarUrl}" data-user-display-id="${conv.other_user_role}">
                             <img src="${avatarUrl}" alt="${conv.other_user_name}" class="user-avatar" onerror="this.src='../uploads/profile_pictures/default.png'">
                             <div class="conversation-details">
                                 <span class="user-name">${conv.other_user_name}</span>
@@ -2272,11 +2330,25 @@ staffSearchInput.addEventListener('keyup', () => {
                                 ${conv.unread_count > 0 ? `<div class="unread-indicator">${conv.unread_count}</div>` : ''}
                             </div>
                         </div>`;
-                }).join('') : `<p class="no-items-message">No conversations yet. Search for a user to start chatting.</p>`;
+                }).join('') : `
+                    <div class="no-items-message fade-in">
+                        <i class="fas fa-comments" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;"></i>
+                        <p>No conversations yet.</p>
+                        <p style="font-size: 0.9rem; margin-top: 0.5rem;">Search for a user to start chatting.</p>
+                    </div>`;
+                
+                listContainer.innerHTML = conversationsHtml;
             }
         } catch (error) {
             console.error("Failed to fetch conversations:", error);
-            listContainer.innerHTML = `<p class="no-items-message" style="color: var(--danger-color)">Could not load conversations.</p>`;
+            listContainer.innerHTML = `
+                <div class="no-items-message fade-in" style="color: var(--danger-color);">
+                    <i class="fas fa-exclamation-circle" style="font-size: 3rem; opacity: 0.5; margin-bottom: 1rem;"></i>
+                    <p>Could not load conversations.</p>
+                    <button onclick="fetchAndRenderConversations()" style="margin-top: 1rem; padding: 0.5rem 1rem; background: var(--primary-color); color: white; border: none; border-radius: 8px; cursor: pointer;">
+                        <i class="fas fa-redo"></i> Retry
+                    </button>
+                </div>`;
         }
     }
     
@@ -2345,7 +2417,10 @@ staffSearchInput.addEventListener('keyup', () => {
 
     async function fetchAndRenderMessages(conversationId) {
         const container = document.getElementById('chat-messages-container');
-        container.innerHTML = `<div class="loading-cell" style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center;"><div class="spinner"></div><span>Loading Messages...</span></div>`;
+        
+        // Show skeleton loading state for messages
+        container.innerHTML = createMessagesSkeleton();
+        
         try {
             const data = await fetchAndRender({endpoint: `api.php?fetch=messages&conversation_id=${conversationId}`});
             if(!data) throw new Error("Could not fetch messages.");
@@ -2357,12 +2432,12 @@ staffSearchInput.addEventListener('keyup', () => {
                 data.forEach(message => {
                     const currentMessageDateStr = new Date(message.created_at).toDateString();
                     if (currentMessageDateStr !== lastMessageDateStr) {
-                        messagesHtml += `<div class="message-date-separator">${formatDateSeparator(message.created_at)}</div>`;
+                        messagesHtml += `<div class="message-date-separator fade-in">${formatDateSeparator(message.created_at)}</div>`;
                         lastMessageDateStr = currentMessageDateStr;
                     }
                     const sentOrReceived = message.sender_id === currentUserId ? 'sent' : 'received';
                     messagesHtml += `
-                        <div class="message ${sentOrReceived}">
+                        <div class="message ${sentOrReceived} fade-in">
                             <div class="message-content"><p>${message.message_text}</p></div>
                             <span class="message-timestamp">${new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
@@ -2370,7 +2445,12 @@ staffSearchInput.addEventListener('keyup', () => {
                 });
                  container.dataset.lastDate = lastMessageDateStr;
             } else {
-                 messagesHtml = `<p class="no-items-message">No messages yet. Say hello!</p>`;
+                 messagesHtml = `
+                    <div class="no-items-message fade-in">
+                        <i class="fas fa-comment-dots" style="font-size: 3rem; opacity: 0.3; margin-bottom: 1rem;"></i>
+                        <p>No messages yet.</p>
+                        <p style="font-size: 0.9rem; margin-top: 0.5rem;">Say hello!</p>
+                    </div>`;
                  delete container.dataset.lastDate;
             }
             
@@ -2379,7 +2459,14 @@ staffSearchInput.addEventListener('keyup', () => {
 
         } catch(error) {
             console.error("Failed to fetch messages:", error);
-            container.innerHTML = `<p class="no-items-message" style="color: var(--danger-color)">Could not load messages.</p>`;
+            container.innerHTML = `
+                <div class="no-items-message fade-in" style="color: var(--danger-color);">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 3rem; opacity: 0.5; margin-bottom: 1rem;"></i>
+                    <p>Could not load messages.</p>
+                    <button onclick="fetchAndRenderMessages(${conversationId})" style="margin-top: 1rem; padding: 0.5rem 1rem; background: var(--primary-color); color: white; border: none; border-radius: 8px; cursor: pointer;">
+                        <i class="fas fa-redo"></i> Retry
+                    </button>
+                </div>`;
         }
     }
     
@@ -2392,8 +2479,10 @@ staffSearchInput.addEventListener('keyup', () => {
 
         if (!messageText || !activeReceiverId) return;
 
+        // Show sending state
         input.disabled = true;
         button.disabled = true;
+        button.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i>';
 
         const formData = new FormData();
         formData.append('action', 'sendMessage');
@@ -2418,25 +2507,34 @@ staffSearchInput.addEventListener('keyup', () => {
                 
                 const currentDateStr = new Date(result.data.created_at).toDateString();
                 if(currentDateStr !== container.dataset.lastDate) {
-                     container.insertAdjacentHTML('beforeend', `<div class="message-date-separator">${formatDateSeparator(result.data.created_at)}</div>`);
+                     container.insertAdjacentHTML('beforeend', `<div class="message-date-separator fade-in">${formatDateSeparator(result.data.created_at)}</div>`);
                      container.dataset.lastDate = currentDateStr;
                 }
                 const sentOrReceived = result.data.sender_id === currentUserId ? 'sent' : 'received';
-                container.insertAdjacentHTML('beforeend', `
-                    <div class="message ${sentOrReceived}">
+                const messageHtml = `
+                    <div class="message ${sentOrReceived} fade-in message-pulse">
                         <div class="message-content"><p>${result.data.message_text}</p></div>
                         <span class="message-timestamp">${new Date(result.data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>`);
-                container.scrollTop = container.scrollHeight;
+                    </div>`;
+                container.insertAdjacentHTML('beforeend', messageHtml);
+                
+                // Smooth scroll to bottom
+                container.scrollTo({
+                    top: container.scrollHeight,
+                    behavior: 'smooth'
+                });
+                
+                // Update conversation list in background
                 fetchAndRenderConversations(); 
             }
 
         } catch (error) {
             console.error("Send message failed:", error);
-            alert("Could not send message. Please try again.");
+            showNotification("Could not send message. Please try again.", "error");
         } finally {
             input.disabled = false;
             button.disabled = false;
+            button.innerHTML = '<i class="fas fa-paper-plane"></i>';
             input.focus();
         }
     }
