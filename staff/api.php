@@ -204,9 +204,9 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
         exit();
     }
 
-    // Apply rate limiting
-    $rate_limit_action = isset($_GET['fetch']) ? 'fetch_' . ($_GET['fetch'] ?? 'unknown') : 'post_' . ($_POST['action'] ?? 'unknown');
-    if (!check_rate_limit($_SESSION['user_id'], $rate_limit_action, 100, 60)) {
+    // Apply rate limiting - use single global action for overall API limit
+    // This prevents abuse across all endpoints combined
+    if (!check_rate_limit($_SESSION['user_id'], 'api_global', 100, 60)) {
         $response['message'] = 'Too many requests. Please slow down and try again later.';
         echo json_encode($response);
         exit();
@@ -2258,7 +2258,10 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
         if ($transaction_active) {
             $conn->rollback();
         }
-        http_response_code(400);
+        // Only set status to 400 if not already set by security functions
+        if (http_response_code() === 200) {
+            http_response_code(400);
+        }
         $response['message'] = $e->getMessage();
     }
 

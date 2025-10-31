@@ -8,3 +8,6 @@ lab_reports
 STUDY.txt
 _private
 composer.lock
+
+# Testing directory - should not be in production
+tests/
