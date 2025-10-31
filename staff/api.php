@@ -1920,16 +1920,19 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         }
                         $admission_id = (int)$_POST['admission_id'];
                         
-                        // --- START: THIS IS THE FIX ---
-                        // Check if an unpaid invoice already exists for this admission
-                        $stmt_check = $conn->prepare("SELECT id FROM transactions WHERE admission_id = ? AND status = 'pending'");
+                        // Check if ANY invoice already exists for this admission (pending or paid)
+                        // This prevents duplicate billing for the same admission
+                        $stmt_check = $conn->prepare("SELECT id, status FROM transactions WHERE admission_id = ?");
                         $stmt_check->bind_param("i", $admission_id);
                         $stmt_check->execute();
-                        if ($stmt_check->get_result()->num_rows > 0) {
-                            throw new Exception("An unpaid invoice already exists for this admission. Please process the existing one.");
+                        $existing_transaction = $stmt_check->get_result()->fetch_assoc();
+                        if ($existing_transaction) {
+                            $status_msg = $existing_transaction['status'] === 'paid' 
+                                ? "A paid invoice already exists for this admission. Duplicate billing is not allowed."
+                                : "An unpaid invoice already exists for this admission. Please process the existing one.";
+                            throw new Exception($status_msg);
                         }
                         $stmt_check->close();
-                        // --- END: THIS IS THE FIX ---
 
                         $stmt_adm = $conn->prepare("
                             SELECT a.patient_id, a.admission_date, COALESCE(a.discharge_date, NOW()) as effective_discharge_date, acc.price_per_day
