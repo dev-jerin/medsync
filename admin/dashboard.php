@@ -211,42 +211,42 @@ $conn->close();
             </header>
             <div id="dashboard-panel" class="content-panel active">
                 <div class="stat-cards-container">
-                    <div class="stat-card blue">
+                    <div class="stat-card blue clickable-stat-card nav-link" data-target="users-user" title="Click to view all users">
                         <div class="icon"><i class="fas fa-users"></i></div>
                         <div class="info">
                             <div class="value" id="total-users-stat"><?php echo $total_users; ?></div>
                             <div class="label">Total Users</div>
                         </div>
                     </div>
-                    <div class="stat-card green">
+                    <div class="stat-card green clickable-stat-card nav-link" data-target="users-doctor" title="Click to view all doctors">
                         <div class="icon"><i class="fas fa-user-md"></i></div>
                         <div class="info">
                             <div class="value" id="active-doctors-stat"><?php echo $active_doctors; ?></div>
                             <div class="label">Active Doctors</div>
                         </div>
                     </div>
-                    <div class="stat-card orange">
+                    <div class="stat-card orange clickable-stat-card nav-link" data-target="appointments" title="Click to view appointments">
                         <div class="icon"><i class="fas fa-calendar-check"></i></div>
                         <div class="info">
                             <div class="value" id="pending-appointments-stat">0</div>
                             <div class="label">Pending Appointments</div>
                         </div>
                     </div>
-                    <div class="stat-card purple" id="patient-satisfaction-stat" style="display: none;">
+                    <div class="stat-card purple clickable-stat-card nav-link" id="patient-satisfaction-stat" data-target="feedback" title="Click to view patient feedback" style="display: none;">
                         <div class="icon"><i class="fas fa-star-half-alt"></i></div>
                         <div class="info">
                             <div class="value" id="satisfaction-score">0/5</div>
                             <div class="label">Patient Satisfaction</div>
                         </div>
                     </div>
-                    <div class="stat-card red" id="low-medicine-stat" style="display: none;">
+                    <div class="stat-card red clickable-stat-card nav-link" id="low-medicine-stat" data-target="inventory-medicine" title="Click to view medicine inventory" style="display: none;">
                         <div class="icon"><i class="fas fa-pills"></i></div>
                         <div class="info">
                             <div class="value" id="low-medicine-count">0</div>
                             <div class="label">Low Medicines</div>
                         </div>
                     </div>
-                    <div class="stat-card red" id="low-blood-stat" style="display: none;">
+                    <div class="stat-card red clickable-stat-card nav-link" id="low-blood-stat" data-target="inventory-blood" title="Click to view blood inventory" style="display: none;">
                         <div class="icon"><i class="fas fa-tint"></i></div>
                         <div class="info">
                             <div class="value" id="low-blood-count">0</div>

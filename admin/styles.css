@@ -297,6 +297,40 @@ body.dark-mode .nav-dropdown a {
     box-shadow: var(--shadow-lg);
 }
 
+.stat-card.clickable-stat-card {
+    cursor: pointer;
+    user-select: none;
+}
+
+.stat-card.clickable-stat-card:hover {
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-xl);
+}
+
+.stat-card.clickable-stat-card:active {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.stat-card.clickable-stat-card::after {
+    content: '\f35d';
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 900;
+    position: absolute;
+    right: 1rem;
+    bottom: 1rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    opacity: 0.5;
+    transition: all 0.3s ease;
+}
+
+.stat-card.clickable-stat-card:hover::after {
+    opacity: 1;
+    right: 0.8rem;
+    color: var(--primary-color);
+}
+
 .stat-card .icon {
     font-size: 2rem;
     padding: 1rem;
