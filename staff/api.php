@@ -569,9 +569,15 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     $sql = "
                         SELECT 
                             lo.id, lo.patient_id, lo.doctor_id, lo.cost, lo.status,
-                            p.display_user_id AS patient_display_id, p.name AS patient_name,
-                            doc.name AS doctor_name, lo.test_name, lo.test_date,
-                            lo.result_details, lo.attachment_path
+                            p.display_user_id AS patient_display_id, 
+                            p.name AS patient_name,
+                            p.gender AS patient_gender,
+                            p.date_of_birth AS patient_dob,
+                            p.phone AS patient_phone,
+                            doc.name AS doctor_name, 
+                            lo.test_name, lo.test_date,
+                            lo.result_details, lo.attachment_path,
+                            TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) AS patient_age
                         FROM lab_orders lo -- Renamed table
                         JOIN users p ON lo.patient_id = p.id
                         LEFT JOIN users doc ON lo.doctor_id = doc.id

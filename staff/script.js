@@ -2163,7 +2163,7 @@ document.addEventListener("DOMContentLoaded", function() {
     async function fetchAndRenderLabOrders(search = '', status = 'all') {
         const tableBody = document.getElementById('lab-orders-table')?.querySelector('tbody');
         if (!tableBody) return;
-        tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Loading lab orders...</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center;">Loading lab orders...</td></tr>`;
 
         try {
             const response = await fetch(`api.php?fetch=lab_orders&search=${encodeURIComponent(search)}&status=${status}`);
@@ -2171,7 +2171,7 @@ document.addEventListener("DOMContentLoaded", function() {
             if (!result.success) throw new Error(result.message);
             renderLabOrders(result.data);
         } catch (error) {
-            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
         }
     }
 
@@ -2180,7 +2180,7 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!tableBody) return;
 
         if (data.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">No lab orders found.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center;">No lab orders found.</td></tr>`;
             return;
         }
 
@@ -2193,10 +2193,27 @@ document.addEventListener("DOMContentLoaded", function() {
                 ? `<a href="report/${order.attachment_path}" target="_blank" class="action-btn" download><i class="fas fa-download"></i> Download</a>`
                 : '<span>N/A</span>';
             
+            // Format patient age and DOB
+            const age = order.patient_age || 'N/A';
+            const dob = order.patient_dob ? new Date(order.patient_dob).toLocaleDateString('en-GB') : 'N/A';
+            const gender = order.patient_gender || 'N/A';
+            const genderIcon = gender === 'Male' ? '♂️' : gender === 'Female' ? '♀️' : '⚧';
+            
+            // Format phone number
+            const phone = order.patient_phone ? `<br><small style="color: #666;"><i class="fas fa-phone"></i> ${order.patient_phone}</small>` : '';
+            
             return `
                 <tr data-lab-order='${JSON.stringify(order)}'>
                     <td data-label="Order ID">ORD-${String(order.id).padStart(5, '0')}</td>
-                    <td data-label="Patient">${order.patient_name} (${order.patient_display_id})</td>
+                    <td data-label="Patient Info">
+                        <strong>${order.patient_name}</strong><br>
+                        <small style="color: #666;">ID: ${order.patient_display_id}</small>
+                        ${phone}
+                    </td>
+                    <td data-label="Age/Gender">
+                        ${age} yrs ${genderIcon}<br>
+                        <small style="color: #666;">DOB: ${dob}</small>
+                    </td>
                     <td data-label="Test">${order.test_name}</td>
                     <td data-label="Cost">₹${parseFloat(order.cost || 0).toFixed(2)}</td>
                     <td data-label="Status">${status}</td>
@@ -2214,11 +2231,14 @@ document.addEventListener("DOMContentLoaded", function() {
         const modal = document.getElementById('lab-order-modal');
         const form = document.getElementById('lab-order-form');
         const title = document.getElementById('lab-modal-title');
+        const patientInfoDisplay = document.getElementById('patient-info-display');
+        
         form.reset();
         clearSelectedPatient();
         clearSelectedLabDoctor();
         document.getElementById('current-attachment-info').innerHTML = '';
         document.getElementById('lab-findings-container').innerHTML = '';
+        patientInfoDisplay.style.display = 'none'; // Hide patient info by default
     
         const createFindingRow = (finding = { parameter: '', result: '', range: '' }) => {
             const row = document.createElement('div');
@@ -2243,6 +2263,20 @@ document.addEventListener("DOMContentLoaded", function() {
             title.textContent = `Manage Lab Order for ${data.patient_name}`;
             document.getElementById('lab-form-action').value = 'updateLabOrder';
             document.getElementById('lab-order-id').value = data.id;
+            
+            // Display patient information
+            if (data.patient_name) {
+                patientInfoDisplay.style.display = 'block';
+                document.getElementById('display-patient-name').textContent = data.patient_name || 'N/A';
+                document.getElementById('display-patient-id').textContent = data.patient_display_id || 'N/A';
+                document.getElementById('display-patient-age').textContent = data.patient_age ? `${data.patient_age} years` : 'N/A';
+                document.getElementById('display-patient-gender').textContent = data.patient_gender || 'N/A';
+                
+                // Format DOB
+                const dob = data.patient_dob ? new Date(data.patient_dob).toLocaleDateString('en-GB') : 'N/A';
+                document.getElementById('display-patient-dob').textContent = dob;
+                document.getElementById('display-patient-phone').textContent = data.patient_phone || 'N/A';
+            }
             
             if(data.patient_id && data.patient_name) {
                 selectPatient(data.patient_id, `${data.patient_name} (${data.patient_display_id})`);

@@ -447,7 +447,8 @@ require_once 'api.php';
                         <thead>
                             <tr>
                                 <th>Order ID</th>
-                                <th>Patient</th>
+                                <th>Patient Info</th>
+                                <th>Age/Gender</th>
                                 <th>Test</th>
                                 <th>Cost</th>
                                 <th>Status</th>
@@ -947,6 +948,33 @@ require_once 'api.php';
                 <button class="modal-close-btn">&times;</button>
             </div>
             <div class="modal-body">
+                <!-- Patient Information Display (shown when editing) -->
+                <div id="patient-info-display" style="display:none; background: #f0f7ff; border-left: 4px solid #0067FF; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
+                    <h4 style="margin: 0 0 10px 0; color: #0067FF; font-size: 16px;">
+                        <i class="fas fa-user-circle"></i> Patient Information
+                    </h4>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; font-size: 14px;">
+                        <div>
+                            <strong>Name:</strong> <span id="display-patient-name"></span>
+                        </div>
+                        <div>
+                            <strong>ID:</strong> <span id="display-patient-id"></span>
+                        </div>
+                        <div>
+                            <strong>Age:</strong> <span id="display-patient-age"></span>
+                        </div>
+                        <div>
+                            <strong>Gender:</strong> <span id="display-patient-gender"></span>
+                        </div>
+                        <div>
+                            <strong>DOB:</strong> <span id="display-patient-dob"></span>
+                        </div>
+                        <div>
+                            <strong>Phone:</strong> <span id="display-patient-phone"></span>
+                        </div>
+                    </div>
+                </div>
+                
                 <form id="lab-order-form" novalidate>
                     <input type="hidden" name="id" id="lab-order-id">
                     <input type="hidden" name="action" id="lab-form-action">
