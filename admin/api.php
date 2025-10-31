@@ -399,7 +399,12 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                                     $email_body = getAccountModificationTemplate($name, $username, $email_changes, $current_datetime, 'System Administrator');
                                     
                                     // Send to the updated email address
-                                    send_mail('MedSync', $email, 'Your MedSync Account Has Been Updated', $email_body);
+                                    $email_sent = send_mail('MedSync', $email, 'Your MedSync Account Has Been Updated', $email_body);
+                                    
+                                    if (!$email_sent) {
+                                        error_log("Failed to send account update email to user (ID: $id, Email: $email)");
+                                        log_activity($conn, $admin_user_id_for_log, 'email_error', $id, "Failed to send account update notification email to $email");
+                                    }
                                     
                                     // If email was changed, also notify the old email
                                     if (isset($email_changes['Email']) && !empty($old_user_data['email'])) {
@@ -410,10 +415,16 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                                             $current_datetime, 
                                             'System Administrator'
                                         );
-                                        send_mail('MedSync', $old_user_data['email'], 'Your MedSync Account Has Been Updated', $old_email_body);
+                                        $old_email_sent = send_mail('MedSync', $old_user_data['email'], 'Your MedSync Account Has Been Updated', $old_email_body);
+                                        
+                                        if (!$old_email_sent) {
+                                            error_log("Failed to send account update email to old email (ID: $id, Email: {$old_user_data['email']})");
+                                        }
                                     }
                                 } catch (Exception $email_error) {
-                                    // Log but don't fail the update if email fails
+                                    // Log email error but don't fail the update
+                                    error_log("Email notification failed for user update (ID: $id): " . $email_error->getMessage());
+                                    log_activity($conn, $admin_user_id_for_log, 'email_error', $id, "Failed to send account update notification email: " . $email_error->getMessage());
                                 }
                             }
                             // --- End Email Notification ---
