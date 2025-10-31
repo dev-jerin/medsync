@@ -295,8 +295,8 @@ body.dark-mode .nav-dropdown a {
     border-left-color: #3e90f5; /* Lighter blue for the border */
 }
 .stat-card.blue .icon { 
-    color: #2070f1; /* Original blue for the icon itself */
-    background-color: #668dbc; /* A very light blue for the icon background */
+    color: #3B82F6; /* Blue for the icon itself */
+    background-color: #DBEAFE; /* Very light blue for the icon background in light mode */
 }
 
 /* Improve icon color in dark mode for better contrast */

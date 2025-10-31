@@ -199,7 +199,7 @@ $gender_value = isset($form_data['gender']) ? htmlspecialchars($form_data['gende
                         </div>
                         
                         <div class="form-group">
-                            <div class="g-recaptcha" data-sitekey="<?php echo RECAPTCHA_SITE_KEY; ?>"></div>
+                            <center><div class="g-recaptcha" data-sitekey="<?php echo RECAPTCHA_SITE_KEY; ?>"></div></center>
                         </div>
 
                         <button type="submit" class="btn btn-primary btn-full-width">Create Account</button>

@@ -138,7 +138,7 @@ $username_value = isset($form_data['username']) ? htmlspecialchars($form_data['u
                         </div>
 
                         <div class="form-group">
-                            <div class="g-recaptcha" data-sitekey="<?php echo RECAPTCHA_SITE_KEY; ?>"></div>
+                            <center><div class="g-recaptcha" data-sitekey="<?php echo RECAPTCHA_SITE_KEY; ?>"></div></center>
                         </div>
 
                         <div class="forgot-password-link">
