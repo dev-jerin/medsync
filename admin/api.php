@@ -1234,20 +1234,83 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     break;
 
                 case 'appointments':
-                    $doctor_id_filter = $_GET['doctor_id'] ?? 'all';
+                    $search = $_GET['search'] ?? '';
+                    $statusFilter = $_GET['status'] ?? 'all';
+                    $tokenStatusFilter = $_GET['token_status'] ?? 'all';
+                    $dateFrom = $_GET['date_from'] ?? '';
+                    $dateTo = $_GET['date_to'] ?? '';
+                    $doctorId = $_GET['doctor_id'] ?? 'all';
 
-                    $sql = "SELECT a.id, p.name as patient_name, p.display_user_id as patient_display_id, d.name as doctor_name, a.appointment_date, a.status
+                    $sql = "SELECT 
+                                a.id, 
+                                a.token_number,
+                                a.token_status,
+                                a.slot_start_time,
+                                a.slot_end_time,
+                                a.appointment_date, 
+                                a.status,
+                                p.name as patient_name, 
+                                p.display_user_id as patient_display_id,
+                                p.phone as patient_phone,
+                                p.email as patient_email,
+                                p.gender as patient_gender,
+                                TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as patient_age,
+                                d.name as doctor_name,
+                                d.display_user_id as doctor_display_id,
+                                sp.name as doctor_specialty
                             FROM appointments a
                             JOIN users p ON a.user_id = p.id
-                            JOIN users d ON a.doctor_id = d.id";
+                            JOIN users d ON a.doctor_id = d.id
+                            LEFT JOIN doctors doc ON d.id = doc.user_id
+                            LEFT JOIN specialities sp ON doc.specialty_id = sp.id";
 
+                    $whereConditions = [];
                     $params = [];
                     $types = "";
 
-                    if ($doctor_id_filter !== 'all') {
-                        $sql .= " WHERE a.doctor_id = ?";
-                        $params[] = (int) $doctor_id_filter;
+                    // Search filter
+                    if (!empty($search)) {
+                        $whereConditions[] = "(p.name LIKE ? OR p.display_user_id LIKE ? OR d.name LIKE ? OR d.display_user_id LIKE ?)";
+                        $searchTerm = "%{$search}%";
+                        array_push($params, $searchTerm, $searchTerm, $searchTerm, $searchTerm);
+                        $types .= "ssss";
+                    }
+
+                    // Status filter
+                    if ($statusFilter !== 'all') {
+                        $whereConditions[] = "a.status = ?";
+                        $params[] = $statusFilter;
+                        $types .= "s";
+                    }
+
+                    // Token status filter
+                    if ($tokenStatusFilter !== 'all') {
+                        $whereConditions[] = "a.token_status = ?";
+                        $params[] = $tokenStatusFilter;
+                        $types .= "s";
+                    }
+
+                    // Date range filter
+                    if (!empty($dateFrom)) {
+                        $whereConditions[] = "DATE(a.appointment_date) >= ?";
+                        $params[] = $dateFrom;
+                        $types .= "s";
+                    }
+                    if (!empty($dateTo)) {
+                        $whereConditions[] = "DATE(a.appointment_date) <= ?";
+                        $params[] = $dateTo;
+                        $types .= "s";
+                    }
+
+                    // Doctor filter
+                    if ($doctorId !== 'all') {
+                        $whereConditions[] = "a.doctor_id = ?";
+                        $params[] = (int)$doctorId;
                         $types .= "i";
+                    }
+
+                    if (!empty($whereConditions)) {
+                        $sql .= " WHERE " . implode(" AND ", $whereConditions);
                     }
 
                     $sql .= " ORDER BY a.appointment_date DESC";

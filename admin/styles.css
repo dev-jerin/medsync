@@ -747,11 +747,24 @@ body.dark-mode .stat-card.purple .icon {
 .status-badge.scheduled { background-color: #FEF3C7; color: #92400E; }
 .status-badge.completed { background-color: #D1FAE5; color: #065F46; }
 .status-badge.cancelled { background-color: #FEE2E2; color: #991B1B; }
+
+/* Token Status Badges */
+.status-badge.waiting { background-color: #DBEAFE; color: #1E40AF; }
+.status-badge.in-consultation { background-color: #E0E7FF; color: #4338CA; }
+.status-badge.skipped { background-color: #FED7AA; color: #C2410C; }
+.status-badge.na { background-color: #F3F4F6; color: #6B7280; }
+
 body.dark-mode .status-badge.scheduled { background-color: #78350F; color: #FDE68A; }
 body.dark-mode .status-badge.completed { background-color: #064E3B; color: #A7F3D0; }
 body.dark-mode .status-badge.cancelled { background-color: #7F1D1D; color: #FECACA; }
 body.dark-mode .status-badge.active, body.dark-mode .status-badge.in-stock { background-color: #064E3B; color: #A7F3D0; }
 body.dark-mode .status-badge.inactive, body.dark-mode .status-badge.low-stock { background-color: #7F1D1D; color: #FECACA; }
+
+/* Token Status Dark Mode */
+body.dark-mode .status-badge.waiting { background-color: #1E3A8A; color: #BFDBFE; }
+body.dark-mode .status-badge.in-consultation { background-color: #3730A3; color: #C7D2FE; }
+body.dark-mode .status-badge.skipped { background-color: #9A3412; color: #FED7AA; }
+body.dark-mode .status-badge.na { background-color: #374151; color: #D1D5DB; }
 
 .action-buttons button {
     background: none;

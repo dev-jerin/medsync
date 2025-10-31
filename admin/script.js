@@ -328,7 +328,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (targetId === 'system-settings') fetchSystemSettings();
             if (targetId === 'appointments') {
                 fetchDoctorsForAppointmentFilter();
-                fetchAppointments();
+                fetchAppointments(false);
             }
              if (targetId === 'messenger') initializeMessenger();
             if (targetId === 'reports') generateReport();
@@ -499,9 +499,23 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     // --- APPOINTMENT MANAGEMENT ---
+    const appointmentSearchInput = document.getElementById('appointment-search-input');
+    const appointmentStatusFilter = document.getElementById('appointment-status-filter');
+    const tokenStatusFilter = document.getElementById('token-status-filter');
+    const appointmentDateFrom = document.getElementById('appointment-date-from');
+    const appointmentDateTo = document.getElementById('appointment-date-to');
+    const appointmentDoctorSelect = document.getElementById('appointment-doctor-select');
+    const appointmentApplyFiltersBtn = document.getElementById('appointment-apply-filters-btn');
+    const appointmentResetFiltersBtn = document.getElementById('appointment-reset-filters-btn');
+    const appointmentExportCsvBtn = document.getElementById('appointment-export-csv-btn');
+    
+    let appointmentSearchTimeout;
+    let currentAppointmentData = [];
+    let appointmentSortColumn = 'date';
+    let appointmentSortOrder = 'desc';
+
     const fetchDoctorsForAppointmentFilter = async () => {
-        const doctorFilterSelect = document.getElementById('appointment-doctor-filter');
-        if (doctorFilterSelect.options.length > 1) return;
+        if (appointmentDoctorSelect.options.length > 1) return;
 
         try {
             const response = await fetch('api.php?fetch=doctors_for_scheduling');
@@ -509,37 +523,221 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!result.success) throw new Error(result.message);
 
             result.data.forEach(doctor => {
-                doctorFilterSelect.innerHTML += `<option value="${doctor.id}">${doctor.name} (${doctor.display_user_id})</option>`;
+                appointmentDoctorSelect.innerHTML += `<option value="${doctor.id}">${doctor.name} (${doctor.display_user_id})</option>`;
             });
         } catch (error) {
             console.error("Failed to fetch doctors for filter:", error);
         }
     };
 
+    const updateAppointmentStatistics = (data) => {
+        const total = data.length;
+        const scheduled = data.filter(a => a.status === 'scheduled').length;
+        const completed = data.filter(a => a.status === 'completed').length;
+        const cancelled = data.filter(a => a.status === 'cancelled').length;
+
+        document.getElementById('total-appointments-stat').textContent = total;
+        document.getElementById('scheduled-appointments-stat').textContent = scheduled;
+        document.getElementById('completed-appointments-stat').textContent = completed;
+        document.getElementById('cancelled-appointments-stat').textContent = cancelled;
+    };
+
     const renderAppointmentRow = (appt) => {
         const status = appt.status.charAt(0).toUpperCase() + appt.status.slice(1);
+        const tokenStatus = appt.token_status ? appt.token_status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'N/A';
+        const tokenStatusClass = appt.token_status ? appt.token_status.replace('_', '-') : 'na';
+        
         return `
             <tr>
                 <td>${appt.id}</td>
-                <td>${appt.patient_name} (${appt.patient_display_id})</td>
-                <td>${appt.doctor_name}</td>
-                <td>${new Date(appt.appointment_date).toLocaleString()}</td>
+                <td><strong style="font-size: 1.1rem; color: var(--primary-color);">${appt.token_number || 'N/A'}</strong></td>
+                <td>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <strong>${appt.patient_name}</strong>
+                        <small style="color: var(--text-muted);">ID: ${appt.patient_display_id}</small>
+                        ${appt.patient_gender ? `<small style="color: var(--text-muted);">${appt.patient_gender}${appt.patient_age ? ', ' + appt.patient_age + ' yrs' : ''}</small>` : ''}
+                    </div>
+                </td>
+                <td>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        ${appt.patient_phone ? `<small><i class="fas fa-phone"></i> ${appt.patient_phone}</small>` : '<small style="color: var(--text-muted);">No phone</small>'}
+                        ${appt.patient_email ? `<small><i class="fas fa-envelope"></i> ${appt.patient_email}</small>` : ''}
+                    </div>
+                </td>
+                <td>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <strong>Dr. ${appt.doctor_name}</strong>
+                        <small style="color: var(--text-muted);">ID: ${appt.doctor_display_id}</small>
+                        ${appt.doctor_specialty ? `<small style="color: var(--text-muted);"><i class="fas fa-stethoscope"></i> ${appt.doctor_specialty}</small>` : ''}
+                    </div>
+                </td>
+                <td>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <strong>${new Date(appt.appointment_date).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</strong>
+                        <small>${new Date(appt.appointment_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</small>
+                        ${appt.slot_start_time && appt.slot_end_time ? `<small style="color: var(--text-muted);">Slot: ${appt.slot_start_time} - ${appt.slot_end_time}</small>` : ''}
+                    </div>
+                </td>
                 <td><span class="status-badge ${appt.status.toLowerCase()}">${status}</span></td>
+                <td><span class="status-badge ${tokenStatusClass}">${tokenStatus}</span></td>
             </tr>
         `;
     };
 
-    const fetchAppointments = (doctorId = 'all') => {
-        fetchAndRender({
-            endpoint: `api.php?fetch=appointments&doctor_id=${doctorId}`,
-            target: document.getElementById('appointments-table-body'),
-            renderRow: renderAppointmentRow,
-            columns: 5,
-            emptyMessage: 'No appointments found.'
+    const fetchAppointments = async (applyFilters = false) => {
+        const searchTerm = applyFilters ? appointmentSearchInput.value.trim() : '';
+        const statusFilter = applyFilters ? appointmentStatusFilter.value : 'all';
+        const tokenFilter = applyFilters ? tokenStatusFilter.value : 'all';
+        const dateFrom = applyFilters ? appointmentDateFrom.value : '';
+        const dateTo = applyFilters ? appointmentDateTo.value : '';
+        const doctorId = applyFilters ? appointmentDoctorSelect.value : 'all';
+
+        const params = new URLSearchParams({
+            search: searchTerm,
+            status: statusFilter,
+            token_status: tokenFilter,
+            date_from: dateFrom,
+            date_to: dateTo,
+            doctor_id: doctorId
         });
+
+        const tableBody = document.getElementById('appointments-table-body');
+        tableBody.innerHTML = `<tr><td colspan="8" class="loading-cell"><div class="spinner"></div><span>Loading...</span></td></tr>`;
+
+        try {
+            const response = await fetch(`api.php?fetch=appointments&${params}`);
+            const result = await response.json();
+            
+            if (!result.success) throw new Error(result.message);
+            
+            currentAppointmentData = result.data;
+            updateAppointmentStatistics(currentAppointmentData);
+            
+            if (currentAppointmentData.length > 0) {
+                tableBody.innerHTML = currentAppointmentData.map(renderAppointmentRow).join('');
+            } else {
+                tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">No appointments found.</td></tr>`;
+            }
+        } catch (error) {
+            console.error('Fetch error:', error);
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">Failed to load appointments: ${error.message}</td></tr>`;
+        }
     };
-    
-    document.getElementById('appointment-doctor-filter').addEventListener('change', (e) => fetchAppointments(e.target.value));
+
+    // Search with debounce
+    appointmentSearchInput.addEventListener('keyup', () => {
+        clearTimeout(appointmentSearchTimeout);
+        appointmentSearchTimeout = setTimeout(() => {
+            fetchAppointments(true);
+        }, 300);
+    });
+
+    // Apply filters button
+    appointmentApplyFiltersBtn.addEventListener('click', () => {
+        fetchAppointments(true);
+    });
+
+    // Reset filters button
+    appointmentResetFiltersBtn.addEventListener('click', () => {
+        appointmentSearchInput.value = '';
+        appointmentStatusFilter.value = 'all';
+        tokenStatusFilter.value = 'all';
+        appointmentDateFrom.value = '';
+        appointmentDateTo.value = new Date().toISOString().split('T')[0];
+        appointmentDoctorSelect.value = 'all';
+        fetchAppointments(false);
+    });
+
+    // Export CSV button
+    appointmentExportCsvBtn.addEventListener('click', () => {
+        if (currentAppointmentData.length === 0) {
+            showNotification('No data to export', 'error');
+            return;
+        }
+
+        const headers = ['Appt ID', 'Token', 'Patient Name', 'Patient ID', 'Patient Phone', 'Patient Email', 'Doctor Name', 'Doctor ID', 'Specialty', 'Date', 'Time', 'Status', 'Token Status'];
+        const rows = currentAppointmentData.map(appt => [
+            appt.id,
+            appt.token_number || 'N/A',
+            appt.patient_name,
+            appt.patient_display_id,
+            appt.patient_phone || 'N/A',
+            appt.patient_email || 'N/A',
+            appt.doctor_name,
+            appt.doctor_display_id,
+            appt.doctor_specialty || 'N/A',
+            new Date(appt.appointment_date).toLocaleDateString(),
+            new Date(appt.appointment_date).toLocaleTimeString(),
+            appt.status,
+            appt.token_status || 'N/A'
+        ]);
+
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `appointments_${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        showNotification('Appointments exported successfully', 'success');
+    });
+
+    // Table sorting
+    document.querySelector('#appointments-panel .table-container table thead').addEventListener('click', (e) => {
+        const th = e.target.closest('th.sortable');
+        if (!th) return;
+
+        const sortBy = th.dataset.sort;
+        if (appointmentSortColumn === sortBy) {
+            appointmentSortOrder = appointmentSortOrder === 'asc' ? 'desc' : 'asc';
+        } else {
+            appointmentSortColumn = sortBy;
+            appointmentSortOrder = 'asc';
+        }
+
+        // Update sort icons
+        document.querySelectorAll('#appointments-panel .sortable i').forEach(icon => {
+            icon.className = 'fas fa-sort';
+        });
+        th.querySelector('i').className = `fas fa-sort-${appointmentSortOrder === 'asc' ? 'up' : 'down'}`;
+
+        // Sort data
+        currentAppointmentData.sort((a, b) => {
+            let valA, valB;
+            
+            switch(sortBy) {
+                case 'id':
+                    valA = parseInt(a.id);
+                    valB = parseInt(b.id);
+                    break;
+                case 'token':
+                    valA = parseInt(a.token_number) || 0;
+                    valB = parseInt(b.token_number) || 0;
+                    break;
+                case 'date':
+                    valA = new Date(a.appointment_date);
+                    valB = new Date(b.appointment_date);
+                    break;
+                default:
+                    return 0;
+            }
+
+            if (valA < valB) return appointmentSortOrder === 'asc' ? -1 : 1;
+            if (valA > valB) return appointmentSortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        // Re-render table
+        const tableBody = document.getElementById('appointments-table-body');
+        tableBody.innerHTML = currentAppointmentData.map(renderAppointmentRow).join('');
+    });
 
     // --- USER MANAGEMENT ---
     const userDetailModal = document.getElementById('user-detail-modal');

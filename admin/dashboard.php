@@ -318,26 +318,134 @@ $conn->close();
 
             </div>
             <div id="appointments-panel" class="content-panel">
-                <div
-                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
-                    <h2 id="appointments-table-title">Patient Appointments</h2>
-                    <div class="form-group" style="flex-grow: 1; max-width: 400px; margin-bottom: 0;">
-                        <label for="appointment-doctor-filter" style="margin-bottom: 0.25rem; font-weight: 500;">Filter
-                            by Doctor</label>
-                        <select id="appointment-doctor-filter">
-                            <option value="all">All Doctors</option>
-                        </select>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <h2>Patient Appointments</h2>
+                </div>
+
+                <!-- Enhanced Filters Section -->
+                <div style="background: var(--bg-grey); padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+                        <!-- Search Input -->
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="appointment-search-input" style="font-size: 0.9rem; font-weight: 500;">Search</label>
+                            <div class="search-container" style="position: relative;">
+                                <i class="fas fa-search search-icon" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted);"></i>
+                                <input type="text" 
+                                       id="appointment-search-input" 
+                                       placeholder="Search by patient or doctor..." 
+                                       style="padding-left: 2.5rem; width: 100%;">
+                            </div>
+                        </div>
+
+                        <!-- Appointment Status Filter -->
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="appointment-status-filter" style="font-size: 0.9rem; font-weight: 500;">Appointment Status</label>
+                            <select id="appointment-status-filter">
+                                <option value="all">All Statuses</option>
+                                <option value="scheduled">Scheduled</option>
+                                <option value="completed">Completed</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                        </div>
+
+                        <!-- Token Status Filter -->
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="token-status-filter" style="font-size: 0.9rem; font-weight: 500;">Token Status</label>
+                            <select id="token-status-filter">
+                                <option value="all">All Token Statuses</option>
+                                <option value="waiting">Waiting</option>
+                                <option value="in_consultation">In Consultation</option>
+                                <option value="completed">Completed</option>
+                                <option value="skipped">Skipped</option>
+                            </select>
+                        </div>
+
+                        <!-- Date From -->
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="appointment-date-from" style="font-size: 0.9rem; font-weight: 500;">Date From</label>
+                            <input type="date" id="appointment-date-from">
+                        </div>
+
+                        <!-- Date To -->
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="appointment-date-to" style="font-size: 0.9rem; font-weight: 500;">Date To</label>
+                            <input type="date" id="appointment-date-to" value="<?php echo date('Y-m-d'); ?>">
+                        </div>
+
+                        <!-- Doctor Filter -->
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="appointment-doctor-select" style="font-size: 0.9rem; font-weight: 500;">Filter by Doctor</label>
+                            <select id="appointment-doctor-select">
+                                <option value="all">All Doctors</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button id="appointment-apply-filters-btn" class="btn btn-primary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">
+                            <i class="fas fa-filter"></i> Apply Filters
+                        </button>
+                        <button id="appointment-reset-filters-btn" class="btn btn-secondary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">
+                            <i class="fas fa-redo"></i> Reset
+                        </button>
+                        <button id="appointment-export-csv-btn" class="btn btn-secondary" style="font-size: 0.9rem; padding: 0.5rem 1rem; margin-left: auto;">
+                            <i class="fas fa-download"></i> Export CSV
+                        </button>
                     </div>
                 </div>
+
+                <!-- Statistics Cards -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <i class="fas fa-calendar-check" style="font-size: 2rem; opacity: 0.8;"></i>
+                            <div>
+                                <div style="font-size: 1.8rem; font-weight: 700;" id="total-appointments-stat">0</div>
+                                <div style="font-size: 0.85rem; opacity: 0.9;">Total Appointments</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <i class="fas fa-clock" style="font-size: 2rem; opacity: 0.8;"></i>
+                            <div>
+                                <div style="font-size: 1.8rem; font-weight: 700;" id="scheduled-appointments-stat">0</div>
+                                <div style="font-size: 0.85rem; opacity: 0.9;">Scheduled</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <i class="fas fa-check-circle" style="font-size: 2rem; opacity: 0.8;"></i>
+                            <div>
+                                <div style="font-size: 1.8rem; font-weight: 700;" id="completed-appointments-stat">0</div>
+                                <div style="font-size: 0.85rem; opacity: 0.9;">Completed</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <i class="fas fa-times-circle" style="font-size: 2rem; opacity: 0.8;"></i>
+                            <div>
+                                <div style="font-size: 1.8rem; font-weight: 700;" id="cancelled-appointments-stat">0</div>
+                                <div style="font-size: 0.85rem; opacity: 0.9;">Cancelled</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="table-container">
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Appt. ID</th>
+                                <th class="sortable" data-sort="id">Appt. ID <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="token">Token <i class="fas fa-sort"></i></th>
                                 <th>Patient Details</th>
-                                <th>Doctor</th>
-                                <th>Date & Time</th>
+                                <th>Contact</th>
+                                <th>Doctor Details</th>
+                                <th class="sortable" data-sort="date">Date & Time <i class="fas fa-sort"></i></th>
                                 <th>Status</th>
+                                <th>Token Status</th>
                             </tr>
                         </thead>
                         <tbody id="appointments-table-body">
