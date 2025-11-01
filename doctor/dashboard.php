@@ -655,19 +655,19 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                 <div class="modal-header">
                     <h4 id="lab-report-view-title">Laboratory Report</h4>
                     <div>
-                        <button class="btn btn-secondary"><i class="fas fa-print"></i> Print</button>
-                        <button class="btn btn-primary"><i class="fas fa-download"></i> Download PDF</button>
+                        <button class="btn btn-secondary" id="print-lab-report-btn"><i class="fas fa-print"></i> Print</button>
+                        <button class="btn btn-primary" id="download-lab-report-btn"><i class="fas fa-download"></i> Download PDF</button>
                         <button class="modal-close-btn" data-modal-id="lab-report-view-modal-overlay" style="margin-left: 1rem;">&times;</button>
                     </div>
                 </div>
                 <div class="modal-body" id="lab-report-content">
                     
                     <div class="report-header">
-                        <img src="../images/logo.png" alt="MedSync Logo" class="report-header-logo">
+                        <img src="../images/hospital.png" alt="Calysta Health Institute" class="report-header-logo">
                         <div class="report-hospital-details">
-                            <strong>MedSync Diagnostics</strong>
+                            <strong>Calysta Health Institute</strong>
                             <p>Kerala, India</p>
-                            <p>Phone: +91 45235 31245 | Email: labs@medsync.calysta.com</p>
+                            <p>Phone: +91 45235 31245 | Email: medsync.calysta@gmail.com</p>
                         </div>
                     </div>
 

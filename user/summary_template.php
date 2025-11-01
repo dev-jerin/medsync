@@ -50,8 +50,8 @@
 </head>
 <body>
     <div class="header">
-        <h1>MedSync Hospital</h1>
-        <p>123 Health St, Wellness City, 12345</p>
+        <h1>Calysta Health Institute</h1>
+        <p>Kerala, India</p>
         <p>Discharge Summary</p>
     </div>
 

@@ -1556,8 +1556,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 const report = result.data;
                 const modal = document.getElementById('lab-report-view-modal-overlay');
                 
-                const downloadPdfBtn = modal.querySelector('.btn-primary');
-                const printBtn = modal.querySelector('.btn-secondary');
+                const downloadPdfBtn = document.getElementById('download-lab-report-btn');
+                const printBtn = document.getElementById('print-lab-report-btn');
                 
                 document.querySelector('#lab-report-view-title').textContent = `Laboratory Report for ${report.patient_name}`;
                 
@@ -1610,12 +1610,17 @@ document.addEventListener("DOMContentLoaded", function() {
                     downloadPdfBtn.onclick = () => window.open(`../${report.attachment_path}`, '_blank');
                     printBtn.disabled = true;
                     printBtn.title = "Print the downloaded PDF instead";
+                    printBtn.onclick = null;
                 } else {
                     downloadPdfBtn.style.display = 'none';
                     downloadPdfBtn.disabled = true;
                     downloadPdfBtn.onclick = null;
                     printBtn.disabled = false;
                     printBtn.title = "Print this report";
+                    // Add print functionality
+                    printBtn.onclick = () => {
+                        printLabReport();
+                    };
                 }
                 
                 openModalById('lab-report-view-modal-overlay');
@@ -1626,6 +1631,200 @@ document.addEventListener("DOMContentLoaded", function() {
             console.error('Error fetching report details:', error);
             alert('Could not fetch report details.');
         }
+    }
+    
+    // ===================================================================
+    // --- Print Lab Report Function ---
+    // ===================================================================
+    function printLabReport() {
+        const modalBody = document.querySelector('#lab-report-view-modal-overlay .modal-body');
+        if (!modalBody) {
+            alert('Unable to print report. Please try again.');
+            return;
+        }
+
+        // Create a new window for printing
+        const printWindow = window.open('', '_blank');
+        
+        // Write the HTML structure with styles
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Laboratory Report - Print</title>
+                <style>
+                    * {
+                        margin: 0;
+                        padding: 0;
+                        box-sizing: border-box;
+                    }
+                    
+                    body {
+                        font-family: Arial, sans-serif;
+                        padding: 20px;
+                        color: #333;
+                    }
+                    
+                    .report-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 30px;
+                        padding-bottom: 20px;
+                        border-bottom: 2px solid #333;
+                    }
+                    
+                    .report-header-logo {
+                        width: 80px;
+                        height: auto;
+                    }
+                    
+                    .report-hospital-details {
+                        text-align: right;
+                    }
+                    
+                    .report-hospital-details strong {
+                        font-size: 18px;
+                        display: block;
+                        margin-bottom: 5px;
+                    }
+                    
+                    .report-hospital-details p {
+                        margin: 2px 0;
+                        font-size: 12px;
+                    }
+                    
+                    h4 {
+                        margin-top: 20px;
+                        margin-bottom: 10px;
+                        font-size: 16px;
+                        color: #0066cc;
+                    }
+                    
+                    .report-info-grid {
+                        display: grid;
+                        grid-template-columns: 1fr 1fr;
+                        gap: 20px;
+                        margin-bottom: 30px;
+                    }
+                    
+                    .info-box {
+                        border: 1px solid #ddd;
+                        padding: 15px;
+                        border-radius: 5px;
+                    }
+                    
+                    .info-box-title {
+                        font-size: 14px;
+                        font-weight: bold;
+                        margin-bottom: 10px;
+                        color: #0066cc;
+                        border-bottom: 1px solid #ddd;
+                        padding-bottom: 5px;
+                    }
+                    
+                    .info-box p {
+                        margin: 8px 0;
+                        font-size: 13px;
+                    }
+                    
+                    .report-section {
+                        margin-bottom: 25px;
+                    }
+                    
+                    .report-section-title {
+                        font-size: 15px;
+                        font-weight: bold;
+                        margin-bottom: 10px;
+                        color: #0066cc;
+                        border-bottom: 2px solid #0066cc;
+                        padding-bottom: 5px;
+                    }
+                    
+                    .findings-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 10px;
+                    }
+                    
+                    .findings-table th,
+                    .findings-table td {
+                        border: 1px solid #ddd;
+                        padding: 10px;
+                        text-align: left;
+                        font-size: 12px;
+                    }
+                    
+                    .findings-table th {
+                        background-color: #f5f5f5;
+                        font-weight: bold;
+                    }
+                    
+                    .findings-table .abnormal-low,
+                    .findings-table .abnormal-high {
+                        background-color: #fff3cd;
+                    }
+                    
+                    .findings-table .flag {
+                        font-weight: bold;
+                        color: #d9534f;
+                    }
+                    
+                    .report-summary {
+                        padding: 15px;
+                        background-color: #f9f9f9;
+                        border-left: 4px solid #0066cc;
+                        font-size: 13px;
+                        line-height: 1.6;
+                    }
+                    
+                    .report-signature-section {
+                        margin-top: 40px;
+                        text-align: center;
+                        border-top: 2px solid #333;
+                        padding-top: 20px;
+                    }
+                    
+                    .signature-box {
+                        margin-top: 20px;
+                        text-align: right;
+                        max-width: 300px;
+                        margin-left: auto;
+                    }
+                    
+                    .signature-box p {
+                        margin: 5px 0;
+                        font-size: 13px;
+                    }
+                    
+                    @media print {
+                        body {
+                            padding: 10px;
+                        }
+                        
+                        @page {
+                            margin: 1cm;
+                        }
+                    }
+                </style>
+            </head>
+            <body>
+                ${modalBody.innerHTML}
+            </body>
+            </html>
+        `);
+        
+        printWindow.document.close();
+        
+        // Wait for content to load before printing
+        printWindow.onload = function() {
+            printWindow.focus();
+            printWindow.print();
+            // Close window after print dialog is dismissed
+            printWindow.onafterprint = function() {
+                printWindow.close();
+            };
+        };
     }
     
     // ===================================================================

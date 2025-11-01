@@ -2285,12 +2285,12 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $dompdf->render();
                             $pdf_output = $dompdf->output();
                             
-                            $subject = "Your MedSync Hospital Bill (Invoice #" . $transaction_id . ")";
+                            $subject = "Your Calysta Health Institute Bill (Invoice #" . $transaction_id . ")";
                             // UPDATED: Personalize the email body with the patient's name
-                            $body = "Dear " . htmlspecialchars($patient['name']) . ",<br><br>Thank you for your payment. Please find your detailed bill attached.<br><br>Sincerely,<br>MedSync Hospital";
+                            $body = "Dear " . htmlspecialchars($patient['name']) . ",<br><br>Thank you for your payment. Please find your detailed bill attached.<br><br>Sincerely,<br>Calysta Health Institute";
                             
                             // UPDATED: Call the new centralized function with all required arguments
-                            send_mail('MedSync Billing', $patient['email'], $subject, $body, $pdf_output, 'invoice-' . $transaction_id . '.pdf');
+                            send_mail('Calysta Health Institute Billing', $patient['email'], $subject, $body, $pdf_output, 'invoice-' . $transaction_id . '.pdf');
                         }
 
                         $conn->commit();
