@@ -37,7 +37,12 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     <li><a href="#" class="nav-link" data-page="prescriptions"><i class="fas fa-file-prescription"></i> Prescriptions</a></li>
                     <li><a href="#" class="nav-link" data-page="admissions"><i class="fas fa-procedures"></i> Admissions</a></li>
                     <li><a href="#" class="nav-link" data-page="bed-management"><i class="fas fa-bed-pulse"></i> Bed Management</a></li>
-                    <li><a href="#" class="nav-link" data-page="messenger"><i class="fas fa-paper-plane"></i> Messenger</a></li>
+                    <li class="nav-item" data-page="messenger">
+                        <a href="#" class="nav-link" data-page="messenger">
+                            <i class="fas fa-paper-plane"></i> Messenger
+                            <span class="notification-badge" style="display: none;">0</span>
+                        </a>
+                    </li>
                     <li><a href="#" class="nav-link" data-page="notifications"><i class="fas fa-bell"></i> Notifications</a></li>
                     <li><a href="#" class="nav-link" data-page="discharge"><i class="fas fa-sign-out-alt"></i> Discharge Requests</a></li>
                     <li><a href="#" class="nav-link" data-page="labs"><i class="fas fa-vials"></i> Lab Orders</a></li>
@@ -268,12 +273,13 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
 
                     </div>
                     <div class="chat-window">
-                        <div class="chat-header">
-                            <span id="chat-with-user">Select a Conversation</span>
+                        <div class="chat-header" id="chat-with-user">
+                            <span>Select a Conversation</span>
                         </div>
                         <div class="chat-messages" id="chat-messages-container">
                              <div class="message-placeholder" style="text-align: center; padding: 2rem; color: var(--text-muted);">
-                                Please select a conversation from the left to view messages.
+                                <i class="fas fa-comments" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+                                <p>Please select a conversation from the left to view messages.</p>
                             </div>
                         </div>
                         <form class="chat-input" id="message-form">
@@ -287,19 +293,12 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
             <div id="notifications-page" class="page">
                 <div class="content-panel">
                     <div class="page-header">
-                        <h3><i class="fas fa-bell"></i> All Notifications</h3>
+                        <h3><i class="fas fa-bell"></i> Notifications</h3>
                         <button class="btn btn-secondary" id="mark-all-read-btn">Mark All as Read</button>
                     </div>
-                    <div class="filters">
-                        <select id="notification-type-filter">
-                            <option value="all">All Types</option>
-                            <option value="announcement">Announcements</option>
-                            <option value="lab">Lab Results</option>
-                            <option value="discharge">Discharge Updates</option>
-                        </select>
-                    </div>
                     <div class="notification-list-container">
-                        </div>
+                        <p class="no-items-message">Loading notifications...</p>
+                    </div>
                 </div>
             </div>
 
@@ -367,12 +366,26 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     <div id="personal-info-tab" class="profile-tab-content active">
                         <form id="personal-info-form" class="settings-form" novalidate>
                             <h4>Edit Your Personal Details</h4>
-                            <div class="profile-picture-editor">
-                                 <img src="<?php echo $profile_picture_path; ?>" alt="Doctor Avatar" class="editable-profile-picture">
-                                 <label for="profile-picture-upload" class="edit-picture-btn">
-                                     <i class="fas fa-camera"></i>
-                                     <input type="file" id="profile-picture-upload" accept="image/*">
-                                 </label>
+                            <div class="profile-picture-section">
+                                <div class="profile-picture-editor">
+                                    <img src="<?php echo $profile_picture_path; ?>?v=<?php echo time(); ?>" 
+                                        alt="Doctor Avatar" class="editable-profile-picture" id="doctor-profile-picture"
+                                        data-current-picture="<?php echo basename($profile_picture_path); ?>">
+                                    <div class="profile-picture-overlay">
+                                        <label for="profile-picture-upload" class="picture-action-btn upload-btn" title="Upload from device">
+                                            <i class="fas fa-upload"></i>
+                                            <input type="file" id="profile-picture-upload" accept="image/jpeg, image/png, image/gif">
+                                        </label>
+                                        <button type="button" class="picture-action-btn webcam-btn" id="open-webcam-btn" title="Take photo with webcam">
+                                            <i class="fas fa-camera"></i>
+                                        </button>
+                                        <button type="button" class="picture-action-btn remove-btn" id="remove-profile-picture-btn" 
+                                            title="Remove profile picture" <?php echo (basename($profile_picture_path) === 'default.png') ? 'style="display: none;"' : ''; ?>>
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <p class="profile-picture-hint">Hover to upload, take photo, or remove picture</p>
                             </div>
                             <div class="form-grid">
                                 <div class="form-group">
@@ -429,9 +442,17 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                                     <input type="text" id="profile-qualifications" name="qualifications" value="<?php echo htmlspecialchars($qualifications ?? '', ENT_QUOTES, 'UTF-8'); ?>" placeholder="e.g., MBBS, MD, FRCS">
                                     <small class="validation-error"></small>
                                 </div>
-                                 <div class="form-group">
+                                <div class="form-group">
                                     <label for="profile-id">Doctor ID</label>
                                     <input type="text" id="profile-id" name="display_id" value="<?php echo htmlspecialchars($display_user_id, ENT_QUOTES, 'UTF-8'); ?>" readonly>
+                                </div>
+                                <div class="form-group">
+                                    <label for="profile-office-floor">Office Floor</label>
+                                    <input type="text" id="profile-office-floor" name="office_floor" placeholder="e.g., 2nd Floor, Ground Floor">
+                                </div>
+                                <div class="form-group full-width">
+                                    <label for="profile-office-room">Office Room Number</label>
+                                    <input type="text" id="profile-office-room" name="office_room_number" placeholder="e.g., Room 205, Cabin 12">
                                 </div>
                             </div>
                             <div class="form-actions">
@@ -443,6 +464,18 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     <div id="security-tab" class="profile-tab-content">
                         <form id="security-form" class="settings-form">
                             <h4>Change Your Password</h4>
+                            
+                            <div class="password-requirements">
+                                <h5>Password Requirements:</h5>
+                                <ul>
+                                    <li id="req-length"><i class="fas fa-times-circle"></i> At least 8 characters</li>
+                                    <li id="req-uppercase"><i class="fas fa-times-circle"></i> At least one uppercase letter</li>
+                                    <li id="req-lowercase"><i class="fas fa-times-circle"></i> At least one lowercase letter</li>
+                                    <li id="req-number"><i class="fas fa-times-circle"></i> At least one number</li>
+                                    <li id="req-special"><i class="fas fa-times-circle"></i> At least one special character</li>
+                                </ul>
+                            </div>
+                            
                             <div class="form-grid">
                                 <div class="form-group full-width">
                                     <label for="current-password">Current Password</label>
@@ -457,6 +490,10 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                                         <input type="password" id="new-password" name="new_password" required>
                                         <i class="fas fa-eye-slash toggle-password"></i>
                                     </div>
+                                    <div class="password-strength">
+                                        <div class="password-strength-bar" id="password-strength-bar"></div>
+                                    </div>
+                                    <small class="password-strength-text" id="password-strength-text"></small>
                                 </div>
                                 <div class="form-group">
                                     <label for="confirm-password">Confirm New Password</label>
@@ -464,6 +501,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                                         <input type="password" id="confirm-password" name="confirm_password" required>
                                         <i class="fas fa-eye-slash toggle-password"></i>
                                     </div>
+                                    <small class="validation-error" id="confirm-password-error"></small>
                                 </div>
                             </div>
                             <div class="form-actions">
@@ -610,19 +648,19 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                 <div class="modal-header">
                     <h4 id="lab-report-view-title">Laboratory Report</h4>
                     <div>
-                        <button class="btn btn-secondary"><i class="fas fa-print"></i> Print</button>
-                        <button class="btn btn-primary"><i class="fas fa-download"></i> Download PDF</button>
+                        <button class="btn btn-secondary" id="print-lab-report-btn"><i class="fas fa-print"></i> Print</button>
+                        <button class="btn btn-primary" id="download-lab-report-btn"><i class="fas fa-download"></i> Download PDF</button>
                         <button class="modal-close-btn" data-modal-id="lab-report-view-modal-overlay" style="margin-left: 1rem;">&times;</button>
                     </div>
                 </div>
                 <div class="modal-body" id="lab-report-content">
                     
                     <div class="report-header">
-                        <img src="../images/logo.png" alt="MedSync Logo" class="report-header-logo">
+                        <img src="../images/hospital.png" alt="Calysta Health Institute" class="report-header-logo">
                         <div class="report-hospital-details">
-                            <strong>MedSync Diagnostics</strong>
+                            <strong>Calysta Health Institute</strong>
                             <p>Kerala, India</p>
-                            <p>Phone: +91 45235 31245 | Email: labs@medsync.calysta.com</p>
+                            <p>Phone: +91 45235 31245 | Email: medsync.calysta@gmail.com</p>
                         </div>
                     </div>
 
@@ -940,7 +978,45 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
             </div>
         </div>
 
+        <!-- Webcam Capture Modal -->
+        <div id="webcam-modal" class="modal-overlay">
+            <div class="modal-container webcam-modal-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-camera"></i> Capture Profile Picture</h3>
+                    <button type="button" class="modal-close-btn" id="close-webcam-modal">&times;</button>
+                </div>
+                <div class="modal-body webcam-modal-body">
+                    <div class="webcam-container">
+                        <video id="webcam-video" autoplay playsinline></video>
+                        <canvas id="webcam-canvas" style="display: none;"></canvas>
+                        <div id="webcam-preview" class="webcam-preview" style="display: none;">
+                            <img id="webcam-captured-image" alt="Captured">
+                        </div>
+                    </div>
+                    <div class="webcam-status" id="webcam-status">
+                        <i class="fas fa-info-circle"></i> <span>Initializing camera...</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="webcam-cancel-btn">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="webcam-capture-btn">
+                        <i class="fas fa-camera"></i> Capture
+                    </button>
+                    <button type="button" class="btn btn-warning" id="webcam-retake-btn" style="display: none;">
+                        <i class="fas fa-redo"></i> Retake
+                    </button>
+                    <button type="button" class="btn btn-success" id="webcam-use-btn" style="display: none;">
+                        <i class="fas fa-check"></i> Use This Photo
+                    </button>
+                </div>
+            </div>
+        </div>
+
     </div>
+    
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container"></div>
+    
     <script>
         // Pass the session user ID to JavaScript for client-side logic
         const currentUserId = <?php echo json_encode($_SESSION['user_id']); ?>;

@@ -79,6 +79,117 @@ document.addEventListener("DOMContentLoaded", function() {
 
 
     // ===================================================================
+    // --- Notification Widget Logic ---
+    // ===================================================================
+    const notificationBell = document.getElementById('notification-bell');
+    const notificationBadge = document.getElementById('notification-badge');
+    const notificationPanel = document.getElementById('notification-panel');
+    const notificationDropdownBody = notificationPanel ? notificationPanel.querySelector('.dropdown-body') : null;
+    const viewAllNotificationsLink = document.getElementById('view-all-notifications-link');
+
+    const fetchUnreadNotificationCount = async () => {
+        try {
+            const response = await fetch('api.php?action=get_unread_notification_count');
+            const result = await response.json();
+            if (result.success && result.data.count > 0) {
+                notificationBadge.textContent = result.data.count > 9 ? '9+' : result.data.count;
+                notificationBadge.classList.remove('hidden');
+                notificationBadge.style.display = 'flex';
+            } else {
+                notificationBadge.classList.add('hidden');
+                notificationBadge.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Failed to fetch notification count:', error);
+        }
+    };
+    
+    function timeSince(date) {
+        const seconds = Math.floor((new Date() - date) / 1000);
+        let interval = seconds / 31536000;
+        if (interval > 1) return Math.floor(interval) + " years ago";
+        interval = seconds / 2592000;
+        if (interval > 1) return Math.floor(interval) + " months ago";
+        interval = seconds / 86400;
+        if (interval > 1) return Math.floor(interval) + " days ago";
+        interval = seconds / 3600;
+        if (interval > 1) return Math.floor(interval) + " hours ago";
+        interval = seconds / 60;
+        if (interval > 1) return Math.floor(interval) + " minutes ago";
+        return Math.floor(seconds) + " seconds ago";
+    }
+
+    const renderNotifications = (notifications, container) => {
+        if (!container) return;
+        if (notifications.length === 0) {
+            container.innerHTML = '<p class="no-items-message">No notifications found.</p>';
+            return;
+        }
+
+        container.innerHTML = notifications.map(n => {
+            const isReadClass = n.is_read == 1 ? 'read' : 'unread';
+            let sender = n.sender_name || 'System';
+            let senderRole = n.sender_role ? n.sender_role.charAt(0).toUpperCase() + n.sender_role.slice(1) : '';
+            const senderDisplay = senderRole ? `${sender} (${senderRole})` : sender;
+            const iconClass = 'fas fa-info-circle item-icon announcement';
+
+            return `
+                <div class="notification-list-item ${isReadClass}" data-id="${n.id}">
+                    <div class="item-icon-wrapper"><i class="${iconClass}"></i></div>
+                    <div class="item-content">
+                        <p><strong>${senderDisplay}:</strong> ${n.message}</p>
+                        <small>${timeSince(new Date(n.created_at))}</small>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    };
+    
+    const fetchAndRenderNotifications = async (container, limit = 50) => {
+        if (!container) return;
+        container.innerHTML = '<p class="no-items-message">Loading...</p>';
+        try {
+            const response = await fetch(`api.php?action=get_notifications&limit=${limit}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            renderNotifications(result.data, container);
+        } catch (error) {
+            console.error('Failed to fetch notifications:', error);
+            container.innerHTML = `<p class="no-items-message" style="color: var(--danger-color)">Failed to load notifications.</p>`;
+        }
+    };
+    
+    if (notificationBell) {
+        notificationBell.addEventListener('click', (e) => {
+            e.stopPropagation();
+            notificationPanel.classList.toggle('active');
+            if (notificationPanel.classList.contains('active')) {
+                fetchAndRenderNotifications(notificationDropdownBody, 5);
+            }
+        });
+    }
+
+    if (viewAllNotificationsLink) {
+        viewAllNotificationsLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            notificationPanel.classList.remove('active');
+            const notificationsNavLink = document.querySelector('.nav-link[data-page="notifications"]');
+            if (notificationsNavLink) notificationsNavLink.click();
+        });
+    }
+
+    // Close notification dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (notificationPanel && !notificationPanel.contains(e.target) && !notificationBell.contains(e.target)) {
+            notificationPanel.classList.remove('active');
+        }
+    });
+
+    // Fetch notification count on load and periodically
+    fetchUnreadNotificationCount();
+    setInterval(fetchUnreadNotificationCount, 30000); // Every 30 seconds
+
+    // ===================================================================
     // --- Dashboard Page Logic ---
     // ===================================================================
     async function loadDashboardData() {
@@ -305,11 +416,80 @@ document.addEventListener("DOMContentLoaded", function() {
     // --- END: DISCHARGE PROCESS LOGIC ---
 
     // ===================================================================
-    // --- Patient Encounter Logic ---
+    // --- NOTIFICATIONS PAGE LOGIC ---
     // ===================================================================
+    async function loadAllNotifications() {
+        const notificationListContainer = document.querySelector('.notification-list-container');
+        if (!notificationListContainer) return;
+        
+        notificationListContainer.innerHTML = '<p class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading notifications...</p>';
+        
+        try {
+            const response = await fetch('api.php?action=get_notifications&limit=100');
+            const result = await response.json();
+            
+            if (result.success) {
+                renderAllNotifications(result.data, notificationListContainer);
+            } else {
+                notificationListContainer.innerHTML = `<p class="no-items-message">${result.message || 'No notifications found.'}</p>`;
+            }
+        } catch (error) {
+            console.error('Failed to load all notifications:', error);
+            notificationListContainer.innerHTML = `<p class="no-items-message" style="color: var(--danger-color);">Failed to load notifications.</p>`;
+        }
+    }
 
-    // Use event delegation for the "Start" buttons
-    document.querySelector('.main-content').addEventListener('click', function(e) {
+    function renderAllNotifications(notifications, container) {
+        if (!container) return;
+        if (notifications.length === 0) {
+            container.innerHTML = '<p class="no-items-message">No notifications found.</p>';
+            return;
+        }
+
+        container.innerHTML = notifications.map(n => {
+            const isReadClass = n.is_read == 1 ? 'read' : 'unread';
+            let sender = n.sender_name || 'System';
+            let senderRole = n.sender_role ? n.sender_role.charAt(0).toUpperCase() + n.sender_role.slice(1) : '';
+            const senderDisplay = senderRole ? `${sender} (${senderRole})` : sender;
+            const iconClass = 'fas fa-info-circle item-icon announcement';
+
+            return `
+                <div class="notification-list-item ${isReadClass}" data-id="${n.id}">
+                    <div class="item-icon-wrapper"><i class="${iconClass}"></i></div>
+                    <div class="item-content">
+                        <p><strong>${senderDisplay}:</strong> ${n.message}</p>
+                        <small>${timeSince(new Date(n.created_at))}</small>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Mark all as read button handler
+    const markAllReadBtn = document.getElementById('mark-all-read-btn');
+    if (markAllReadBtn) {
+        markAllReadBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('api.php?action=mark_all_notifications_read', {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                if (result.success) {
+                    loadAllNotifications();
+                    fetchUnreadNotificationCount();
+                } else {
+                    alert(result.message || 'Failed to mark notifications as read');
+                }
+            } catch (error) {
+                console.error('Failed to mark all as read:', error);
+                alert('Failed to mark notifications as read');
+            }
+        });
+    }
+    // --- END: NOTIFICATIONS PAGE LOGIC ---
+
+    // --- START: PATIENT ENCOUNTER LOGIC ---
+    document.addEventListener('click', function(e) {
         const startBtn = e.target.closest('.start-consultation-btn');
         if (startBtn) {
             const appointmentId = startBtn.dataset.appointmentId;
@@ -1357,6 +1537,11 @@ document.addEventListener("DOMContentLoaded", function() {
             navLinks.forEach(navLink => navLink.classList.remove('active'));
             link.classList.add('active');
             
+            // Stop message refresh when leaving messenger
+            if (pageId !== 'messenger') {
+                stopMessageRefresh();
+            }
+            
             if (pageId === 'bed-management') {
                 initializeOccupancyManagement();
             }
@@ -1379,8 +1564,12 @@ document.addEventListener("DOMContentLoaded", function() {
             if (pageId === 'discharge') {
                 loadDischargeRequests();
             }
+            if (pageId === 'notifications') {
+                loadAllNotifications();
+            }
             if (pageId === 'messenger') {
                 initializeMessenger();
+                updateUnreadBadge();
             }
             if (pageId === 'profile') {
                 if(document.querySelector('.profile-tab-link[data-tab="audit-log"]').classList.contains('active')) {
@@ -1394,6 +1583,12 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     });
 
+    // Update unread badge on page load and periodically
+    if (typeof updateUnreadBadge === 'function') {
+        updateUnreadBadge();
+        setInterval(updateUnreadBadge, 30000); // Update every 30 seconds
+    }
+
     hamburgerBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
     overlay.addEventListener('click', closeMenu);
     document.addEventListener('click', (e) => {
@@ -1401,6 +1596,10 @@ document.addEventListener("DOMContentLoaded", function() {
             if (!sidebar.contains(e.target) && !hamburgerBtn.contains(e.target)) {
                 closeMenu();
             }
+        }
+        // Close notification panel when clicking outside
+        if (notificationPanel && !notificationPanel.contains(e.target) && !notificationBell.contains(e.target)) {
+            notificationPanel.classList.remove('show');
         }
     });
     
@@ -1544,8 +1743,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 const report = result.data;
                 const modal = document.getElementById('lab-report-view-modal-overlay');
                 
-                const downloadPdfBtn = modal.querySelector('.btn-primary');
-                const printBtn = modal.querySelector('.btn-secondary');
+                const downloadPdfBtn = document.getElementById('download-lab-report-btn');
+                const printBtn = document.getElementById('print-lab-report-btn');
                 
                 document.querySelector('#lab-report-view-title').textContent = `Laboratory Report for ${report.patient_name}`;
                 
@@ -1598,12 +1797,17 @@ document.addEventListener("DOMContentLoaded", function() {
                     downloadPdfBtn.onclick = () => window.open(`../${report.attachment_path}`, '_blank');
                     printBtn.disabled = true;
                     printBtn.title = "Print the downloaded PDF instead";
+                    printBtn.onclick = null;
                 } else {
                     downloadPdfBtn.style.display = 'none';
                     downloadPdfBtn.disabled = true;
                     downloadPdfBtn.onclick = null;
                     printBtn.disabled = false;
                     printBtn.title = "Print this report";
+                    // Add print functionality
+                    printBtn.onclick = () => {
+                        printLabReport();
+                    };
                 }
                 
                 openModalById('lab-report-view-modal-overlay');
@@ -1617,11 +1821,207 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     
     // ===================================================================
+    // --- Print Lab Report Function ---
+    // ===================================================================
+    function printLabReport() {
+        const modalBody = document.querySelector('#lab-report-view-modal-overlay .modal-body');
+        if (!modalBody) {
+            alert('Unable to print report. Please try again.');
+            return;
+        }
+
+        // Create a new window for printing
+        const printWindow = window.open('', '_blank');
+        
+        // Write the HTML structure with styles
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Laboratory Report - Print</title>
+                <style>
+                    * {
+                        margin: 0;
+                        padding: 0;
+                        box-sizing: border-box;
+                    }
+                    
+                    body {
+                        font-family: Arial, sans-serif;
+                        padding: 20px;
+                        color: #333;
+                    }
+                    
+                    .report-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 30px;
+                        padding-bottom: 20px;
+                        border-bottom: 2px solid #333;
+                    }
+                    
+                    .report-header-logo {
+                        width: 80px;
+                        height: auto;
+                    }
+                    
+                    .report-hospital-details {
+                        text-align: right;
+                    }
+                    
+                    .report-hospital-details strong {
+                        font-size: 18px;
+                        display: block;
+                        margin-bottom: 5px;
+                    }
+                    
+                    .report-hospital-details p {
+                        margin: 2px 0;
+                        font-size: 12px;
+                    }
+                    
+                    h4 {
+                        margin-top: 20px;
+                        margin-bottom: 10px;
+                        font-size: 16px;
+                        color: #0066cc;
+                    }
+                    
+                    .report-info-grid {
+                        display: grid;
+                        grid-template-columns: 1fr 1fr;
+                        gap: 20px;
+                        margin-bottom: 30px;
+                    }
+                    
+                    .info-box {
+                        border: 1px solid #ddd;
+                        padding: 15px;
+                        border-radius: 5px;
+                    }
+                    
+                    .info-box-title {
+                        font-size: 14px;
+                        font-weight: bold;
+                        margin-bottom: 10px;
+                        color: #0066cc;
+                        border-bottom: 1px solid #ddd;
+                        padding-bottom: 5px;
+                    }
+                    
+                    .info-box p {
+                        margin: 8px 0;
+                        font-size: 13px;
+                    }
+                    
+                    .report-section {
+                        margin-bottom: 25px;
+                    }
+                    
+                    .report-section-title {
+                        font-size: 15px;
+                        font-weight: bold;
+                        margin-bottom: 10px;
+                        color: #0066cc;
+                        border-bottom: 2px solid #0066cc;
+                        padding-bottom: 5px;
+                    }
+                    
+                    .findings-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 10px;
+                    }
+                    
+                    .findings-table th,
+                    .findings-table td {
+                        border: 1px solid #ddd;
+                        padding: 10px;
+                        text-align: left;
+                        font-size: 12px;
+                    }
+                    
+                    .findings-table th {
+                        background-color: #f5f5f5;
+                        font-weight: bold;
+                    }
+                    
+                    .findings-table .abnormal-low,
+                    .findings-table .abnormal-high {
+                        background-color: #fff3cd;
+                    }
+                    
+                    .findings-table .flag {
+                        font-weight: bold;
+                        color: #d9534f;
+                    }
+                    
+                    .report-summary {
+                        padding: 15px;
+                        background-color: #f9f9f9;
+                        border-left: 4px solid #0066cc;
+                        font-size: 13px;
+                        line-height: 1.6;
+                    }
+                    
+                    .report-signature-section {
+                        margin-top: 40px;
+                        text-align: center;
+                        border-top: 2px solid #333;
+                        padding-top: 20px;
+                    }
+                    
+                    .signature-box {
+                        margin-top: 20px;
+                        text-align: right;
+                        max-width: 300px;
+                        margin-left: auto;
+                    }
+                    
+                    .signature-box p {
+                        margin: 5px 0;
+                        font-size: 13px;
+                    }
+                    
+                    @media print {
+                        body {
+                            padding: 10px;
+                        }
+                        
+                        @page {
+                            margin: 1cm;
+                        }
+                    }
+                </style>
+            </head>
+            <body>
+                ${modalBody.innerHTML}
+            </body>
+            </html>
+        `);
+        
+        printWindow.document.close();
+        
+        // Wait for content to load before printing
+        printWindow.onload = function() {
+            printWindow.focus();
+            printWindow.print();
+            // Close window after print dialog is dismissed
+            printWindow.onafterprint = function() {
+                printWindow.close();
+            };
+        };
+    }
+    
+    // ===================================================================
     // --- Messenger Page Logic ---
     // ===================================================================
     const messengerPage = document.getElementById('messenger-page');
     let messengerInitialized = false;
-    let activeConversation = { conversationId: null, otherUserId: null, otherUserName: null };
+    let activeConversation = { conversationId: null, otherUserId: null, otherUserName: null, otherUserPicture: null };
+    let messageRefreshInterval = null;
+    let lastMessageId = 0;
 
     function initializeMessenger() {
         if (messengerInitialized || !messengerPage) return;
@@ -1633,6 +2033,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const messagesContainer = document.getElementById('chat-messages-container');
 
         loadConversations();
+        updateUnreadBadge();
 
         messageForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1659,12 +2060,13 @@ document.addEventListener("DOMContentLoaded", function() {
                     if (!activeConversation.conversationId) {
                          await loadConversations(result.data.conversation_id);
                     }
+                    lastMessageId = result.data.id;
                 } else {
-                    alert('Error: ' + result.message);
+                    showToast(result.message, 'error', 'Send Failed');
                 }
             } catch (error) {
                 console.error('Send message error:', error);
-                alert('Failed to send message.');
+                showToast('Failed to send message.', 'error', 'Network Error');
             } finally {
                  originalButton.disabled = false;
                  originalButton.innerHTML = `<i class="fas fa-paper-plane"></i>`;
@@ -1679,22 +2081,32 @@ document.addEventListener("DOMContentLoaded", function() {
             document.querySelectorAll('.conversation-item.active').forEach(item => item.classList.remove('active'));
             conversationItem.classList.add('active');
 
-            const { conversationId, otherUserId, otherUserName } = conversationItem.dataset;
+            const { conversationId, otherUserId, otherUserName, otherUserPicture, otherUserRole } = conversationItem.dataset;
             
             activeConversation = {
                 conversationId: conversationId || null,
                 otherUserId: parseInt(otherUserId),
-                otherUserName: otherUserName
+                otherUserName: otherUserName,
+                otherUserPicture: otherUserPicture || null,
+                otherUserRole: otherUserRole || ''
             };
             
-            chatHeader.textContent = otherUserName;
+            updateChatHeader();
             
             if (conversationId) {
                 loadMessages(conversationId);
                 const unreadIndicator = conversationItem.querySelector('.unread-indicator');
+                const unreadCount = conversationItem.querySelector('.unread-count');
                 if (unreadIndicator) unreadIndicator.style.display = 'none';
+                if (unreadCount) unreadCount.remove();
+                updateUnreadBadge();
+                startMessageRefresh();
             } else {
-                messagesContainer.innerHTML = `<div class="message-placeholder">Start the conversation with ${otherUserName}.</div>`;
+                messagesContainer.innerHTML = `<div class="message-placeholder">
+                    <i class="fas fa-comments" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem;"></i>
+                    <p>Start the conversation with ${otherUserName}.</p>
+                </div>`;
+                stopMessageRefresh();
             }
             messageInput.focus();
         });
@@ -1738,7 +2150,11 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
 
             } else {
-                listItemsContainer.innerHTML = '<p style="padding: 1rem; text-align: center;">No conversations yet.</p>';
+                listItemsContainer.innerHTML = `<div style="padding: 2rem; text-align: center;">
+                    <i class="fas fa-inbox" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem;"></i>
+                    <p style="color: var(--text-muted);">No conversations yet.</p>
+                    <p style="color: var(--text-muted); font-size: 0.85rem;">Search for users to start chatting!</p>
+                </div>`;
             }
         } catch (error) {
             console.error('Error loading conversations:', error);
@@ -1750,21 +2166,35 @@ document.addEventListener("DOMContentLoaded", function() {
         const listItemsContainer = document.getElementById('conversation-list-items');
         if (!listItemsContainer) return;
 
-        const lastMessageTime = convo.last_message_time ? new Date(convo.last_message_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        const lastMessageTime = convo.last_message_time ? formatMessageTime(new Date(convo.last_message_time)) : '';
+        
+        // Generate avatar HTML
+        let avatarHtml = '';
+        if (convo.other_user_profile_picture) {
+            avatarHtml = `<img src="../uploads/profile_pictures/${convo.other_user_profile_picture}" alt="${convo.other_user_name}">`;
+        } else {
+            const initials = getInitials(convo.other_user_name);
+            avatarHtml = `<span>${initials}</span>`;
+        }
+        
+        // Capitalize role name
+        const roleName = convo.other_user_role ? convo.other_user_role.charAt(0).toUpperCase() + convo.other_user_role.slice(1) : '';
         
         const conversationHtml = `
             <div class="conversation-item" 
                 data-conversation-id="${convo.conversation_id}" 
                 data-other-user-id="${convo.other_user_id}"
-                data-other-user-name="${convo.other_user_name}">
-                <i class="fas ${getIconForRole(convo.other_user_role)} user-avatar"></i>
+                data-other-user-name="${convo.other_user_name}"
+                data-other-user-picture="${convo.other_user_profile_picture || ''}"
+                data-other-user-role="${roleName}">
+                <div class="user-avatar">${avatarHtml}</div>
                 <div class="user-details">
                     <div class="user-name">${convo.other_user_name}</div>
                     <div class="last-message">${convo.last_message || 'No messages yet.'}</div>
                 </div>
                 <div class="message-meta">
                     <div class="message-time">${lastMessageTime}</div>
-                    ${convo.unread_count > 0 ? '<span class="unread-indicator"></span>' : ''}
+                    ${convo.unread_count > 0 ? `<span class="unread-count">${convo.unread_count}</span>` : ''}
                 </div>
             </div>
         `;
@@ -1781,10 +2211,15 @@ document.addEventListener("DOMContentLoaded", function() {
             messagesContainer.innerHTML = '';
 
             if (result.success && result.data.length > 0) {
-                result.data.forEach(msg => renderMessage(msg));
+                renderMessagesWithDates(result.data);
                 scrollToBottom(messagesContainer);
+                lastMessageId = result.data[result.data.length - 1].id;
             } else {
-                messagesContainer.innerHTML = '<div class="message-placeholder">No messages in this conversation yet.</div>';
+                messagesContainer.innerHTML = `<div class="message-placeholder">
+                    <i class="fas fa-comments" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem;"></i>
+                    <p>No messages in this conversation yet.</p>
+                    <p style="font-size: 0.85rem;">Send a message to start chatting!</p>
+                </div>`;
             }
         } catch (error) {
             console.error('Error loading messages:', error);
@@ -1792,23 +2227,78 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-    function renderMessage(msg, isNew = false) {
+    function renderMessagesWithDates(messages) {
+        const messagesContainer = document.getElementById('chat-messages-container');
+        let lastDate = null;
+        let lastSenderId = null;
+        
+        messages.forEach((msg, index) => {
+            const msgDate = new Date(msg.created_at);
+            const dateStr = formatDate(msgDate);
+            
+            // Add date separator if date changed
+            if (dateStr !== lastDate) {
+                const separatorHtml = `<div class="date-separator"><span>${dateStr}</span></div>`;
+                messagesContainer.insertAdjacentHTML('beforeend', separatorHtml);
+                lastDate = dateStr;
+                lastSenderId = null; // Reset sender grouping on new date
+            }
+            
+            // Check if this message should be grouped with previous
+            const isGrouped = lastSenderId === msg.sender_id && index > 0;
+            renderMessage(msg, false, isGrouped);
+            lastSenderId = msg.sender_id;
+        });
+    }
+
+    function renderMessage(msg, isNew = false, isGrouped = false) {
         const messagesContainer = document.getElementById('chat-messages-container');
         const messageType = msg.sender_id == currentUserId ? 'sent' : 'received';
-        const timestamp = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const timestamp = formatMessageTime(new Date(msg.created_at));
+        const fullTimestamp = new Date(msg.created_at).toLocaleString();
 
         const sanitizedText = document.createElement('p');
         sanitizedText.textContent = msg.message_text;
 
+        const groupedClass = isGrouped ? 'grouped' : '';
+        
         const messageHtml = `
-            <div class="message ${messageType}">
+            <div class="message ${messageType} ${groupedClass}" data-message-id="${msg.id}">
                 <div class="message-content">
                     ${sanitizedText.outerHTML}
-                    <span class="message-timestamp">${timestamp}</span>
+                    <span class="message-timestamp" title="${fullTimestamp}">${timestamp}</span>
                 </div>
+                ${messageType === 'sent' ? `
+                <div class="message-actions">
+                    <button class="message-action-btn copy-message" title="Copy message">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                    <button class="message-action-btn delete-message" title="Delete message">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>` : `
+                <div class="message-actions">
+                    <button class="message-action-btn copy-message" title="Copy message">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>`}
             </div>
         `;
         messagesContainer.insertAdjacentHTML('beforeend', messageHtml);
+        
+        // Add event listeners for message actions
+        const messageEl = messagesContainer.lastElementChild;
+        const copyBtn = messageEl.querySelector('.copy-message');
+        const deleteBtn = messageEl.querySelector('.delete-message');
+        
+        if (copyBtn) {
+            copyBtn.addEventListener('click', () => copyMessageText(msg.message_text));
+        }
+        
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => deleteMessage(msg.id));
+        }
+        
         if(isNew) scrollToBottom(messagesContainer);
     }
     
@@ -1826,14 +2316,27 @@ document.addEventListener("DOMContentLoaded", function() {
 
             if (result.success && result.data.length > 0) {
                 result.data.forEach(user => {
+                    // Generate avatar HTML
+                    let avatarHtml = '';
+                    if (user.profile_picture) {
+                        avatarHtml = `<img src="../uploads/profile_pictures/${user.profile_picture}" alt="${user.name}">`;
+                    } else {
+                        const initials = getInitials(user.name);
+                        avatarHtml = `<span>${initials}</span>`;
+                    }
+                    
+                    const roleName = user.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : '';
+                    
                     const searchResultHtml = `
                         <div class="conversation-item" 
                             data-conversation-id="${user.conversation_id || ''}"
                             data-other-user-id="${user.id}"
-                            data-other-user-name="${user.name}">
-                            <i class="fas ${getIconForRole(user.role)} user-avatar"></i>
+                            data-other-user-name="${user.name}"
+                            data-other-user-picture="${user.profile_picture || ''}"
+                            data-other-user-role="${roleName}">
+                            <div class="user-avatar">${avatarHtml}</div>
                             <div class="user-details">
-                                <div class="user-name">${user.name} <small>(${user.role})</small></div>
+                                <div class="user-name">${user.name} <small>(${roleName})</small></div>
                                 <div class="last-message">${user.conversation_id ? '' : 'Click to start a new conversation.'}</div>
                             </div>
                         </div>
@@ -1841,7 +2344,10 @@ document.addEventListener("DOMContentLoaded", function() {
                     listItemsContainer.insertAdjacentHTML('beforeend', searchResultHtml);
                 });
             } else {
-                listItemsContainer.innerHTML = '<p style="padding: 1rem; text-align: center;">No users found.</p>';
+                listItemsContainer.innerHTML = `<div style="padding: 2rem; text-align: center;">
+                    <i class="fas fa-user-slash" style="font-size: 2.5rem; color: var(--text-muted); margin-bottom: 1rem;"></i>
+                    <p style="color: var(--text-muted);">No users found.</p>
+                </div>`;
             }
         } catch (error) {
             console.error('Error searching users:', error);
@@ -1849,22 +2355,303 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
+    // Auto-refresh messages
+    function startMessageRefresh() {
+        stopMessageRefresh();
+        messageRefreshInterval = setInterval(async () => {
+            if (activeConversation.conversationId) {
+                await checkNewMessages();
+            }
+        }, 5000); // Check every 5 seconds
+    }
+
+    function stopMessageRefresh() {
+        if (messageRefreshInterval) {
+            clearInterval(messageRefreshInterval);
+            messageRefreshInterval = null;
+        }
+    }
+
+    async function checkNewMessages() {
+        if (!activeConversation.conversationId) return;
+        
+        try {
+            const response = await fetch(`api.php?action=get_messages&conversation_id=${activeConversation.conversationId}&after_id=${lastMessageId}`);
+            const result = await response.json();
+            
+            if (result.success && result.data.length > 0) {
+                const messagesContainer = document.getElementById('chat-messages-container');
+                const wasAtBottom = isScrolledToBottom(messagesContainer);
+                
+                result.data.forEach(msg => {
+                    renderMessage(msg, true);
+                    lastMessageId = msg.id;
+                });
+                
+                if (wasAtBottom) {
+                    scrollToBottom(messagesContainer);
+                }
+                
+                // Update conversation list
+                loadConversations(activeConversation.conversationId);
+            }
+        } catch (error) {
+            console.error('Error checking new messages:', error);
+        }
+    }
+
+    // Message actions
+    function copyMessageText(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            showToast('Message copied to clipboard!', 'success', 'Copied');
+        }).catch(() => {
+            showToast('Failed to copy message.', 'error', 'Copy Failed');
+        });
+    }
+
+    async function deleteMessage(messageId) {
+        if (!confirm('Are you sure you want to delete this message?')) return;
+        
+        try {
+            const formData = new FormData();
+            formData.append('action', 'delete_message');
+            formData.append('message_id', messageId);
+            
+            const response = await fetch('api.php', { method: 'POST', body: formData });
+            const result = await response.json();
+            
+            if (result.success) {
+                const messageEl = document.querySelector(`.message[data-message-id="${messageId}"]`);
+                if (messageEl) {
+                    messageEl.style.animation = 'fadeOut 0.3s ease';
+                    setTimeout(() => messageEl.remove(), 300);
+                }
+                showToast('Message deleted successfully.', 'success', 'Deleted');
+            } else {
+                showToast(result.message, 'error', 'Delete Failed');
+            }
+        } catch (error) {
+            console.error('Error deleting message:', error);
+            showToast('Failed to delete message.', 'error', 'Error');
+        }
+    }
+
+    // Update chat header with avatar
+    function updateChatHeader() {
+        const chatHeader = document.getElementById('chat-with-user');
+        
+        let avatarHtml = '';
+        if (activeConversation.otherUserPicture) {
+            avatarHtml = `<img src="../uploads/profile_pictures/${activeConversation.otherUserPicture}" alt="${activeConversation.otherUserName}">`;
+        } else {
+            const initials = getInitials(activeConversation.otherUserName);
+            avatarHtml = `<span>${initials}</span>`;
+        }
+        
+        chatHeader.innerHTML = `
+            <div class="chat-header-user">
+                <div class="user-avatar">${avatarHtml}</div>
+                <div>
+                    <div style="font-weight: 600;">${activeConversation.otherUserName}</div>
+                    <div style="font-size: 0.85rem; color: var(--text-muted);">${activeConversation.otherUserRole || ''}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Update unread badge in sidebar
+    async function updateUnreadBadge() {
+        try {
+            const response = await fetch('api.php?action=get_unread_count');
+            const result = await response.json();
+            
+            if (result.success) {
+                const badge = document.querySelector('.nav-item[data-page="messenger"] .notification-badge');
+                if (result.count > 0) {
+                    if (badge) {
+                        badge.textContent = result.count;
+                        badge.style.display = 'flex';
+                    }
+                } else {
+                    if (badge) {
+                        badge.style.display = 'none';
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error updating unread badge:', error);
+        }
+    }
+
+    // Utility functions
+    function getInitials(name) {
+        return name
+            .split(' ')
+            .map(word => word[0])
+            .join('')
+            .toUpperCase()
+            .substring(0, 2);
+    }
+
+    function formatDate(date) {
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        if (date.toDateString() === today.toDateString()) {
+            return 'Today';
+        } else if (date.toDateString() === yesterday.toDateString()) {
+            return 'Yesterday';
+        } else if (date.getFullYear() === today.getFullYear()) {
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        } else {
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+    }
+
+    function formatMessageTime(date) {
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+        
+        if (diffMins < 1) {
+            return 'Just now';
+        } else if (diffMins < 60) {
+            return `${diffMins}m ago`;
+        } else if (diffHours < 24) {
+            return `${diffHours}h ago`;
+        } else if (diffDays < 7) {
+            return `${diffDays}d ago`;
+        } else {
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+    }
+
     function scrollToBottom(element) {
         if(element) element.scrollTop = element.scrollHeight;
     }
 
-    function getIconForRole(role) {
-        switch(role) {
-            case 'admin': return 'fa-user-shield';
-            case 'doctor': return 'fa-user-doctor';
-            case 'staff': return 'fa-user-nurse';
-            default: return 'fa-user';
-        }
+    function isScrolledToBottom(element) {
+        return element.scrollHeight - element.scrollTop <= element.clientHeight + 50;
     }
 
     // ===================================================================
     // --- Profile Settings Page Logic ---
     // ===================================================================
+    
+    // Toast Notification System
+    function showToast(message, type = 'info', title = '') {
+        const toastContainer = document.getElementById('toast-container');
+        if (!toastContainer) return;
+        
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        
+        const icons = {
+            success: 'fa-check-circle',
+            error: 'fa-exclamation-circle',
+            warning: 'fa-exclamation-triangle',
+            info: 'fa-info-circle'
+        };
+        
+        const titles = {
+            success: title || 'Success',
+            error: title || 'Error',
+            warning: title || 'Warning',
+            info: title || 'Information'
+        };
+        
+        toast.innerHTML = `
+            <div class="toast-icon">
+                <i class="fas ${icons[type]}"></i>
+            </div>
+            <div class="toast-content">
+                <div class="toast-title">${titles[type]}</div>
+                <div class="toast-message">${message}</div>
+            </div>
+            <button class="toast-close" onclick="this.parentElement.remove()">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+        
+        toastContainer.appendChild(toast);
+        
+        // Auto remove after 5 seconds
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(100%)';
+            setTimeout(() => toast.remove(), 300);
+        }, 5000);
+    }
+    
+    // Password Strength Checker
+    function checkPasswordStrength(password) {
+        let strength = 0;
+        const requirements = {
+            length: password.length >= 8,
+            uppercase: /[A-Z]/.test(password),
+            lowercase: /[a-z]/.test(password),
+            number: /[0-9]/.test(password),
+            special: /[!@#$%^&*(),.?":{}|<>]/.test(password)
+        };
+        
+        // Update requirement indicators
+        Object.keys(requirements).forEach(key => {
+            const element = document.getElementById(`req-${key}`);
+            if (element) {
+                const icon = element.querySelector('i');
+                if (requirements[key]) {
+                    element.classList.add('valid');
+                    icon.classList.remove('fa-times-circle');
+                    icon.classList.add('fa-check-circle');
+                    strength++;
+                } else {
+                    element.classList.remove('valid');
+                    icon.classList.remove('fa-check-circle');
+                    icon.classList.add('fa-times-circle');
+                }
+            }
+        });
+        
+        return { strength, requirements };
+    }
+    
+    // Update password strength indicator
+    function updatePasswordStrength(password) {
+        const strengthBar = document.getElementById('password-strength-bar');
+        const strengthText = document.getElementById('password-strength-text');
+        
+        if (!strengthBar || !strengthText) return;
+        
+        const { strength } = checkPasswordStrength(password);
+        
+        // Remove all classes
+        strengthBar.classList.remove('weak', 'medium', 'strong');
+        strengthText.classList.remove('weak', 'medium', 'strong');
+        
+        if (password.length === 0) {
+            strengthBar.style.width = '0';
+            strengthText.textContent = '';
+            return;
+        }
+        
+        if (strength <= 2) {
+            strengthBar.classList.add('weak');
+            strengthText.classList.add('weak');
+            strengthText.textContent = 'Weak password';
+        } else if (strength <= 4) {
+            strengthBar.classList.add('medium');
+            strengthText.classList.add('medium');
+            strengthText.textContent = 'Medium strength';
+        } else {
+            strengthBar.classList.add('strong');
+            strengthText.classList.add('strong');
+            strengthText.textContent = 'Strong password';
+        }
+    }
+    
     const personalInfoForm = document.getElementById('personal-info-form');
     if (personalInfoForm) {
         const profilePage = document.getElementById('profile-page');
@@ -1925,7 +2712,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 const result = await response.json();
     
                 if (result.success) {
-                    alert('Profile updated successfully!');
+                    showToast('Profile updated successfully!', 'success');
                     const newName = formData.get('name');
                     const specialtySelect = document.getElementById('profile-specialty');
                     const newSpecialty = specialtySelect.options[specialtySelect.selectedIndex].text;
@@ -1934,11 +2721,11 @@ document.addEventListener("DOMContentLoaded", function() {
                     document.querySelector('.user-profile-widget .profile-info span').textContent = newSpecialty;
                     document.querySelector('.welcome-message h2').textContent = `Welcome back, Dr. ${newName}!`;
                 } else {
-                    alert(`Error: ${result.message || 'An unknown error occurred.'}`);
+                    showToast(result.message || 'An unknown error occurred.', 'error');
                 }
             } catch (error) {
                 console.error('Error updating profile:', error);
-                alert('A network error occurred. Please try again.');
+                showToast('A network error occurred. Please try again.', 'error');
             } finally {
                 saveButton.disabled = false;
                 saveButton.innerHTML = originalButtonText;
@@ -1946,20 +2733,273 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
+    // --- Profile Picture Upload Functionality ---
+    const profilePictureUpload = document.getElementById('profile-picture-upload');
+    const removeProfilePictureBtn = document.getElementById('remove-profile-picture-btn');
+    
+    if (profilePictureUpload) {
+        profilePictureUpload.addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            // Validate file type
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+            if (!allowedTypes.includes(file.type)) {
+                alert('Please upload a valid image file (JPEG, PNG, or GIF).');
+                this.value = '';
+                return;
+            }
+            
+            // Validate file size (max 5MB)
+            if (file.size > 5 * 1024 * 1024) {
+                alert('File size must be less than 5MB.');
+                this.value = '';
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('profile_picture', file);
+            formData.append('action', 'updateProfilePicture');
+            
+            try {
+                const response = await fetch('api.php', { method: 'POST', body: formData });
+                const result = await response.json();
+                
+                if (result.success && result.new_image_url) {
+                    const newUrl = `${result.new_image_url}?v=${new Date().getTime()}`;
+                    document.querySelectorAll('.profile-picture, .editable-profile-picture').forEach(img => {
+                        img.src = newUrl;
+                    });
+                    if (removeProfilePictureBtn) removeProfilePictureBtn.style.display = 'flex';
+                    showToast('Profile picture updated successfully!', 'success');
+                } else {
+                    showToast(result.message || 'Failed to update profile picture.', 'error');
+                }
+            } catch (error) {
+                console.error('Error uploading profile picture:', error);
+                showToast('An error occurred while uploading the profile picture.', 'error');
+            }
+            
+            this.value = '';
+        });
+    }
+    
+    if (removeProfilePictureBtn) {
+        removeProfilePictureBtn.addEventListener('click', async function() {
+            if (!confirm('Are you sure you want to remove your profile picture?')) return;
+            
+            const formData = new FormData();
+            formData.append('action', 'removeProfilePicture');
+            
+            try {
+                const response = await fetch('api.php', { method: 'POST', body: formData });
+                const result = await response.json();
+                
+                if (result.success) {
+                    const defaultUrl = `../uploads/profile_pictures/default.png?v=${new Date().getTime()}`;
+                    document.querySelectorAll('.profile-picture, .editable-profile-picture').forEach(img => {
+                        img.src = defaultUrl;
+                    });
+                    this.style.display = 'none';
+                    showToast('Profile picture removed successfully!', 'success');
+                } else {
+                    showToast(result.message || 'Failed to remove profile picture.', 'error');
+                }
+            } catch (error) {
+                console.error('Error removing profile picture:', error);
+                showToast('An error occurred while removing the profile picture.', 'error');
+            }
+        });
+    }
+
+    // --- WEBCAM CAPTURE FUNCTIONALITY ---
+    const webcamModal = document.getElementById('webcam-modal');
+    const webcamVideo = document.getElementById('webcam-video');
+    const webcamCanvas = document.getElementById('webcam-canvas');
+    const webcamPreview = document.getElementById('webcam-preview');
+    const webcamCapturedImage = document.getElementById('webcam-captured-image');
+    const webcamStatus = document.getElementById('webcam-status');
+    
+    const openWebcamBtn = document.getElementById('open-webcam-btn');
+    const closeWebcamModalBtn = document.getElementById('close-webcam-modal');
+    const webcamCancelBtn = document.getElementById('webcam-cancel-btn');
+    const webcamCaptureBtn = document.getElementById('webcam-capture-btn');
+    const webcamRetakeBtn = document.getElementById('webcam-retake-btn');
+    const webcamUseBtn = document.getElementById('webcam-use-btn');
+    
+    let webcamStream = null;
+    let capturedBlob = null;
+
+    const updateWebcamStatus = (message, type = 'info') => {
+        webcamStatus.className = `webcam-status ${type}`;
+        const icon = type === 'error' ? 'fa-exclamation-circle' : type === 'success' ? 'fa-check-circle' : 'fa-info-circle';
+        webcamStatus.innerHTML = `<i class="fas ${icon}"></i> <span>${message}</span>`;
+    };
+
+    const startWebcam = async () => {
+        try {
+            updateWebcamStatus('Starting camera...', 'info');
+            webcamStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: 'user'
+                } 
+            });
+            webcamVideo.srcObject = webcamStream;
+            webcamVideo.style.display = 'block';
+            webcamPreview.style.display = 'none';
+            webcamCaptureBtn.style.display = 'inline-block';
+            webcamRetakeBtn.style.display = 'none';
+            webcamUseBtn.style.display = 'none';
+            updateWebcamStatus('Camera ready! Click "Capture" to take a photo.', 'success');
+        } catch (error) {
+            console.error('Webcam error:', error);
+            updateWebcamStatus('Unable to access camera. Please check permissions.', 'error');
+        }
+    };
+
+    const stopWebcam = () => {
+        if (webcamStream) {
+            webcamStream.getTracks().forEach(track => track.stop());
+            webcamStream = null;
+            webcamVideo.srcObject = null;
+        }
+    };
+
+    const capturePhoto = () => {
+        const context = webcamCanvas.getContext('2d');
+        webcamCanvas.width = webcamVideo.videoWidth;
+        webcamCanvas.height = webcamVideo.videoHeight;
+        context.drawImage(webcamVideo, 0, 0);
+        
+        webcamCanvas.toBlob((blob) => {
+            capturedBlob = blob;
+            const url = URL.createObjectURL(blob);
+            webcamCapturedImage.src = url;
+            webcamVideo.style.display = 'none';
+            webcamPreview.style.display = 'flex';
+            webcamCaptureBtn.style.display = 'none';
+            webcamRetakeBtn.style.display = 'inline-block';
+            webcamUseBtn.style.display = 'inline-block';
+            updateWebcamStatus('Photo captured! Use it or retake.', 'success');
+        }, 'image/jpeg', 0.9);
+    };
+
+    const retakePhoto = () => {
+        webcamVideo.style.display = 'block';
+        webcamPreview.style.display = 'none';
+        webcamCaptureBtn.style.display = 'inline-block';
+        webcamRetakeBtn.style.display = 'none';
+        webcamUseBtn.style.display = 'none';
+        capturedBlob = null;
+        updateWebcamStatus('Camera ready! Click "Capture" to take a photo.', 'success');
+    };
+
+    const uploadCapturedPhoto = async () => {
+        if (!capturedBlob) return;
+        
+        const formData = new FormData();
+        formData.append('profile_picture', capturedBlob, 'webcam-capture.jpg');
+        formData.append('action', 'updateProfilePicture');
+
+        try {
+            updateWebcamStatus('Uploading photo...', 'info');
+            webcamUseBtn.disabled = true;
+            
+            const response = await fetch('api.php', { method: 'POST', body: formData });
+            const result = await response.json();
+            
+            if (!response.ok || !result.success) throw new Error(result.message || 'Upload failed');
+            
+            if (result.new_image_url) {
+                const newUrl = `${result.new_image_url}?v=${new Date().getTime()}`;
+                document.querySelectorAll('.profile-picture, .editable-profile-picture').forEach(img => {
+                    img.src = newUrl;
+                });
+                if (removeProfilePictureBtn) removeProfilePictureBtn.style.display = 'flex';
+                showToast('Profile picture updated successfully!', 'success');
+            }
+            
+            closeWebcam();
+        } catch (error) {
+            updateWebcamStatus(error.message, 'error');
+            webcamUseBtn.disabled = false;
+        }
+    };
+
+    const closeWebcam = () => {
+        if (webcamModal) {
+            webcamModal.classList.remove('active');
+            stopWebcam();
+            capturedBlob = null;
+        }
+    };
+
+    // Event Listeners for Webcam
+    if (openWebcamBtn) {
+        openWebcamBtn.addEventListener('click', () => {
+            webcamModal.classList.add('active');
+            startWebcam();
+        });
+    }
+
+    if (closeWebcamModalBtn) closeWebcamModalBtn.addEventListener('click', closeWebcam);
+    if (webcamCancelBtn) webcamCancelBtn.addEventListener('click', closeWebcam);
+    if (webcamCaptureBtn) webcamCaptureBtn.addEventListener('click', capturePhoto);
+    if (webcamRetakeBtn) webcamRetakeBtn.addEventListener('click', retakePhoto);
+    if (webcamUseBtn) webcamUseBtn.addEventListener('click', uploadCapturedPhoto);
+
+    // Close modal on outside click
+    if (webcamModal) {
+        webcamModal.addEventListener('click', (e) => {
+            if (e.target === webcamModal) closeWebcam();
+        });
+    }
+
     const securityForm = document.getElementById('security-form');
     if (securityForm) {
+        // Add password strength indicator
+        const newPasswordInput = document.getElementById('new-password');
+        const confirmPasswordInput = document.getElementById('confirm-password');
+        const confirmPasswordError = document.getElementById('confirm-password-error');
+        
+        if (newPasswordInput) {
+            newPasswordInput.addEventListener('input', function() {
+                updatePasswordStrength(this.value);
+            });
+        }
+        
+        if (confirmPasswordInput) {
+            confirmPasswordInput.addEventListener('input', function() {
+                const newPassword = newPasswordInput.value;
+                if (this.value && this.value !== newPassword) {
+                    confirmPasswordError.textContent = 'Passwords do not match';
+                    confirmPasswordError.style.display = 'block';
+                } else {
+                    confirmPasswordError.textContent = '';
+                    confirmPasswordError.style.display = 'none';
+                }
+            });
+        }
+        
         securityForm.addEventListener('submit', async function(e) {
             e.preventDefault();
 
             const newPassword = document.getElementById('new-password').value;
             const confirmPassword = document.getElementById('confirm-password').value;
 
-            if (newPassword.length < 8) {
-                alert('New password must be at least 8 characters long.');
+            // Validate password requirements
+            const { requirements } = checkPasswordStrength(newPassword);
+            const allRequirementsMet = Object.values(requirements).every(val => val === true);
+            
+            if (!allRequirementsMet) {
+                showToast('Please meet all password requirements', 'error');
                 return;
             }
+            
             if (newPassword !== confirmPassword) {
-                alert('New password and confirmation do not match.');
+                showToast('New password and confirmation do not match.', 'error');
                 return;
             }
 
@@ -1979,14 +3019,26 @@ document.addEventListener("DOMContentLoaded", function() {
                 const result = await response.json();
 
                 if (result.success) {
-                    alert('Password updated successfully!');
+                    showToast('Password updated successfully!', 'success');
                     this.reset();
+                    // Reset password strength indicator
+                    const strengthBar = document.getElementById('password-strength-bar');
+                    const strengthText = document.getElementById('password-strength-text');
+                    if (strengthBar) strengthBar.style.width = '0';
+                    if (strengthText) strengthText.textContent = '';
+                    // Reset requirements
+                    document.querySelectorAll('.password-requirements li').forEach(li => {
+                        li.classList.remove('valid');
+                        const icon = li.querySelector('i');
+                        icon.classList.remove('fa-check-circle');
+                        icon.classList.add('fa-times-circle');
+                    });
                 } else {
-                    alert(`Error: ${result.message || 'An unknown error occurred.'}`);
+                    showToast(result.message || 'An unknown error occurred.', 'error');
                 }
             } catch (error) {
                 console.error('Error updating password:', error);
-                alert('A network error occurred. Please try again.');
+                showToast('A network error occurred. Please try again.', 'error');
             } finally {
                 saveButton.disabled = false;
                 saveButton.innerHTML = originalButtonText;

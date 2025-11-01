@@ -14,6 +14,8 @@
  */
 require_once '../config.php'; // Contains the database connection ($conn)
 require_once '../vendor/autoload.php'; // Add this line for Dompdf
+require_once '../mail/templates.php'; // Email templates
+require_once '../mail/send_mail.php'; // Email sending functionality
 
 // Add these lines for Dompdf
 use Dompdf\Dompdf;
@@ -1029,6 +1031,39 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
                 exit();
             }
         }
+        
+        // Fetch old user data for comparison (before update)
+        $stmt_old = $conn->prepare("
+            SELECT u.name, u.email, u.phone, u.date_of_birth, u.gender, u.username,
+                   d.qualifications, s.name as specialty_name, dep.name as department_name
+            FROM users u
+            LEFT JOIN doctors d ON u.id = d.user_id
+            LEFT JOIN specialities s ON d.specialty_id = s.id
+            LEFT JOIN departments dep ON d.department_id = dep.id
+            WHERE u.id = ?
+        ");
+        $stmt_old->bind_param("i", $current_user_id);
+        $stmt_old->execute();
+        $old_user_data = $stmt_old->get_result()->fetch_assoc();
+        $stmt_old->close();
+        
+        // Get specialty and department names for the new values
+        $new_specialty_name = null;
+        $new_department_name = null;
+        if ($specialty_id) {
+            $stmt_spec = $conn->prepare("SELECT name FROM specialities WHERE id = ?");
+            $stmt_spec->bind_param("i", $specialty_id);
+            $stmt_spec->execute();
+            $new_specialty_name = $stmt_spec->get_result()->fetch_assoc()['name'] ?? null;
+            $stmt_spec->close();
+        }
+        if ($department_id) {
+            $stmt_dept = $conn->prepare("SELECT name FROM departments WHERE id = ?");
+            $stmt_dept->bind_param("i", $department_id);
+            $stmt_dept->execute();
+            $new_department_name = $stmt_dept->get_result()->fetch_assoc()['name'] ?? null;
+            $stmt_dept->close();
+        }
     
         // 3. Database Transaction
         $conn->begin_transaction();
@@ -1038,30 +1073,125 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
             $stmt_user->bind_param("sssssi", $name, $email, $phone, $gender, $dob, $current_user_id);
             $stmt_user->execute();
             
-            // Update doctors table (Use INSERT...ON DUPLICATE KEY UPDATE to handle both new and existing doctors)
-            $stmt_doctor = $conn->prepare("
-                INSERT INTO doctors (user_id, specialty_id, department_id, qualifications) 
-                VALUES (?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE 
-                    specialty_id = VALUES(specialty_id), 
-                    department_id = VALUES(department_id), 
-                    qualifications = VALUES(qualifications)
-            ");
-            $stmt_doctor->bind_param("iiis", $current_user_id, $specialty_id, $department_id, $qualifications);
+            // Update doctors table - handle NULL values properly
+            if ($specialty_id === null && $department_id === null) {
+                // Both are NULL
+                $stmt_doctor = $conn->prepare("
+                    INSERT INTO doctors (user_id, specialty_id, department_id, qualifications) 
+                    VALUES (?, NULL, NULL, ?)
+                    ON DUPLICATE KEY UPDATE 
+                        specialty_id = NULL, 
+                        department_id = NULL, 
+                        qualifications = VALUES(qualifications)
+                ");
+                $stmt_doctor->bind_param("is", $current_user_id, $qualifications);
+            } else if ($specialty_id === null) {
+                // Only specialty_id is NULL
+                $stmt_doctor = $conn->prepare("
+                    INSERT INTO doctors (user_id, specialty_id, department_id, qualifications) 
+                    VALUES (?, NULL, ?, ?)
+                    ON DUPLICATE KEY UPDATE 
+                        specialty_id = NULL, 
+                        department_id = VALUES(department_id), 
+                        qualifications = VALUES(qualifications)
+                ");
+                $stmt_doctor->bind_param("iis", $current_user_id, $department_id, $qualifications);
+            } else if ($department_id === null) {
+                // Only department_id is NULL
+                $stmt_doctor = $conn->prepare("
+                    INSERT INTO doctors (user_id, specialty_id, department_id, qualifications) 
+                    VALUES (?, ?, NULL, ?)
+                    ON DUPLICATE KEY UPDATE 
+                        specialty_id = VALUES(specialty_id), 
+                        department_id = NULL, 
+                        qualifications = VALUES(qualifications)
+                ");
+                $stmt_doctor->bind_param("iis", $current_user_id, $specialty_id, $qualifications);
+            } else {
+                // Both have values
+                $stmt_doctor = $conn->prepare("
+                    INSERT INTO doctors (user_id, specialty_id, department_id, qualifications) 
+                    VALUES (?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE 
+                        specialty_id = VALUES(specialty_id), 
+                        department_id = VALUES(department_id), 
+                        qualifications = VALUES(qualifications)
+                ");
+                $stmt_doctor->bind_param("iiis", $current_user_id, $specialty_id, $department_id, $qualifications);
+            }
             $stmt_doctor->execute();
             
             $log_details = "Updated profile details. Name: {$name}, Email: {$email}, Phone: {$phone}, Qualifications: {$qualifications}.";
             log_activity($conn, $current_user_id, 'Profile Updated', $current_user_id, $log_details);
             $conn->commit();
             $_SESSION['name'] = $name; // Update session name
+            
+            // Track changes for email notification
+            $email_changes = [];
+            if ($old_user_data['name'] !== $name) {
+                $email_changes['Name'] = ['old' => $old_user_data['name'], 'new' => $name];
+            }
+            if ($old_user_data['email'] !== $email) {
+                $email_changes['Email'] = ['old' => $old_user_data['email'], 'new' => $email];
+            }
+            if ($old_user_data['phone'] !== $phone) {
+                $email_changes['Phone Number'] = ['old' => ($old_user_data['phone'] ?: 'Not set'), 'new' => $phone];
+            }
+            if (($old_user_data['date_of_birth'] ?? '') !== ($dob ?? '')) {
+                $email_changes['Date of Birth'] = ['old' => ($old_user_data['date_of_birth'] ?: 'Not set'), 'new' => ($dob ?: 'Not set')];
+            }
+            if (($old_user_data['gender'] ?? '') !== ($gender ?? '')) {
+                $email_changes['Gender'] = ['old' => ($old_user_data['gender'] ?: 'Not set'), 'new' => ($gender ?: 'Not set')];
+            }
+            if (($old_user_data['qualifications'] ?? '') !== ($qualifications ?? '')) {
+                $email_changes['Qualifications'] = ['old' => ($old_user_data['qualifications'] ?: 'Not set'), 'new' => ($qualifications ?: 'Not set')];
+            }
+            if (($old_user_data['specialty_name'] ?? '') !== ($new_specialty_name ?? '')) {
+                $email_changes['Specialty'] = ['old' => ($old_user_data['specialty_name'] ?: 'Not set'), 'new' => ($new_specialty_name ?: 'Not set')];
+            }
+            if (($old_user_data['department_name'] ?? '') !== ($new_department_name ?? '')) {
+                $email_changes['Department'] = ['old' => ($old_user_data['department_name'] ?: 'Not set'), 'new' => ($new_department_name ?: 'Not set')];
+            }
+            
+            // Send email notification if there are changes
+            if (!empty($email_changes)) {
+                try {
+                    date_default_timezone_set('Asia/Kolkata');
+                    $current_datetime = date('d M Y, h:i A');
+                    $email_body = getAccountModificationTemplate($name, $old_user_data['username'], $email_changes, $current_datetime, 'You (Self-Updated)');
+                    
+                    // Send to the updated email address
+                    send_mail('MedSync', $email, 'Your MedSync Account Has Been Updated', $email_body);
+                    
+                    // If email was changed, also notify the old email
+                    if (isset($email_changes['Email']) && !empty($old_user_data['email'])) {
+                        $old_email_body = getAccountModificationTemplate(
+                            $old_user_data['name'], 
+                            $old_user_data['username'], 
+                            $email_changes, 
+                            $current_datetime, 
+                            'You (Self-Updated)'
+                        );
+                        send_mail('MedSync', $old_user_data['email'], 'Your MedSync Account Has Been Updated', $old_email_body);
+                    }
+                } catch (Exception $email_error) {
+                    // Email sending failed, but don't block the update
+                    error_log("Failed to send profile update email: " . $email_error->getMessage());
+                }
+            }
+            
             echo json_encode(['success' => true, 'message' => 'Profile updated successfully!']);
         } catch (mysqli_sql_exception $exception) {
             $conn->rollback();
+            // Log the actual error for debugging
+            error_log("Profile update error: " . $exception->getMessage());
+            error_log("Error code: " . $conn->errno);
+            
             // Check for duplicate email error
             if ($conn->errno === 1062) {
                  echo json_encode(['success' => false, 'message' => 'Error: This email address is already in use by another account.']);
             } else {
-                 echo json_encode(['success' => false, 'message' => 'A database error occurred. Please try again.']);
+                 echo json_encode(['success' => false, 'message' => 'A database error occurred: ' . $exception->getMessage()]);
             }
         } finally {
             if (isset($stmt_user)) $stmt_user->close();
@@ -1099,20 +1229,35 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
                 throw new Exception('New password must be at least 8 characters long.');
             }
 
-            $stmt = $conn->prepare("SELECT password FROM users WHERE id = ?");
+            // Fetch user data for email notification
+            $stmt = $conn->prepare("SELECT name, email, username, password FROM users WHERE id = ?");
             $stmt->bind_param("i", $current_user_id);
             $stmt->execute();
-            $result = $stmt->get_result()->fetch_assoc();
+            $user_data = $stmt->get_result()->fetch_assoc();
             $stmt->close();
 
-            if ($result && password_verify($current_password, $result['password'])) {
+            if ($user_data && password_verify($current_password, $user_data['password'])) {
                 $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
                 $stmt_update = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
                 $stmt_update->bind_param("si", $hashed_password, $current_user_id);
                 
                 if ($stmt_update->execute()) {
                     log_activity($conn, $current_user_id, 'Password Changed', $current_user_id, 'User changed their own password.');
-                    echo json_encode(['success' => true, 'message' => 'Password changed successfully.']);
+                    
+                    // Send password change confirmation email
+                    try {
+                        date_default_timezone_set('Asia/Kolkata');
+                        $current_datetime = date('d M Y, h:i A');
+                        $ip_address = $_SERVER['REMOTE_ADDR'];
+                        $email_body = getPasswordResetConfirmationTemplate($user_data['name'], $current_datetime, $ip_address);
+                        
+                        send_mail('MedSync Security Alert', $user_data['email'], 'Your MedSync Password Was Changed', $email_body);
+                    } catch (Exception $email_error) {
+                        // Email sending failed, but don't block the password change
+                        error_log("Failed to send password change email: " . $email_error->getMessage());
+                    }
+                    
+                    echo json_encode(['success' => true, 'message' => 'Password changed successfully. A confirmation email has been sent.']);
                 } else {
                     throw new Exception('Failed to update password in the database.');
                 }
@@ -1125,6 +1270,91 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         }
         exit();
     }
+
+    if ($action == 'updateProfilePicture') {
+        try {
+            if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == UPLOAD_ERR_OK) {
+                $upload_dir = '../uploads/profile_pictures/';
+                if (!is_dir($upload_dir) && !mkdir($upload_dir, 0755, true)) {
+                    throw new Exception('Failed to create upload directory.');
+                }
+
+                $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
+                $file_mime_type = mime_content_type($_FILES['profile_picture']['tmp_name']);
+                if (!in_array($file_mime_type, $allowed_types)) {
+                    throw new Exception('Invalid file type. Only JPG, PNG, and GIF are allowed.');
+                }
+                if ($_FILES['profile_picture']['size'] > 5242880) { // 5MB limit
+                    throw new Exception('File is too large. Maximum size is 5MB.');
+                }
+
+                $file_extension = strtolower(pathinfo($_FILES['profile_picture']['name'], PATHINFO_EXTENSION));
+                $new_filename = 'doctor_' . $current_user_id . '_' . time() . '.' . $file_extension;
+
+                $stmt_select = $conn->prepare("SELECT profile_picture FROM users WHERE id = ?");
+                $stmt_select->bind_param("i", $current_user_id);
+                $stmt_select->execute();
+                $old_picture_filename = $stmt_select->get_result()->fetch_assoc()['profile_picture'];
+                $stmt_select->close();
+
+                if (move_uploaded_file($_FILES['profile_picture']['tmp_name'], $upload_dir . $new_filename)) {
+                    $stmt_update = $conn->prepare("UPDATE users SET profile_picture = ? WHERE id = ?");
+                    $stmt_update->bind_param("si", $new_filename, $current_user_id);
+                    if ($stmt_update->execute()) {
+                        if ($old_picture_filename && $old_picture_filename !== 'default.png' && file_exists($upload_dir . $old_picture_filename)) {
+                            unlink($upload_dir . $old_picture_filename);
+                        }
+                        log_activity($conn, $current_user_id, 'Profile Picture Updated', $current_user_id, 'Doctor updated their profile picture.');
+                        echo json_encode(['success' => true, 'message' => 'Profile picture updated.', 'new_image_url' => '../uploads/profile_pictures/' . $new_filename]);
+                    } else {
+                        unlink($upload_dir . $new_filename);
+                        throw new Exception('Database update failed.');
+                    }
+                    $stmt_update->close();
+                } else {
+                    throw new Exception('Failed to move uploaded file.');
+                }
+            } else {
+                $error_code = $_FILES['profile_picture']['error'] ?? UPLOAD_ERR_NO_FILE;
+                throw new Exception('File upload error code: ' . $error_code);
+            }
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    if ($action == 'removeProfilePicture') {
+        try {
+            $stmt_select = $conn->prepare("SELECT profile_picture FROM users WHERE id = ?");
+            $stmt_select->bind_param("i", $current_user_id);
+            $stmt_select->execute();
+            $current_picture = $stmt_select->get_result()->fetch_assoc()['profile_picture'];
+            $stmt_select->close();
+
+            if ($current_picture && $current_picture !== 'default.png') {
+                $upload_dir = '../uploads/profile_pictures/';
+                $old_file_path = $upload_dir . $current_picture;
+                if (file_exists($old_file_path)) {
+                    unlink($old_file_path);
+                }
+            }
+
+            $stmt_update = $conn->prepare("UPDATE users SET profile_picture = 'default.png' WHERE id = ?");
+            $stmt_update->bind_param("i", $current_user_id);
+            if ($stmt_update->execute()) {
+                log_activity($conn, $current_user_id, 'Profile Picture Removed', $current_user_id, 'Doctor removed their profile picture.');
+                echo json_encode(['success' => true, 'message' => 'Profile picture removed successfully.', 'new_image_url' => '../uploads/profile_pictures/default.png']);
+            } else {
+                throw new Exception('Failed to remove profile picture.');
+            }
+            $stmt_update->close();
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit();
+    }
+    
     // ==========================================================
     // --- MESSENGER ACTIONS ---
     // ==========================================================
@@ -1172,14 +1402,66 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
 
     if ($action == 'get_messages' && isset($_GET['conversation_id'])) {
         $conversation_id = (int)$_GET['conversation_id'];
+        $after_id = isset($_GET['after_id']) ? (int)$_GET['after_id'] : 0;
+        
         $update_stmt = $conn->prepare("UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND receiver_id = ?");
         $update_stmt->bind_param("ii", $conversation_id, $current_user_id);
         $update_stmt->execute();
-        $msg_stmt = $conn->prepare("SELECT id, sender_id, message_text, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC");
-        $msg_stmt->bind_param("i", $conversation_id);
+        
+        if ($after_id > 0) {
+            // Get only new messages after the specified ID
+            $msg_stmt = $conn->prepare("SELECT id, sender_id, message_text, created_at FROM messages WHERE conversation_id = ? AND id > ? ORDER BY created_at ASC");
+            $msg_stmt->bind_param("ii", $conversation_id, $after_id);
+        } else {
+            // Get all messages
+            $msg_stmt = $conn->prepare("SELECT id, sender_id, message_text, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC");
+            $msg_stmt->bind_param("i", $conversation_id);
+        }
+        
         $msg_stmt->execute();
         $messages = $msg_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         echo json_encode(['success' => true, 'data' => $messages]);
+        exit();
+    }
+
+    if ($action == 'delete_message' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $message_id = (int)$_POST['message_id'];
+        
+        // Verify the message belongs to the current user
+        $check_stmt = $conn->prepare("SELECT sender_id FROM messages WHERE id = ?");
+        $check_stmt->bind_param("i", $message_id);
+        $check_stmt->execute();
+        $result = $check_stmt->get_result();
+        
+        if ($result->num_rows === 0) {
+            echo json_encode(['success' => false, 'message' => 'Message not found.']);
+            exit();
+        }
+        
+        $message = $result->fetch_assoc();
+        if ($message['sender_id'] != $current_user_id) {
+            echo json_encode(['success' => false, 'message' => 'You can only delete your own messages.']);
+            exit();
+        }
+        
+        // Delete the message
+        $delete_stmt = $conn->prepare("DELETE FROM messages WHERE id = ?");
+        $delete_stmt->bind_param("i", $message_id);
+        
+        if ($delete_stmt->execute()) {
+            echo json_encode(['success' => true, 'message' => 'Message deleted successfully.']);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Failed to delete message.']);
+        }
+        exit();
+    }
+
+    if ($action == 'get_unread_count') {
+        $stmt = $conn->prepare("SELECT COUNT(*) as unread_count FROM messages WHERE receiver_id = ? AND is_read = 0");
+        $stmt->bind_param("i", $current_user_id);
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        echo json_encode(['success' => true, 'count' => (int)$result['unread_count']]);
         exit();
     }
 
@@ -1431,6 +1713,76 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         }
 
         echo json_encode($response);
+        exit();
+    }
+
+    // ==========================================================
+    // --- NOTIFICATIONS ---
+    // ==========================================================
+    if ($action == 'get_notifications') {
+        $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
+        
+        // Get user role
+        $stmt_role = $conn->prepare("SELECT r.role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?");
+        $stmt_role->bind_param("i", $current_user_id);
+        $stmt_role->execute();
+        $user_role = $stmt_role->get_result()->fetch_assoc()['role_name'] ?? '';
+        $stmt_role->close();
+        
+        $stmt = $conn->prepare(
+            "SELECT 
+                n.id, n.message, n.is_read, n.created_at,
+                u.name as sender_name, r.role_name as sender_role
+             FROM notifications n
+             LEFT JOIN users u ON n.sender_id = u.id
+             LEFT JOIN roles r ON u.role_id = r.id
+             WHERE (n.recipient_user_id = ? OR n.recipient_role = ? OR n.recipient_role = 'all')
+             ORDER BY n.created_at DESC
+             LIMIT ?"
+        );
+        $stmt->bind_param("isi", $current_user_id, $user_role, $limit);
+        $stmt->execute();
+        $notifications = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+        echo json_encode(['success' => true, 'data' => $notifications]);
+        exit();
+    }
+
+    if ($action == 'get_unread_notification_count') {
+        // Get user role
+        $stmt_role = $conn->prepare("SELECT r.role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?");
+        $stmt_role->bind_param("i", $current_user_id);
+        $stmt_role->execute();
+        $user_role = $stmt_role->get_result()->fetch_assoc()['role_name'] ?? '';
+        $stmt_role->close();
+        
+        $stmt = $conn->prepare(
+            "SELECT COUNT(id) as unread_count FROM notifications WHERE is_read = 0 AND (recipient_user_id = ? OR recipient_role = ? OR recipient_role = 'all')"
+        );
+        $stmt->bind_param("is", $current_user_id, $user_role);
+        $stmt->execute();
+        $count = $stmt->get_result()->fetch_assoc()['unread_count'];
+        $stmt->close();
+        echo json_encode(['success' => true, 'data' => ['count' => $count]]);
+        exit();
+    }
+
+    if ($action == 'mark_all_notifications_read') {
+        // Get user role
+        $stmt_role = $conn->prepare("SELECT r.role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?");
+        $stmt_role->bind_param("i", $current_user_id);
+        $stmt_role->execute();
+        $user_role = $stmt_role->get_result()->fetch_assoc()['role_name'] ?? '';
+        $stmt_role->close();
+        
+        $stmt = $conn->prepare(
+            "UPDATE notifications SET is_read = 1 WHERE is_read = 0 AND (recipient_user_id = ? OR recipient_role = ? OR recipient_role = 'all')"
+        );
+        $stmt->bind_param("is", $current_user_id, $user_role);
+        $stmt->execute();
+        $affected = $stmt->affected_rows;
+        $stmt->close();
+        echo json_encode(['success' => true, 'message' => "$affected notifications marked as read"]);
         exit();
     }
 
