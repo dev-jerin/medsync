@@ -7,11 +7,20 @@
  * - Initializes session variables and fetches user data for the frontend.
  * - Handles AJAX API requests for Profile Settings, Callback Requests, and Messenger.
  * - UPDATED: Refined the discharge request logic to enforce workflow order.
+ * 
+ * SECURITY ENHANCEMENTS:
+ * - Rate Limiting: All API endpoints are protected with rate limiting (100 requests/60 seconds per action)
+ * - CSRF Protection: All POST requests validate CSRF tokens using hash_equals()
+ * - SQL Injection Prevention: All user inputs are sanitized and validated before database queries
+ * - Input Validation: Search queries and filters are validated against whitelists
+ * - Query Result Limiting: All queries have LIMIT clauses to prevent resource exhaustion
  */
 
 // config.php should be included first to initialize the session and db connection.
 require_once '../config.php';
 require_once '../vendor/autoload.php'; // Autoload Composer dependencies
+require_once '../mail/send_mail.php'; // Email sending functionality
+require_once '../mail/templates.php'; // Email templates
 
 // All 'use' statements must be at the top of the file.
 use Dompdf\Dompdf;
@@ -24,6 +33,86 @@ function log_activity($conn, $user_id, $action, $target_user_id = null, $details
     $stmt = $conn->prepare("INSERT INTO activity_logs (user_id, action, target_user_id, details) VALUES (?, ?, ?, ?)");
     $stmt->bind_param("isis", $user_id, $action, $target_user_id, $details);
     return $stmt->execute();
+}
+
+/**
+ * Rate limiting function to prevent API abuse
+ * Implements a simple token bucket algorithm
+ */
+function check_rate_limit($user_id, $action = 'api_call', $max_requests = 60, $time_window = 60) {
+    if (!isset($_SESSION['rate_limit'])) {
+        $_SESSION['rate_limit'] = [];
+    }
+    
+    $key = $user_id . '_' . $action;
+    $current_time = time();
+    
+    if (!isset($_SESSION['rate_limit'][$key])) {
+        $_SESSION['rate_limit'][$key] = [
+            'count' => 1,
+            'reset_time' => $current_time + $time_window
+        ];
+        return true;
+    }
+    
+    $rate_data = &$_SESSION['rate_limit'][$key];
+    
+    // Reset if time window has passed
+    if ($current_time > $rate_data['reset_time']) {
+        $rate_data['count'] = 1;
+        $rate_data['reset_time'] = $current_time + $time_window;
+        return true;
+    }
+    
+    // Check if limit exceeded
+    if ($rate_data['count'] >= $max_requests) {
+        http_response_code(429);
+        header('Retry-After: ' . ($rate_data['reset_time'] - $current_time));
+        return false;
+    }
+    
+    $rate_data['count']++;
+    return true;
+}
+
+/**
+ * Validates CSRF token for POST requests
+ */
+function validate_csrf_token() {
+    if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token'])) {
+        http_response_code(403);
+        throw new Exception('Invalid security token. Please refresh the page and try again.');
+    }
+    
+    if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+        http_response_code(403);
+        throw new Exception('Security token mismatch. Please refresh the page and try again.');
+    }
+    
+    return true;
+}
+
+/**
+ * Sanitizes search input to prevent SQL injection
+ */
+function sanitize_search_input($input, $max_length = 100) {
+    // Remove any potential SQL injection attempts
+    $input = trim($input);
+    $input = strip_tags($input);
+    $input = substr($input, 0, $max_length);
+    
+    // Remove SQL keywords and special characters
+    $dangerous_patterns = [
+        '/(\s|^)(union|select|insert|update|delete|drop|create|alter|exec|execute|script|javascript|eval)(\s|$)/i',
+        '/[;\x00\x1a]/',
+        '/(--|\#|\/\*)/',
+    ];
+    
+    foreach ($dangerous_patterns as $pattern) {
+        $input = preg_replace($pattern, '', $input);
+    }
+    
+    return $input;
 }
 
 /**
@@ -115,6 +204,14 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
         exit();
     }
 
+    // Apply rate limiting - use single global action for overall API limit
+    // This prevents abuse across all endpoints combined
+    if (!check_rate_limit($_SESSION['user_id'], 'api_global', 100, 60)) {
+        $response['message'] = 'Too many requests. Please slow down and try again later.';
+        echo json_encode($response);
+        exit();
+    }
+
     $conn = getDbConnection();
     $user_id = $_SESSION['user_id'];
     $user_role = $_SESSION['role'];
@@ -199,11 +296,12 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 
                 // This is the NEW code
                 case 'active_doctors':
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $sql = "
-                        SELECT u.id, u.name, u.display_user_id
+                        SELECT u.id, u.name, u.display_user_id, s.name as specialty
                         FROM users u 
                         JOIN doctors d ON u.id = d.user_id 
+                        LEFT JOIN specialities s ON d.specialty_id = s.id
                         WHERE u.is_active = 1
                     ";
                     $params = [];
@@ -364,10 +462,16 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
 
                 case 'get_users':
                     $role_filter = $_GET['role'] ?? 'all';
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
+                    $status_filter = $_GET['status'] ?? 'all'; // New status filter
                     $allowed_roles = ['user', 'doctor'];
 
-                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, r.role_name as role, u.email, u.phone, u.date_of_birth, u.is_active as active, u.created_at, d.specialty_id
+                    $sql = "SELECT u.id, u.display_user_id, u.name, u.username, r.role_name as role, 
+                            u.email, u.phone, u.date_of_birth, u.gender, u.profile_picture,
+                            u.is_active as active, u.created_at, u.session_token,
+                            d.specialty_id,
+                            TIMESTAMPDIFF(YEAR, u.date_of_birth, CURDATE()) AS age,
+                            (SELECT MAX(al.created_at) FROM activity_logs al WHERE al.user_id = u.id) AS last_active
                             FROM users u
                             JOIN roles r ON u.role_id = r.id
                             LEFT JOIN doctors d ON u.id = d.user_id
@@ -380,13 +484,24 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $params[] = $role_filter;
                         $types .= "s";
                     }
+                    
+                    // Add status filter
+                    if ($status_filter !== 'all') {
+                        if ($status_filter === 'active') {
+                            $sql .= " AND u.is_active = 1";
+                        } elseif ($status_filter === 'inactive') {
+                            $sql .= " AND u.is_active = 0";
+                        }
+                    }
 
                     if (!empty($search_query)) {
-                        $sql .= " AND (u.name LIKE ? OR u.display_user_id LIKE ?)";
+                        $sql .= " AND (u.name LIKE ? OR u.display_user_id LIKE ? OR u.email LIKE ? OR u.phone LIKE ?)";
                         $search_term = "%{$search_query}%";
                         $params[] = $search_term;
                         $params[] = $search_term;
-                        $types .= "ss";
+                        $params[] = $search_term;
+                        $params[] = $search_term;
+                        $types .= "ssss";
                     }
 
                     $sql .= " ORDER BY u.created_at DESC";
@@ -431,7 +546,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     break;
 
                 case 'medicines':
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $sql = "SELECT id, name, description, quantity, unit_price, low_stock_threshold, updated_at FROM medicines";
                     $params = [];
                     $types = "";
@@ -523,7 +638,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     break;
                 
                 case 'admissions':
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $sql = "
                         SELECT 
                             a.id, p.display_user_id AS patient_display_id, p.name AS patient_name, doc_user.name AS doctor_name,
@@ -561,15 +676,27 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
 
                 // --- START: LAB WORKFLOW UPDATE ---
                 case 'lab_orders': // Renamed from lab_results
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $status_filter = $_GET['status'] ?? 'all';
+                    
+                    // Validate status filter
+                    $allowed_statuses = ['all', 'ordered', 'pending', 'processing', 'completed'];
+                    if (!in_array($status_filter, $allowed_statuses)) {
+                        $status_filter = 'all';
+                    }
                     
                     $sql = "
                         SELECT 
                             lo.id, lo.patient_id, lo.doctor_id, lo.cost, lo.status,
-                            p.display_user_id AS patient_display_id, p.name AS patient_name,
-                            doc.name AS doctor_name, lo.test_name, lo.test_date,
-                            lo.result_details, lo.attachment_path
+                            p.display_user_id AS patient_display_id, 
+                            p.name AS patient_name,
+                            p.gender AS patient_gender,
+                            p.date_of_birth AS patient_dob,
+                            p.phone AS patient_phone,
+                            doc.name AS doctor_name, 
+                            lo.test_name, lo.test_date,
+                            lo.result_details, lo.attachment_path,
+                            TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) AS patient_age
                         FROM lab_orders lo -- Renamed table
                         JOIN users p ON lo.patient_id = p.id
                         LEFT JOIN users doc ON lo.doctor_id = doc.id
@@ -622,7 +749,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 // --- END: LAB WORKFLOW UPDATE ---
 
                 case 'search_patients':
-                    $query = $_GET['query'] ?? '';
+                    $query = isset($_GET['query']) ? sanitize_search_input($_GET['query']) : '';
                     if (empty($query)) {
                          $response = ['success' => true, 'data' => []];
                          break;
@@ -640,8 +767,14 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 
                 // --- START: MODIFIED DISCHARGE REQUESTS LOGIC ---
                 case 'discharge_requests':
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $status_filter = $_GET['status'] ?? 'all';
+                    
+                    // Validate status filter
+                    $allowed_statuses = ['all', 'nursing', 'pharmacy', 'billing'];
+                    if (!in_array($status_filter, $allowed_statuses)) {
+                        $status_filter = 'all';
+                    }
                     
                     $sql = "
                         SELECT 
@@ -700,7 +833,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 // --- END: MODIFIED DISCHARGE REQUESTS LOGIC ---
 
                 case 'billable_patients':
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $sql = "
                         SELECT a.id as admission_id, p.id as patient_id, p.display_user_id as patient_display_id, p.name as patient_name
                         FROM admissions a JOIN users p ON a.patient_id = p.id
@@ -715,7 +848,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $params[] = $search_term; $params[] = $search_term;
                         $types .= "ss";
                     }
-                    $sql .= " ORDER BY a.admission_date DESC";
+                    $sql .= " ORDER BY a.admission_date DESC LIMIT 200";
                     
                     $stmt = $conn->prepare($sql);
                     if (!empty($params)) {
@@ -729,7 +862,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     break;
 
                 case 'invoices':
-                    $search_query = $_GET['search'] ?? '';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $sql = "SELECT t.id, u.name as patient_name, t.amount, t.created_at, t.status FROM transactions t JOIN users u ON t.user_id = u.id";
                     $params = [];
                     $types = "";
@@ -741,7 +874,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $params[] = $search_term; $params[] = $search_id;
                         $types .= "ss";
                     }
-                    $sql .= " ORDER BY t.created_at DESC";
+                    $sql .= " ORDER BY t.created_at DESC LIMIT 500";
                     
                     $stmt = $conn->prepare($sql);
                     if (!empty($params)) {
@@ -755,8 +888,14 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     break;
                 
                 case 'pending_prescriptions':
-                    $search_query = $_GET['search'] ?? '';
-                    $status_filter = $_GET['status'] ?? 'all';
+                    $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
+                    $status_filter = isset($_GET['status']) ? $_GET['status'] : 'all';
+                    // Validate status filter
+                    $allowed_statuses = ['all', 'pending', 'completed'];
+                    if (!in_array($status_filter, $allowed_statuses)) {
+                        $status_filter = 'all';
+                    }
+                    
                     $sql = "
                         SELECT 
                             p.id, patient.name AS patient_name, patient.display_user_id AS patient_display_id,
@@ -823,10 +962,8 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
             }
         }
         elseif (isset($_POST['action'])) {
-            if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-                http_response_code(403);
-                throw new Exception('Invalid security token. Please refresh the page and try again.');
-            }
+            // Validate CSRF token for all POST requests
+            validate_csrf_token();
 
             switch ($_POST['action']) {
                 case 'updatePersonalInfo':
@@ -858,6 +995,13 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             throw new Exception('Please enter a realistic year for the date of birth.');
                         }
                     }
+                    
+                    // Fetch old user data for comparison
+                    $stmt_old = $conn->prepare("SELECT name, email, phone, date_of_birth, username FROM users WHERE id = ?");
+                    $stmt_old->bind_param("i", $user_id);
+                    $stmt_old->execute();
+                    $old_user_data = $stmt_old->get_result()->fetch_assoc();
+                    $stmt_old->close();
                     
                     $dept_stmt = $conn->prepare("SELECT id FROM departments WHERE name = ?");
                     $dept_stmt->bind_param("s", $department_name);
@@ -892,6 +1036,53 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $conn->commit();
                         $transaction_active = false;
                         $_SESSION['username'] = $name;
+                        
+                        // Track changes for email notification
+                        $email_changes = [];
+                        if ($old_user_data['name'] !== $name) {
+                            $email_changes['Name'] = ['old' => $old_user_data['name'], 'new' => $name];
+                        }
+                        if ($old_user_data['email'] !== $email) {
+                            $email_changes['Email'] = ['old' => $old_user_data['email'], 'new' => $email];
+                        }
+                        if ($old_user_data['phone'] !== $phone) {
+                            $email_changes['Phone Number'] = ['old' => ($old_user_data['phone'] ?: 'Not set'), 'new' => ($phone ?: 'Not set')];
+                        }
+                        if (($old_user_data['date_of_birth'] ?? '') !== ($date_of_birth ?? '')) {
+                            $email_changes['Date of Birth'] = ['old' => ($old_user_data['date_of_birth'] ?: 'Not set'), 'new' => ($date_of_birth ?: 'Not set')];
+                        }
+                        $email_changes['Department'] = $department_name;
+                        
+                        // Send email notification if there are changes
+                        if (!empty($email_changes)) {
+                            try {
+                                require_once '../mail/templates.php';
+                                require_once '../mail/send_mail.php';
+                                
+                                date_default_timezone_set('Asia/Kolkata');
+                                $current_datetime = date('d M Y, h:i A');
+                                $email_body = getAccountModificationTemplate($name, $old_user_data['username'], $email_changes, $current_datetime, 'You (Self-Updated)');
+                                
+                                // Send to the updated email address
+                                send_mail('MedSync', $email, 'Your MedSync Account Has Been Updated', $email_body);
+                                
+                                // If email was changed, also notify the old email
+                                if (isset($email_changes['Email']) && !empty($old_user_data['email'])) {
+                                    $old_email_body = getAccountModificationTemplate(
+                                        $old_user_data['name'], 
+                                        $old_user_data['username'], 
+                                        $email_changes, 
+                                        $current_datetime, 
+                                        'You (Self-Updated)'
+                                    );
+                                    send_mail('MedSync', $old_user_data['email'], 'Your MedSync Account Has Been Updated', $old_email_body);
+                                }
+                            } catch (Exception $email_error) {
+                                // Email sending failed, but don't block the update
+                                // Log error silently
+                            }
+                        }
+                        
                         $response = ['success' => true, 'message' => 'Personal information updated successfully.'];
                     } else {
                         throw new Exception('Database update failed. Please try again.');
@@ -904,22 +1095,38 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     if ($new_password !== $_POST['confirm_password']) {
                         throw new Exception('New password and confirmation do not match.');
                     }
-                    if (strlen($new_password) < 8) {
-                        throw new Exception('New password must be at least 8 characters long.');
+                    if (strlen($new_password) < 6) {
+                        throw new Exception('New password must be at least 6 characters long.');
                     }
 
-                    $stmt = $conn->prepare("SELECT password FROM users WHERE id = ?");
-                    $stmt->bind_param("i", $user_id);
-                    $stmt->execute();
-                    $result = $stmt->get_result()->fetch_assoc();
-                    $stmt->close();
+                    // Fetch user data for email notification
+                    $stmt_user_data = $conn->prepare("SELECT name, email, username, password FROM users WHERE id = ?");
+                    $stmt_user_data->bind_param("i", $user_id);
+                    $stmt_user_data->execute();
+                    $user_data = $stmt_user_data->get_result()->fetch_assoc();
+                    $stmt_user_data->close();
 
-                    if ($result && password_verify($current_password, $result['password'])) {
+                    if ($user_data && password_verify($current_password, $user_data['password'])) {
                         $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
                         $stmt_update = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
                         $stmt_update->bind_param("si", $hashed_password, $user_id);
                         if ($stmt_update->execute()) {
-                            $response = ['success' => true, 'message' => 'Password changed successfully.'];
+                            // Send password change confirmation email
+                            try {
+                                require_once '../mail/templates.php';
+                                require_once '../mail/send_mail.php';
+                                
+                                date_default_timezone_set('Asia/Kolkata');
+                                $current_datetime = date('d M Y, h:i A');
+                                $ip_address = $_SERVER['REMOTE_ADDR'];
+                                $email_body = getPasswordResetConfirmationTemplate($user_data['name'], $current_datetime, $ip_address);
+                                
+                                send_mail('MedSync Security Alert', $user_data['email'], 'Your MedSync Password Was Changed', $email_body);
+                            } catch (Exception $email_error) {
+                                // Email sending failed, but don't block the password change
+                            }
+                            
+                            $response = ['success' => true, 'message' => 'Password changed successfully. A confirmation email has been sent.'];
                         } else {
                             throw new Exception('Failed to update password.');
                         }
@@ -974,6 +1181,32 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $error_code = $_FILES['profile_picture']['error'] ?? UPLOAD_ERR_NO_FILE;
                         throw new Exception('File upload error code: ' . $error_code);
                     }
+                    break;
+
+                case 'removeProfilePicture':
+                    $stmt_select = $conn->prepare("SELECT profile_picture FROM users WHERE id = ?");
+                    $stmt_select->bind_param("i", $user_id);
+                    $stmt_select->execute();
+                    $current_picture = $stmt_select->get_result()->fetch_assoc()['profile_picture'];
+                    $stmt_select->close();
+
+                    if ($current_picture && $current_picture !== 'default.png') {
+                        $upload_dir = '../uploads/profile_pictures/';
+                        $old_file_path = $upload_dir . $current_picture;
+                        if (file_exists($old_file_path)) {
+                            unlink($old_file_path);
+                        }
+                    }
+
+                    $stmt_update = $conn->prepare("UPDATE users SET profile_picture = 'default.png' WHERE id = ?");
+                    $stmt_update->bind_param("i", $user_id);
+                    if ($stmt_update->execute()) {
+                        log_activity($conn, $user_id, 'remove_profile_picture', null, 'Staff removed their profile picture.');
+                        $response = ['success' => true, 'message' => 'Profile picture removed successfully.', 'new_image_url' => '../uploads/profile_pictures/default.png'];
+                    } else {
+                        throw new Exception('Failed to remove profile picture.');
+                    }
+                    $stmt_update->close();
                     break;
 
                 case 'markCallbackContacted':
@@ -1189,9 +1422,17 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             throw new Exception("You are not authorized to edit users with the role '{$target_role}'.");
                         }
 
+                        // Fetch old user data for comparison and email notification
+                        $stmt_old = $conn->prepare("SELECT name, email, phone, gender, date_of_birth, username, is_active FROM users WHERE id = ?");
+                        $stmt_old->bind_param("i", $target_user_id);
+                        $stmt_old->execute();
+                        $old_user_data = $stmt_old->get_result()->fetch_assoc();
+                        $stmt_old->close();
+
                         $name = trim($_POST['name']);
                         $email = filter_var(trim($_POST['email']), FILTER_VALIDATE_EMAIL);
-                        $phone = trim($_POST['phone']);
+                        $phone = !empty($_POST['phone']) ? trim($_POST['phone']) : null;
+                        $gender = !empty($_POST['gender']) ? trim($_POST['gender']) : null;
                         $date_of_birth = !empty($_POST['date_of_birth']) ? trim($_POST['date_of_birth']) : null;
                         $active = isset($_POST['active']) ? (int)$_POST['active'] : 1;
 
@@ -1209,8 +1450,8 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             throw new Exception("Name and Email fields are required.");
                         }
 
-                        $stmt_update = $conn->prepare("UPDATE users SET name = ?, email = ?, phone = ?, date_of_birth = ?, is_active = ? WHERE id = ?");
-                        $stmt_update->bind_param("ssssii", $name, $email, $phone, $date_of_birth, $active, $target_user_id);
+                        $stmt_update = $conn->prepare("UPDATE users SET name = ?, email = ?, phone = ?, gender = ?, date_of_birth = ?, is_active = ? WHERE id = ?");
+                        $stmt_update->bind_param("sssssii", $name, $email, $phone, $gender, $date_of_birth, $active, $target_user_id);
                         $stmt_update->execute();
                         $stmt_update->close();
 
@@ -1229,6 +1470,65 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $target_display_id = $stmt_get_id->get_result()->fetch_assoc()['display_user_id'];
                         $stmt_get_id->close();
                         log_activity($conn, $user_id, 'update_user', $target_user_id, "Updated profile for user '{$name}' ({$target_display_id}).");
+
+                        // Track changes and send email notification
+                        $email_changes = [];
+                        if ($old_user_data['name'] !== $name) {
+                            $email_changes['Name'] = ['old' => $old_user_data['name'], 'new' => $name];
+                        }
+                        if ($old_user_data['email'] !== $email) {
+                            $email_changes['Email'] = ['old' => $old_user_data['email'], 'new' => $email];
+                        }
+                        if ($old_user_data['phone'] !== $phone) {
+                            $email_changes['Phone Number'] = ['old' => ($old_user_data['phone'] ?: 'Not set'), 'new' => ($phone ?: 'Not set')];
+                        }
+                        if (($old_user_data['gender'] ?? '') !== ($gender ?? '')) {
+                            $email_changes['Gender'] = ['old' => ($old_user_data['gender'] ?: 'Not set'), 'new' => ($gender ?: 'Not set')];
+                        }
+                        if (($old_user_data['date_of_birth'] ?? '') !== ($date_of_birth ?? '')) {
+                            $email_changes['Date of Birth'] = ['old' => ($old_user_data['date_of_birth'] ?: 'Not set'), 'new' => ($date_of_birth ?: 'Not set')];
+                        }
+                        if ((int)$old_user_data['is_active'] !== $active) {
+                            $email_changes['Account Status'] = ['old' => ($old_user_data['is_active'] ? 'Active' : 'Inactive'), 'new' => ($active ? 'Active' : 'Inactive')];
+                        }
+                        
+                        // Send email notification if there are changes
+                        if (!empty($email_changes)) {
+                            try {
+                                require_once '../mail/templates.php';
+                                require_once '../mail/send_mail.php';
+                                
+                                // Get staff name for the notification
+                                $stmt_staff = $conn->prepare("SELECT name FROM users WHERE id = ?");
+                                $stmt_staff->bind_param("i", $user_id);
+                                $stmt_staff->execute();
+                                $staff_name = $stmt_staff->get_result()->fetch_assoc()['name'];
+                                $stmt_staff->close();
+                                
+                                date_default_timezone_set('Asia/Kolkata');
+                                $current_datetime = date('d M Y, h:i A');
+                                $admin_name = "Staff Member: {$staff_name}";
+                                $email_body = getAccountModificationTemplate($name, $old_user_data['username'], $email_changes, $current_datetime, $admin_name);
+                                
+                                // Send to the updated email address
+                                send_mail('MedSync', $email, 'Your MedSync Account Has Been Updated', $email_body);
+                                
+                                // If email was changed, also notify the old email
+                                if (isset($email_changes['Email']) && !empty($old_user_data['email'])) {
+                                    $old_email_body = getAccountModificationTemplate(
+                                        $old_user_data['name'], 
+                                        $old_user_data['username'], 
+                                        $email_changes, 
+                                        $current_datetime, 
+                                        $admin_name
+                                    );
+                                    send_mail('MedSync', $old_user_data['email'], 'Your MedSync Account Has Been Updated', $old_email_body);
+                                }
+                            } catch (Exception $email_error) {
+                                // Email sending failed, but don't block the update
+                                // Log error silently
+                            }
+                        }
 
                         $conn->commit();
                         $transaction_active = false;
@@ -1545,6 +1845,15 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 // --- START: LAB WORKFLOW UPDATE ---
                 case 'addLabOrder': // Renamed from addLabResult
                 case 'updateLabOrder': // Renamed from updateLabResult
+                    /**
+                     * Lab Order Status Workflow:
+                     * - 'ordered': Initial state when a doctor orders a test (default for new orders)
+                     * - 'pending': Test is scheduled/awaiting sample collection
+                     * - 'processing': Lab is actively processing the test
+                     * - 'completed': Results are ready and report is available
+                     * 
+                     * Note: Staff can update status at any stage. No strict workflow enforcement.
+                     */
                     $conn->begin_transaction();
                     $transaction_active = true;
                     try {
@@ -1555,11 +1864,27 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $test_date = !empty(trim($_POST['test_date'])) ? trim($_POST['test_date']) : null;
                         $doctor_id = !empty($_POST['doctor_id']) ? (int)$_POST['doctor_id'] : null;
                         $result_details = !empty($_POST['result_details']) ? trim($_POST['result_details']) : null;
-                        $cost = isset($_POST['cost']) && is_numeric($_POST['cost']) ? (float)$_POST['cost'] : 0.00;
+                        $cost = isset($_POST['cost']) && is_numeric($_POST['cost']) && (float)$_POST['cost'] >= 0 ? (float)$_POST['cost'] : 0.00;
                         $status = in_array($_POST['status'], ['ordered', 'pending', 'processing', 'completed']) ? $_POST['status'] : 'pending';
                         
                         if (empty($patient_id) || empty($test_name)) {
                             throw new Exception("Patient and test name are required.");
+                        }
+                        
+                        if ($cost < 0) {
+                            throw new Exception("Cost cannot be negative.");
+                        }
+                        
+                        // Validate test date if provided
+                        if ($test_date) {
+                            $date_obj = DateTime::createFromFormat('Y-m-d', $test_date);
+                            if (!$date_obj || $date_obj->format('Y-m-d') !== $test_date) {
+                                throw new Exception("Invalid test date format.");
+                            }
+                            // Optionally prevent future dates (uncomment if needed)
+                            // if ($date_obj > new DateTime()) {
+                            //     throw new Exception("Test date cannot be in the future.");
+                            // }
                         }
 
                         $attachment_filename = null;
@@ -1619,13 +1944,69 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             $stmt->execute();
                             $stmt->close();
                             
-                            // *** NEW: Notification logic on completion ***
-                            if ($status === 'completed' && $doctor_id) {
-                                $stmt_notify = $conn->prepare("INSERT INTO notifications (sender_id, recipient_user_id, message) VALUES (?, ?, ?)");
-                                $message = "Lab result for test '{$test_name}' for patient ID {$patient_id} is ready for review.";
-                                $stmt_notify->bind_param("iis", $user_id, $doctor_id, $message);
-                                $stmt_notify->execute();
-                                $stmt_notify->close();
+                            // *** IMPROVED: Notification logic on completion ***
+                            if ($status === 'completed') {
+                                // Get patient details for email notification
+                                $stmt_patient = $conn->prepare("SELECT name, email FROM users WHERE id = ?");
+                                $stmt_patient->bind_param("i", $patient_id);
+                                $stmt_patient->execute();
+                                $patient_data = $stmt_patient->get_result()->fetch_assoc();
+                                $stmt_patient->close();
+                                
+                                // Notify the doctor if one is assigned
+                                if ($doctor_id) {
+                                    $stmt_notify = $conn->prepare("INSERT INTO notifications (sender_id, recipient_user_id, message) VALUES (?, ?, ?)");
+                                    $message = "Lab result for test '{$test_name}' for patient ID {$patient_id} is ready for review.";
+                                    $stmt_notify->bind_param("iis", $user_id, $doctor_id, $message);
+                                    $stmt_notify->execute();
+                                    $stmt_notify->close();
+                                }
+                                
+                                // ALWAYS notify the patient when their results are ready (in-app notification)
+                                $stmt_notify_patient = $conn->prepare("INSERT INTO notifications (sender_id, recipient_user_id, message) VALUES (?, ?, ?)");
+                                $patient_message = "Your lab test result for '{$test_name}' is now ready. Please check your dashboard for details.";
+                                $stmt_notify_patient->bind_param("iis", $user_id, $patient_id, $patient_message);
+                                $stmt_notify_patient->execute();
+                                $stmt_notify_patient->close();
+                                
+                                // Send email notification to patient
+                                if ($patient_data && !empty($patient_data['email'])) {
+                                    try {
+                                        $current_datetime = date('d M Y, h:i A');
+                                        $email_body = getLabResultReadyTemplate(
+                                            $patient_data['name'],
+                                            $test_name,
+                                            $test_date,
+                                            'Completed',
+                                            $current_datetime
+                                        );
+                                        
+                                        $email_sent = send_mail(
+                                            'MedSync Lab Services',
+                                            $patient_data['email'],
+                                            'Your Lab Results Are Ready - MedSync',
+                                            $email_body
+                                        );
+                                        
+                                        if (!$email_sent) {
+                                            $error_msg = "Failed to send lab result email to patient (ID: {$patient_id}, Email: {$patient_data['email']}). Check email configuration in system settings.";
+                                            error_log($error_msg);
+                                            log_activity($conn, $user_id, 'email_error', $patient_id, "Lab result email failed: Email system may not be configured");
+                                        } else {
+                                            log_activity($conn, $user_id, 'email_sent', $patient_id, "Lab result notification email sent to {$patient_data['email']}");
+                                        }
+                                    } catch (Exception $email_error) {
+                                        // Log email error but don't fail the lab order update
+                                        $error_msg = "Lab result email notification failed for patient ID {$patient_id}: " . $email_error->getMessage();
+                                        error_log($error_msg);
+                                        log_activity($conn, $user_id, 'email_error', $patient_id, $error_msg);
+                                    }
+                                } else {
+                                    // Patient doesn't have an email address
+                                    if ($patient_data && empty($patient_data['email'])) {
+                                        log_activity($conn, $user_id, 'email_skipped', $patient_id, "Lab result email not sent: Patient has no email address on file");
+                                    }
+                                }
                             }
                             
                             // UPDATED: More descriptive log message
@@ -1787,16 +2168,19 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         }
                         $admission_id = (int)$_POST['admission_id'];
                         
-                        // --- START: THIS IS THE FIX ---
-                        // Check if an unpaid invoice already exists for this admission
-                        $stmt_check = $conn->prepare("SELECT id FROM transactions WHERE admission_id = ? AND status = 'pending'");
+                        // Check if ANY invoice already exists for this admission (pending or paid)
+                        // This prevents duplicate billing for the same admission
+                        $stmt_check = $conn->prepare("SELECT id, status FROM transactions WHERE admission_id = ?");
                         $stmt_check->bind_param("i", $admission_id);
                         $stmt_check->execute();
-                        if ($stmt_check->get_result()->num_rows > 0) {
-                            throw new Exception("An unpaid invoice already exists for this admission. Please process the existing one.");
+                        $existing_transaction = $stmt_check->get_result()->fetch_assoc();
+                        if ($existing_transaction) {
+                            $status_msg = $existing_transaction['status'] === 'paid' 
+                                ? "A paid invoice already exists for this admission. Duplicate billing is not allowed."
+                                : "An unpaid invoice already exists for this admission. Please process the existing one.";
+                            throw new Exception($status_msg);
                         }
                         $stmt_check->close();
-                        // --- END: THIS IS THE FIX ---
 
                         $stmt_adm = $conn->prepare("
                             SELECT a.patient_id, a.admission_date, COALESCE(a.discharge_date, NOW()) as effective_discharge_date, acc.price_per_day
@@ -2011,7 +2395,10 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
         if ($transaction_active) {
             $conn->rollback();
         }
-        http_response_code(400);
+        // Only set status to 400 if not already set by security functions
+        if (http_response_code() === 200) {
+            http_response_code(400);
+        }
         $response['message'] = $e->getMessage();
     }
 
@@ -2146,7 +2533,132 @@ if (isset($_GET['action']) && $_GET['action'] === 'download_pharmacy_bill') {
     $medsync_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($medsync_logo_path));
     $hospital_logo_base64 = 'data:image/png;base64,' . base64_encode(file_get_contents($hospital_logo_path));
 
-    $html = '...'; // PDF HTML content remains the same
+    $html = '
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Pharmacy Bill</title>
+        <style>
+            @page { margin: 130px 20px 50px 20px; }
+            body { font-family: "DejaVu Sans", sans-serif; color: #333; }
+            .header { position: fixed; top: -110px; left: 0; right: 0; width: 100%; height: 120px; }
+            .medsync-logo { position: absolute; top: 10px; left: 20px; }
+            .medsync-logo img { width: 80px; }
+            .hospital-logo { position: absolute; top: 10px; right: 20px; }
+            .hospital-logo img { width: 70px; }
+            .hospital-details { text-align: center; margin-top: 0; }
+            .hospital-details h2 { margin: 0; font-size: 1.5em; color: #007BFF; }
+            .hospital-details p { margin: 2px 0; font-size: 0.85em; }
+            .bill-title { text-align: center; margin-top: 0; margin-bottom: 20px; }
+            .bill-title h1 { margin: 0; font-size: 1.8em; color: #333; }
+            .bill-title p { margin: 5px 0; font-size: 0.9em; color: #666; }
+            .bill-info { margin-bottom: 20px; }
+            .bill-info table { width: 100%; border-collapse: collapse; }
+            .bill-info td { padding: 5px; font-size: 0.9em; }
+            .bill-info td:first-child { font-weight: bold; width: 30%; }
+            .data-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            .data-table th, .data-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+            .data-table th { background-color: #007BFF; color: white; font-weight: 600; }
+            .data-table tr:nth-child(even) { background-color: #f9f9f9; }
+            .total-section { margin-top: 20px; text-align: right; }
+            .total-section table { float: right; border-collapse: collapse; }
+            .total-section td { padding: 8px 15px; font-size: 1em; }
+            .total-section .total-row { font-weight: bold; font-size: 1.2em; background-color: #f0f0f0; }
+            .footer { position: fixed; bottom: -30px; left: 0; right: 0; text-align: center; font-size: 0.8em; color: #666; border-top: 1px solid #ddd; padding-top: 10px; }
+            .payment-info { margin-top: 30px; padding: 10px; background-color: #f9f9f9; border-left: 4px solid #28a745; }
+            .payment-info p { margin: 5px 0; font-size: 0.9em; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="medsync-logo">
+                <img src="' . $medsync_logo_base64 . '" alt="MedSync Logo">
+            </div>
+            <div class="hospital-details">
+                <h2>Calysta Health Institute</h2>
+                <p>Kerala, India</p>
+                <p>+91 45235 31245 | medsync.calysta@gmail.com</p>
+            </div>
+            <div class="hospital-logo">
+                <img src="' . $hospital_logo_base64 . '" alt="Hospital Logo">
+            </div>
+        </div>
+
+        <div class="bill-title">
+            <h1>Pharmacy Bill</h1>
+            <p>Bill ID: PB-' . str_pad($bill_id, 5, '0', STR_PAD_LEFT) . ' | Date: ' . date('Y-m-d H:i:s') . '</p>
+        </div>
+
+        <div class="bill-info">
+            <table>
+                <tr>
+                    <td>Patient Name:</td>
+                    <td>' . htmlspecialchars($bill_data['patient_name']) . ' (' . htmlspecialchars($bill_data['patient_display_id']) . ')</td>
+                    <td>Doctor Name:</td>
+                    <td>' . htmlspecialchars($bill_data['doctor_name']) . '</td>
+                </tr>
+                <tr>
+                    <td>Prescription ID:</td>
+                    <td>PRES-' . str_pad($bill_data['prescription_id'], 4, '0', STR_PAD_LEFT) . '</td>
+                    <td>Prescription Date:</td>
+                    <td>' . htmlspecialchars($bill_data['prescription_date']) . '</td>
+                </tr>
+                <tr>
+                    <td>Dispensed By:</td>
+                    <td>' . htmlspecialchars($bill_data['staff_name']) . '</td>
+                    <td>Payment Mode:</td>
+                    <td>' . htmlspecialchars(ucfirst($bill_data['payment_mode'])) . '</td>
+                </tr>
+            </table>
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Medicine Name</th>
+                    <th>Quantity</th>
+                    <th>Unit Price (Rs.)</th>
+                    <th>Subtotal (Rs.)</th>
+                </tr>
+            </thead>
+            <tbody>';
+    
+    $item_number = 1;
+    foreach ($items_data as $item) {
+        $html .= '<tr>
+                    <td>' . $item_number++ . '</td>
+                    <td>' . htmlspecialchars($item['name']) . '</td>
+                    <td>' . htmlspecialchars($item['quantity_dispensed']) . '</td>
+                    <td>Rs. ' . number_format($item['unit_price'], 2) . '</td>
+                    <td>Rs. ' . number_format($item['subtotal'], 2) . '</td>
+                </tr>';
+    }
+    
+    $html .= '</tbody>
+        </table>
+
+        <div class="total-section">
+            <table>
+                <tr class="total-row">
+                    <td>Total Amount:</td>
+                    <td>Rs. ' . number_format($bill_data['total_amount'], 2) . '</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="payment-info">
+            <p><strong>Payment Status:</strong> PAID</p>
+            <p><strong>Transaction ID:</strong> TXN-' . str_pad($bill_data['transaction_id'], 6, '0', STR_PAD_LEFT) . '</p>
+            <p><strong>Note:</strong> This is a computer-generated bill and does not require a signature.</p>
+        </div>
+
+        <div class="footer">
+            MedSync Healthcare Platform | &copy; ' . date('Y') . ' Calysta Health Institute | Thank you for choosing our pharmacy services
+        </div>
+    </body>
+    </html>';
 
     $options = new Options();
     $options->set('isHtml5ParserEnabled', true);

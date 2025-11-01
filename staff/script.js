@@ -319,9 +319,15 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     document.addEventListener('click', (e) => {
+        // Close notification panel
         if (!notificationPanel.contains(e.target) && !notificationBell.contains(e.target)) {
             notificationPanel.classList.remove('show');
         }
+        // Close profile dropdown
+        if (userProfileWidget && !userProfileWidget.contains(e.target)) {
+            userProfileWidget.classList.remove('active');
+        }
+        // Close bed status dropdowns
         document.querySelectorAll('.bed-status-dropdown.active').forEach(dropdown => {
             if (!dropdown.previousElementSibling.contains(e.target)) {
                 dropdown.classList.remove('active');
@@ -334,6 +340,39 @@ document.addEventListener("DOMContentLoaded", function() {
         notificationPanel.classList.remove('show');
         document.querySelector('.nav-link[data-page="notifications"]').click();
     });
+
+    // --- PROFILE DROPDOWN TOGGLE ---
+    const userProfileWidget = document.getElementById('user-profile-widget');
+    const profileDropdown = document.getElementById('profile-dropdown');
+
+    if (userProfileWidget && profileDropdown) {
+        userProfileWidget.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userProfileWidget.classList.toggle('active');
+            // Close notification panel if open
+            notificationPanel.classList.remove('show');
+        });
+
+        // Handle dropdown item clicks
+        profileDropdown.querySelectorAll('.dropdown-item[data-page]').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                const pageId = item.dataset.page;
+                const navLink = document.querySelector(`.nav-link[data-page="${pageId}"]`);
+                if (navLink) {
+                    navLink.click();
+                }
+                userProfileWidget.classList.remove('active');
+            });
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!userProfileWidget.contains(e.target)) {
+                userProfileWidget.classList.remove('active');
+            }
+        });
+    }
 
     const markAllReadBtn = document.getElementById('mark-all-read-btn');
     if(markAllReadBtn) {
@@ -903,11 +942,183 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (result.new_image_url) {
                     const newUrl = `${result.new_image_url}?v=${new Date().getTime()}`;
                     document.querySelectorAll('.profile-picture, .editable-profile-picture').forEach(img => img.src = newUrl);
+                    // Show remove button since we now have a custom picture
+                    removeProfilePictureBtn.style.display = 'flex';
                     showFeedback(personalInfoForm, result.message, true);
                 }
             } catch (error) {
                 showFeedback(personalInfoForm, error.message, false);
             }
+        });
+
+        // --- REMOVE PROFILE PICTURE ---
+        const removeProfilePictureBtn = document.getElementById('remove-profile-picture-btn');
+        if (removeProfilePictureBtn) {
+            removeProfilePictureBtn.addEventListener('click', async () => {
+                if (!confirm('Are you sure you want to remove your profile picture?')) return;
+
+                const formData = new FormData();
+                formData.append('action', 'removeProfilePicture');
+                formData.append('csrf_token', csrfToken);
+
+                try {
+                    const response = await fetch('api.php', { method: 'POST', body: formData });
+                    const result = await response.json();
+                    if (!response.ok || !result.success) throw new Error(result.message);
+
+                    if (result.new_image_url) {
+                        const newUrl = `${result.new_image_url}?v=${new Date().getTime()}`;
+                        document.querySelectorAll('.profile-picture, .editable-profile-picture').forEach(img => img.src = newUrl);
+                        // Hide remove button since we're back to default
+                        removeProfilePictureBtn.style.display = 'none';
+                        showFeedback(personalInfoForm, result.message, true);
+                    }
+                } catch (error) {
+                    showFeedback(personalInfoForm, error.message, false);
+                }
+            });
+        }
+
+        // --- WEBCAM CAPTURE FUNCTIONALITY ---
+        const webcamModal = document.getElementById('webcam-modal');
+        const webcamVideo = document.getElementById('webcam-video');
+        const webcamCanvas = document.getElementById('webcam-canvas');
+        const webcamPreview = document.getElementById('webcam-preview');
+        const webcamCapturedImage = document.getElementById('webcam-captured-image');
+        const webcamStatus = document.getElementById('webcam-status');
+        
+        const openWebcamBtn = document.getElementById('open-webcam-btn');
+        const closeWebcamModal = document.getElementById('close-webcam-modal');
+        const webcamCancelBtn = document.getElementById('webcam-cancel-btn');
+        const webcamCaptureBtn = document.getElementById('webcam-capture-btn');
+        const webcamRetakeBtn = document.getElementById('webcam-retake-btn');
+        const webcamUseBtn = document.getElementById('webcam-use-btn');
+        
+        let webcamStream = null;
+        let capturedBlob = null;
+
+        const updateWebcamStatus = (message, type = 'info') => {
+            webcamStatus.className = `webcam-status ${type}`;
+            const icon = type === 'error' ? 'fa-exclamation-circle' : type === 'success' ? 'fa-check-circle' : 'fa-info-circle';
+            webcamStatus.innerHTML = `<i class="fas ${icon}"></i> <span>${message}</span>`;
+        };
+
+        const startWebcam = async () => {
+            try {
+                updateWebcamStatus('Starting camera...', 'info');
+                webcamStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'user'
+                    } 
+                });
+                webcamVideo.srcObject = webcamStream;
+                webcamVideo.style.display = 'block';
+                webcamPreview.style.display = 'none';
+                webcamCaptureBtn.style.display = 'inline-block';
+                webcamRetakeBtn.style.display = 'none';
+                webcamUseBtn.style.display = 'none';
+                updateWebcamStatus('Camera ready! Click "Capture" to take a photo.', 'success');
+            } catch (error) {
+                console.error('Webcam error:', error);
+                updateWebcamStatus('Unable to access camera. Please check permissions.', 'error');
+            }
+        };
+
+        const stopWebcam = () => {
+            if (webcamStream) {
+                webcamStream.getTracks().forEach(track => track.stop());
+                webcamStream = null;
+                webcamVideo.srcObject = null;
+            }
+        };
+
+        const capturePhoto = () => {
+            const context = webcamCanvas.getContext('2d');
+            webcamCanvas.width = webcamVideo.videoWidth;
+            webcamCanvas.height = webcamVideo.videoHeight;
+            context.drawImage(webcamVideo, 0, 0);
+            
+            webcamCanvas.toBlob((blob) => {
+                capturedBlob = blob;
+                const url = URL.createObjectURL(blob);
+                webcamCapturedImage.src = url;
+                webcamVideo.style.display = 'none';
+                webcamPreview.style.display = 'flex';
+                webcamCaptureBtn.style.display = 'none';
+                webcamRetakeBtn.style.display = 'inline-block';
+                webcamUseBtn.style.display = 'inline-block';
+                updateWebcamStatus('Photo captured! Use it or retake.', 'success');
+            }, 'image/jpeg', 0.9);
+        };
+
+        const retakePhoto = () => {
+            webcamVideo.style.display = 'block';
+            webcamPreview.style.display = 'none';
+            webcamCaptureBtn.style.display = 'inline-block';
+            webcamRetakeBtn.style.display = 'none';
+            webcamUseBtn.style.display = 'none';
+            capturedBlob = null;
+            updateWebcamStatus('Camera ready! Click "Capture" to take a photo.', 'success');
+        };
+
+        const uploadCapturedPhoto = async () => {
+            if (!capturedBlob) return;
+            
+            const formData = new FormData();
+            formData.append('profile_picture', capturedBlob, 'webcam-capture.jpg');
+            formData.append('action', 'updateProfilePicture');
+            formData.append('csrf_token', csrfToken);
+
+            try {
+                updateWebcamStatus('Uploading photo...', 'info');
+                webcamUseBtn.disabled = true;
+                
+                const response = await fetch('api.php', { method: 'POST', body: formData });
+                const result = await response.json();
+                
+                if (!response.ok || !result.success) throw new Error(result.message);
+                
+                if (result.new_image_url) {
+                    const newUrl = `${result.new_image_url}?v=${new Date().getTime()}`;
+                    document.querySelectorAll('.profile-picture, .editable-profile-picture').forEach(img => img.src = newUrl);
+                    // Show remove button since we now have a custom picture
+                    if (removeProfilePictureBtn) removeProfilePictureBtn.style.display = 'flex';
+                    showFeedback(personalInfoForm, 'Profile picture updated successfully!', true);
+                }
+                
+                webcamModal.classList.remove('show');
+                stopWebcam();
+            } catch (error) {
+                updateWebcamStatus(error.message, 'error');
+                webcamUseBtn.disabled = false;
+            }
+        };
+
+        const closeWebcam = () => {
+            webcamModal.classList.remove('show');
+            stopWebcam();
+            capturedBlob = null;
+        };
+
+        // Event Listeners
+        if (openWebcamBtn) {
+            openWebcamBtn.addEventListener('click', () => {
+                webcamModal.classList.add('show');
+                startWebcam();
+            });
+        }
+
+        if (closeWebcamModal) closeWebcamModal.addEventListener('click', closeWebcam);
+        if (webcamCancelBtn) webcamCancelBtn.addEventListener('click', closeWebcam);
+        if (webcamCaptureBtn) webcamCaptureBtn.addEventListener('click', capturePhoto);
+        if (webcamRetakeBtn) webcamRetakeBtn.addEventListener('click', retakePhoto);
+        if (webcamUseBtn) webcamUseBtn.addEventListener('click', uploadCapturedPhoto);
+
+        // Close modal on outside click
+        webcamModal?.addEventListener('click', (e) => {
+            if (e.target === webcamModal) closeWebcam();
         });
 
         profilePage.querySelectorAll('.toggle-password').forEach(toggle => {
@@ -945,27 +1156,83 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!userTableBody) return;
 
         if (users.length === 0) {
-            userTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No users found.</td></tr>`;
+            userTableBody.innerHTML = `<tr><td colspan="11" style="text-align: center;">No users found.</td></tr>`;
             return;
         }
-        userTableBody.innerHTML = users.map(user => `
+        userTableBody.innerHTML = users.map(user => {
+            // Format profile picture
+            const profilePic = user.profile_picture && user.profile_picture !== 'default.png' 
+                ? `../uploads/profile_pictures/${user.profile_picture}` 
+                : '../uploads/profile_pictures/default.png';
+            
+            // Format gender with icon
+            const genderIcon = user.gender === 'Male' ? '♂️' : user.gender === 'Female' ? '♀️' : '⚧';
+            const genderDisplay = user.gender ? `${user.gender} ${genderIcon}` : 'N/A';
+            
+            // Format age and DOB
+            const age = user.age || 'N/A';
+            const dob = user.date_of_birth ? new Date(user.date_of_birth).toLocaleDateString('en-GB') : 'N/A';
+            
+            // Format phone
+            const phone = user.phone || 'N/A';
+            
+            // Format last active
+            let lastActive = 'Never';
+            if (user.last_active) {
+                const lastActiveDate = new Date(user.last_active);
+                const now = new Date();
+                const diffMs = now - lastActiveDate;
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMs / 3600000);
+                const diffDays = Math.floor(diffMs / 86400000);
+                
+                if (diffMins < 60) {
+                    lastActive = `${diffMins} min${diffMins !== 1 ? 's' : ''} ago`;
+                } else if (diffHours < 24) {
+                    lastActive = `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+                } else if (diffDays < 30) {
+                    lastActive = `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+                } else {
+                    lastActive = lastActiveDate.toLocaleDateString('en-GB');
+                }
+            }
+            
+            return `
             <tr data-user='${JSON.stringify(user)}'>
+                <td data-label="Photo">
+                    <img src="${profilePic}" alt="${user.name}" 
+                         style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #e2e8f0;"
+                         onerror="this.src='../uploads/profile_pictures/default.png'">
+                </td>
                 <td data-label="User ID">${user.display_user_id}</td>
-                <td data-label="Name">${user.name}</td>
+                <td data-label="Name"><strong>${user.name}</strong></td>
+                <td data-label="Gender">${genderDisplay}</td>
+                <td data-label="Age/DOB">
+                    ${age} yrs<br>
+                    <small style="color: #666;">${dob}</small>
+                </td>
+                <td data-label="Phone">${phone}</td>
                 <td data-label="Role">${user.role.charAt(0).toUpperCase() + user.role.slice(1)}</td>
                 <td data-label="Email">${user.email}</td>
                 <td data-label="Status">
                     <span class="status ${user.active == 1 ? 'admitted' : 'unpaid'}">${user.active == 1 ? 'Active' : 'Inactive'}</span>
                 </td>
+                <td data-label="Last Active">
+                    <small style="color: #666;">${lastActive}</small>
+                </td>
                 <td data-label="Actions">
                     <button class="action-btn edit-user-btn"><i class="fas fa-edit"></i> Edit</button> 
-                    ${user.active == 1
-                        ? `<button class="action-btn danger remove-user-btn"><i class="fas fa-trash-alt"></i> Deactivate</button>`
-                        : `<button class="action-btn reactivate-user-btn"><i class="fas fa-check-circle"></i> Reactivate</button>`
+                    ${(user.role !== 'admin' && user.role !== 'staff') ? 
+                        (user.active == 1
+                            ? `<button class="action-btn danger remove-user-btn"><i class="fas fa-ban"></i> Deactivate</button>`
+                            : `<button class="action-btn reactivate-user-btn"><i class="fas fa-check-circle"></i> Reactivate</button>`
+                        ) :
+                        `<span style="font-size: 0.85em; color: #999; font-style: italic;">Protected Account</span>`
                     }
                 </td>
             </tr>
-        `).join('');
+        `;
+        }).join('');
     };
 
     const fetchUsers = async () => {
@@ -973,18 +1240,20 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!userTableBody) return;
 
         const roleFilter = document.getElementById('user-role-filter');
+        const statusFilter = document.getElementById('user-status-filter');
         const searchInput = document.getElementById('user-search');
         const role = roleFilter.value;
+        const status = statusFilter.value;
         const search = searchInput.value;
-        userTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">Loading users...</td></tr>`;
+        userTableBody.innerHTML = `<tr><td colspan="11" style="text-align: center;">Loading users...</td></tr>`;
 
         try {
-            const response = await fetch(`api.php?fetch=get_users&role=${role}&search=${search}`);
+            const response = await fetch(`api.php?fetch=get_users&role=${role}&status=${status}&search=${encodeURIComponent(search)}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             renderUsers(result.data);
         } catch (error) {
-            userTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
+            userTableBody.innerHTML = `<tr><td colspan="11" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
         }
     };
 
@@ -1016,6 +1285,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const openUserModal = async (mode, userData = {}) => {
             userForm.reset();
             userForm.querySelector('#user-username').disabled = false;
+            userForm.querySelector('#user-email').disabled = false; // Re-enable for add mode
             userForm.querySelector('#user-role').disabled = false;
             doctorFields.style.display = 'none';
             activeGroup.style.display = 'none';
@@ -1025,18 +1295,28 @@ document.addEventListener("DOMContentLoaded", function() {
                 userForm.querySelector('#user-form-action').value = 'addUser';
                 passwordGroup.style.display = 'block';
                 userForm.querySelector('#user-password').required = true;
+                
+                // Staff can only create patient and doctor accounts
+                const roleSelect = userForm.querySelector('#user-role');
+                roleSelect.innerHTML = `
+                    <option value="">Select Role</option>
+                    <option value="user">Patient</option>
+                    <option value="doctor">Doctor</option>
+                `;
             } else {
                 userModalTitle.textContent = `Edit ${userData.name}`;
                 userForm.querySelector('#user-form-action').value = 'updateUser';
                 userForm.querySelector('#user-id').value = userData.id;
                 userForm.querySelector('#user-name').value = userData.name;
                 userForm.querySelector('#user-username').value = userData.username;
-                userForm.querySelector('#user-username').disabled = true;
+                userForm.querySelector('#user-username').disabled = true; // Username cannot be changed
                 userForm.querySelector('#user-email').value = userData.email;
+                // Email is now editable for staff
                 userForm.querySelector('#user-phone').value = userData.phone || '';
+                userForm.querySelector('#user-gender').value = userData.gender || '';
                 userForm.querySelector('#user-dob').value = userData.date_of_birth || '';
                 userForm.querySelector('#user-role').value = userData.role;
-                userForm.querySelector('#user-role').disabled = true;
+                userForm.querySelector('#user-role').disabled = true; // Role cannot be changed
                 passwordGroup.style.display = 'none';
                 userForm.querySelector('#user-password').required = false;
         
@@ -1067,12 +1347,47 @@ document.addEventListener("DOMContentLoaded", function() {
             if(e.target.closest('.edit-user-btn')) {
                 const row = e.target.closest('tr');
                 const userData = JSON.parse(row.dataset.user);
+                
+                // Check if user is allowed to edit this account type
+                if (userData.role === 'admin' || userData.role === 'staff') {
+                    showAlert('Permission Denied', `You are not authorized to edit ${userData.role} accounts. Only patients and doctors can be edited by staff.`, 'warning');
+                    return;
+                }
+                
                 openUserModal('edit', userData);
             }
             if(e.target.closest('.remove-user-btn')) {
                 const row = e.target.closest('tr');
                 const userData = JSON.parse(row.dataset.user);
+                
+                // Additional permission check
+                if (userData.role === 'admin' || userData.role === 'staff') {
+                    showAlert('Permission Denied', `You are not authorized to deactivate ${userData.role} accounts.`, 'warning');
+                    return;
+                }
+                
                 showConfirmation('Deactivate User', `Are you sure you want to deactivate ${userData.name}? This will make their account inactive.`)
+                    .then(confirmed => {
+                        if (confirmed) {
+                           const formData = new FormData();
+                           formData.append('action', 'removeUser');
+                           formData.append('id', userData.id);
+                           formData.append('csrf_token', csrfToken);
+                           handleUserFormSubmit(formData);
+                        }
+                    });
+            }
+            if(e.target.closest('.reactivate-user-btn')) {
+                const row = e.target.closest('tr');
+                const userData = JSON.parse(row.dataset.user);
+                
+                // Additional permission check
+                if (userData.role === 'admin' || userData.role === 'staff') {
+                    showAlert('Permission Denied', `You are not authorized to reactivate ${userData.role} accounts.`, 'warning');
+                    return;
+                }
+                
+                showConfirmation('Reactivate User', `Are you sure you want to reactivate ${userData.name}? Their account will become active.`)
                     .then(confirmed => {
                         if (confirmed) {
                            const formData = new FormData();
@@ -1144,6 +1459,13 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         roleFilter.addEventListener('change', fetchUsers);
+        
+        // Add status filter event listener
+        const statusFilter = document.getElementById('user-status-filter');
+        if (statusFilter) {
+            statusFilter.addEventListener('change', fetchUsers);
+        }
+        
         searchInput.addEventListener('input', () => {
             clearTimeout(userFetchDebounce);
             userFetchDebounce = setTimeout(fetchUsers, 300);
@@ -1335,6 +1657,9 @@ document.addEventListener("DOMContentLoaded", function() {
     let bedManagementInitialized = false;
     let bedManagementData = {};
     let bedSearchDebounce;
+    let bedAutoRefreshInterval;
+    let bedAutoRefreshEnabled = true;
+    let currentBedFilter = 'all';
 
     async function initializeBedManagement() {
         if (bedManagementInitialized) {
@@ -1346,9 +1671,47 @@ document.addEventListener("DOMContentLoaded", function() {
 
         await fetchAndRenderBedData();
 
+        // Refresh button
+        document.getElementById('refresh-beds-btn').addEventListener('click', () => {
+            fetchAndRenderBedData();
+        });
+
+        // Auto-refresh toggle
+        document.getElementById('toggle-bed-auto-refresh').addEventListener('click', (e) => {
+            bedAutoRefreshEnabled = !bedAutoRefreshEnabled;
+            e.target.classList.toggle('active', bedAutoRefreshEnabled);
+            e.target.innerHTML = bedAutoRefreshEnabled 
+                ? '<i class="fas fa-play"></i> Auto-refresh ON' 
+                : '<i class="fas fa-pause"></i> Auto-refresh OFF';
+            
+            if (bedAutoRefreshEnabled) {
+                bedAutoRefreshInterval = setInterval(() => fetchAndRenderBedData(true), 30000);
+            } else {
+                clearInterval(bedAutoRefreshInterval);
+            }
+        });
+
+        // Start auto-refresh
+        if (bedAutoRefreshEnabled) {
+            bedAutoRefreshInterval = setInterval(() => fetchAndRenderBedData(true), 30000);
+        }
+
+        // Quick filter buttons
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.bed-filter-btn')) {
+                const filterBtn = e.target.closest('.bed-filter-btn');
+                const filter = filterBtn.dataset.bedFilter;
+                
+                document.querySelectorAll('.bed-filter-btn').forEach(btn => btn.classList.remove('active'));
+                filterBtn.classList.add('active');
+                
+                currentBedFilter = filter;
+                applyBedFilter(filter);
+            }
+        });
+
         document.getElementById('add-new-bed-btn').addEventListener('click', () => openBedModal('add'));
         document.getElementById('bed-location-filter').addEventListener('change', filterBedGrid);
-        document.getElementById('bed-status-filter').addEventListener('change', filterBedGrid);
         document.getElementById('bed-search-filter').addEventListener('input', () => {
              clearTimeout(bedSearchDebounce);
              bedSearchDebounce = setTimeout(filterBedGrid, 300);
@@ -1387,51 +1750,22 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
 
-        const bulkUpdateButton = document.getElementById('bulk-update-beds-btn');
-        bedGridContainer.addEventListener('change', (e) => {
-            if (e.target.classList.contains('bed-selection-checkbox')) {
-                const selectedChecks = bedGridContainer.querySelectorAll('.bed-selection-checkbox:checked');
-                bulkUpdateButton.style.display = selectedChecks.length > 0 ? 'inline-flex' : 'none';
-            }
-        });
-
-        bulkUpdateButton.addEventListener('click', async () => {
-            const selectedChecks = bedGridContainer.querySelectorAll('.bed-selection-checkbox:checked');
-            const bedIdsToUpdate = Array.from(selectedChecks).map(cb => cb.dataset.id);
-            if (bedIdsToUpdate.length === 0) return;
-
-            const confirmed = await showConfirmation('Confirm Update', `Mark ${bedIdsToUpdate.length} bed(s)/room(s) as 'Available'?`);
-            if (confirmed) {
-                const formData = new FormData();
-                formData.append('action', 'bulkUpdateBedStatus');
-                formData.append('ids', JSON.stringify(bedIdsToUpdate));
-                formData.append('status', 'available');
-                formData.append('csrf_token', csrfToken);
-                try {
-                    const response = await fetch('api.php', { method: 'POST', body: formData });
-                    const result = await response.json();
-                    if (!result.success) throw new Error(result.message);
-                    alert(result.message);
-                    bulkUpdateButton.style.display = 'none';
-                    await fetchAndRenderBedData();
-                } catch (error) {
-                    alert('Error: ' + error.message);
-                }
-            }
-        });
-
         bedManagementInitialized = true;
     }
 
-    async function fetchAndRenderBedData() {
+    async function fetchAndRenderBedData(silent = false) {
         const gridContainer = document.getElementById('bed-grid-container');
-        gridContainer.innerHTML = '<p class="no-items-message">Loading bed data...</p>';
+        if (!silent) {
+            gridContainer.innerHTML = '<p class="no-items-message">Loading bed data...</p>';
+        }
         try {
             const response = await fetch('api.php?fetch=bed_management_data');
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             bedManagementData = result.data;
             renderBedManagementPage(bedManagementData);
+            updateBedStatistics(bedManagementData);
+            applyBedFilter(currentBedFilter);
         } catch (error) {
             console.error("Fetch error:", error);
             gridContainer.innerHTML = `<p class="no-items-message" style="color:var(--danger-color)">Failed to load bed data.</p>`;
@@ -1470,12 +1804,20 @@ document.addEventListener("DOMContentLoaded", function() {
             ? `<div class="bed-card-checkbox"><input type="checkbox" class="bed-selection-checkbox" data-id="${entity.id}"></div>`
             : '';
 
+        // Status badge
+        const statusText = entity.status.charAt(0).toUpperCase() + entity.status.slice(1);
+        const statusBadge = `<span class="bed-status-badge ${entity.status}">${statusText}</span>`;
+
         let patientInfo = '';
         if (entity.status === 'occupied' && entity.patient_name) {
-            let tooltip = `Patient: ${entity.patient_name} (${entity.patient_display_id})`;
-            if(entity.doctor_name) tooltip += `\nDoctor: ${entity.doctor_name}`;
-            patientInfo = `<div class="patient-info" title="${tooltip}">
-                <i class="fas fa-user-circle"></i> ${entity.patient_name}
+            let doctorDisplay = entity.doctor_name ? `<br><small style="color: var(--text-muted);"><i class="fas fa-user-md"></i> Dr. ${entity.doctor_name}</small>` : '';
+            patientInfo = `<div class="patient-info" style="border-top: 1px solid var(--border-color); padding-top: 0.75rem; margin-top: 0.75rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
+                    <i class="fas fa-user-circle" style="color: var(--primary-color);"></i> 
+                    ${entity.patient_name}
+                </div>
+                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">${entity.patient_display_id}</small>
+                ${doctorDisplay}
             </div>`;
         }
 
@@ -1497,7 +1839,10 @@ document.addEventListener("DOMContentLoaded", function() {
                 
                 ${cleaningCheckbox}
                 <div class="bed-card-header">
-                    <div class="bed-id">${number}</div>
+                    <div class="bed-id">
+                        <div style="font-size: 1.2rem; font-weight: 700;">${number}</div>
+                        ${statusBadge}
+                    </div>
                     <div class="bed-actions">
                         ${entity.status !== 'occupied' ? '<button class="action-btn-icon status-change-btn" title="Change Status"><i class="fas fa-exchange-alt"></i></button>' : ''}
                         ${statusChangeDropdown}
@@ -1505,7 +1850,9 @@ document.addEventListener("DOMContentLoaded", function() {
                         <button class="action-btn-icon edit-bed-btn" title="Edit Details"><i class="fas fa-pencil-alt"></i></button>
                     </div>
                 </div>
-                <div class="bed-details">${locationName}</div>
+                <div class="bed-details" style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem;">
+                    <i class="fas fa-map-marker-alt"></i> ${locationName}
+                </div>
                 ${patientInfo}
             </div>
         `;
@@ -1513,20 +1860,21 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function filterBedGrid() {
         const locationFilter = document.getElementById('bed-location-filter').value;
-        const statusFilter = document.getElementById('bed-status-filter').value;
         const searchQuery = document.getElementById('bed-search-filter').value.toLowerCase();
         const cards = document.querySelectorAll('#bed-grid-container .bed-card');
         let visibleCount = 0;
         
         cards.forEach(card => {
             const showLocation = (locationFilter === 'all') || (card.dataset.location === locationFilter);
-            const showStatus = (statusFilter === 'all') || (card.dataset.status === statusFilter);
+            const showFilter = (currentBedFilter === 'all') || (card.dataset.status === currentBedFilter);
             const showSearch = (searchQuery === '') || (card.dataset.searchTerms.toLowerCase().includes(searchQuery));
             
-            if (showLocation && showStatus && showSearch) {
+            if (showLocation && showFilter && showSearch) {
+                card.classList.remove('filtered-out');
                 card.style.display = 'flex';
                 visibleCount++;
             } else {
+                card.classList.add('filtered-out');
                 card.style.display = 'none';
             }
         });
@@ -1537,6 +1885,63 @@ document.addEventListener("DOMContentLoaded", function() {
         if (visibleCount === 0) {
             gridContainer.insertAdjacentHTML('beforeend', '<p class="no-items-message">No beds match the current filters.</p>');
         }
+    }
+
+    function applyBedFilter(filter) {
+        const cards = document.querySelectorAll('#bed-grid-container .bed-card');
+        
+        cards.forEach(card => {
+            if (filter === 'all') {
+                card.classList.remove('filtered-out');
+            } else {
+                if (card.dataset.status === filter) {
+                    card.classList.remove('filtered-out');
+                } else {
+                    card.classList.add('filtered-out');
+                }
+            }
+        });
+        
+        filterBedGrid(); // Also apply search and location filters
+    }
+
+    function updateBedStatistics(data) {
+        let total = 0;
+        let available = 0;
+        let occupied = 0;
+        let cleaning = 0;
+        let reserved = 0;
+        
+        data.beds.forEach(bed => {
+            total++;
+            if (bed.status === 'available') available++;
+            else if (bed.status === 'occupied') occupied++;
+            else if (bed.status === 'cleaning') cleaning++;
+            else if (bed.status === 'reserved') reserved++;
+        });
+        
+        data.rooms.forEach(room => {
+            total++;
+            if (room.status === 'available') available++;
+            else if (room.status === 'occupied') occupied++;
+            else if (room.status === 'cleaning') cleaning++;
+            else if (room.status === 'reserved') reserved++;
+        });
+        
+        const availablePercent = total > 0 ? ((available / total) * 100).toFixed(1) : 0;
+        const occupiedPercent = total > 0 ? ((occupied / total) * 100).toFixed(1) : 0;
+        const cleaningPercent = total > 0 ? ((cleaning / total) * 100).toFixed(1) : 0;
+        const reservedPercent = total > 0 ? ((reserved / total) * 100).toFixed(1) : 0;
+        
+        document.getElementById('bed-stat-total').textContent = total;
+        document.getElementById('bed-stat-available').textContent = available;
+        document.getElementById('bed-stat-available-percent').textContent = availablePercent + '%';
+        document.getElementById('bed-stat-occupied').textContent = occupied;
+        document.getElementById('bed-stat-occupied-percent').textContent = occupiedPercent + '%';
+        document.getElementById('bed-stat-cleaning').textContent = cleaning;
+        document.getElementById('bed-stat-cleaning-percent').textContent = cleaningPercent + '%';
+        document.getElementById('bed-stat-reserved').textContent = reserved;
+        document.getElementById('bed-stat-reserved-percent').textContent = reservedPercent + '%';
     }
 
 
@@ -1962,6 +2367,28 @@ document.addEventListener("DOMContentLoaded", function() {
 
         document.getElementById('clear-selected-doctor-btn').addEventListener('click', clearSelectedLabDoctor);
 
+        // Add file size validation for lab attachment
+        const labAttachmentInput = document.getElementById('lab-attachment');
+        if (labAttachmentInput) {
+            labAttachmentInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    // Check file size (5MB max)
+                    if (file.size > 5242880) {
+                        alert('File is too large. Maximum size is 5MB.');
+                        e.target.value = ''; // Clear the file input
+                        return;
+                    }
+                    // Check file type
+                    if (file.type !== 'application/pdf') {
+                        alert('Invalid file type. Only PDF files are allowed.');
+                        e.target.value = ''; // Clear the file input
+                        return;
+                    }
+                }
+            });
+        }
+
         fetchAndRenderLabOrders(searchInput.value, statusFilter.value);
         labOrdersInitialized = true;
     }
@@ -1969,7 +2396,7 @@ document.addEventListener("DOMContentLoaded", function() {
     async function fetchAndRenderLabOrders(search = '', status = 'all') {
         const tableBody = document.getElementById('lab-orders-table')?.querySelector('tbody');
         if (!tableBody) return;
-        tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Loading lab orders...</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center;">Loading lab orders...</td></tr>`;
 
         try {
             const response = await fetch(`api.php?fetch=lab_orders&search=${encodeURIComponent(search)}&status=${status}`);
@@ -1977,7 +2404,7 @@ document.addEventListener("DOMContentLoaded", function() {
             if (!result.success) throw new Error(result.message);
             renderLabOrders(result.data);
         } catch (error) {
-            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--danger-color);">${error.message}</td></tr>`;
         }
     }
 
@@ -1986,7 +2413,7 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!tableBody) return;
 
         if (data.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">No lab orders found.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center;">No lab orders found.</td></tr>`;
             return;
         }
 
@@ -1999,10 +2426,27 @@ document.addEventListener("DOMContentLoaded", function() {
                 ? `<a href="report/${order.attachment_path}" target="_blank" class="action-btn" download><i class="fas fa-download"></i> Download</a>`
                 : '<span>N/A</span>';
             
+            // Format patient age and DOB
+            const age = order.patient_age || 'N/A';
+            const dob = order.patient_dob ? new Date(order.patient_dob).toLocaleDateString('en-GB') : 'N/A';
+            const gender = order.patient_gender || 'N/A';
+            const genderIcon = gender === 'Male' ? '♂️' : gender === 'Female' ? '♀️' : '⚧';
+            
+            // Format phone number
+            const phone = order.patient_phone ? `<br><small style="color: #666;"><i class="fas fa-phone"></i> ${order.patient_phone}</small>` : '';
+            
             return `
                 <tr data-lab-order='${JSON.stringify(order)}'>
                     <td data-label="Order ID">ORD-${String(order.id).padStart(5, '0')}</td>
-                    <td data-label="Patient">${order.patient_name} (${order.patient_display_id})</td>
+                    <td data-label="Patient Info">
+                        <strong>${order.patient_name}</strong><br>
+                        <small style="color: #666;">ID: ${order.patient_display_id}</small>
+                        ${phone}
+                    </td>
+                    <td data-label="Age/Gender">
+                        ${age} yrs ${genderIcon}<br>
+                        <small style="color: #666;">DOB: ${dob}</small>
+                    </td>
                     <td data-label="Test">${order.test_name}</td>
                     <td data-label="Cost">₹${parseFloat(order.cost || 0).toFixed(2)}</td>
                     <td data-label="Status">${status}</td>
@@ -2020,11 +2464,14 @@ document.addEventListener("DOMContentLoaded", function() {
         const modal = document.getElementById('lab-order-modal');
         const form = document.getElementById('lab-order-form');
         const title = document.getElementById('lab-modal-title');
+        const patientInfoDisplay = document.getElementById('patient-info-display');
+        
         form.reset();
         clearSelectedPatient();
         clearSelectedLabDoctor();
         document.getElementById('current-attachment-info').innerHTML = '';
         document.getElementById('lab-findings-container').innerHTML = '';
+        patientInfoDisplay.style.display = 'none'; // Hide patient info by default
     
         const createFindingRow = (finding = { parameter: '', result: '', range: '' }) => {
             const row = document.createElement('div');
@@ -2049,6 +2496,20 @@ document.addEventListener("DOMContentLoaded", function() {
             title.textContent = `Manage Lab Order for ${data.patient_name}`;
             document.getElementById('lab-form-action').value = 'updateLabOrder';
             document.getElementById('lab-order-id').value = data.id;
+            
+            // Display patient information
+            if (data.patient_name) {
+                patientInfoDisplay.style.display = 'block';
+                document.getElementById('display-patient-name').textContent = data.patient_name || 'N/A';
+                document.getElementById('display-patient-id').textContent = data.patient_display_id || 'N/A';
+                document.getElementById('display-patient-age').textContent = data.patient_age ? `${data.patient_age} years` : 'N/A';
+                document.getElementById('display-patient-gender').textContent = data.patient_gender || 'N/A';
+                
+                // Format DOB
+                const dob = data.patient_dob ? new Date(data.patient_dob).toLocaleDateString('en-GB') : 'N/A';
+                document.getElementById('display-patient-dob').textContent = dob;
+                document.getElementById('display-patient-phone').textContent = data.patient_phone || 'N/A';
+            }
             
             if(data.patient_id && data.patient_name) {
                 selectPatient(data.patient_id, `${data.patient_name} (${data.patient_display_id})`);
@@ -2842,6 +3303,9 @@ document.addEventListener("DOMContentLoaded", function() {
     const liveTokensPage = document.getElementById('live-tokens-page');
     let liveTokensInitialized = false;
     let tokenRefreshInterval;
+    let autoRefreshEnabled = true;
+    let currentFilter = 'all';
+    let currentDoctorData = null;
 
     function initializeLiveTokens() {
         if (liveTokensInitialized || !liveTokensPage) return;
@@ -2850,7 +3314,52 @@ document.addEventListener("DOMContentLoaded", function() {
         const searchResults = document.getElementById('token-doctor-search-results');
         const hiddenInput = document.getElementById('token-doctor-id-hidden');
         const tokenContainer = document.getElementById('token-display-container');
+        const refreshBtn = document.getElementById('refresh-tokens-btn');
+        const toggleAutoRefreshBtn = document.getElementById('toggle-auto-refresh');
+        const statsContainer = document.getElementById('token-stats-container');
+        const filterContainer = document.getElementById('token-filter-container');
+        const doctorInfoContainer = document.getElementById('selected-doctor-info');
         let searchDebounce;
+
+        // Manual refresh button
+        refreshBtn.addEventListener('click', () => {
+            const doctorId = hiddenInput.value;
+            if (doctorId) {
+                fetchAndRenderTokens(doctorId);
+            }
+        });
+
+        // Toggle auto-refresh
+        toggleAutoRefreshBtn.addEventListener('click', () => {
+            autoRefreshEnabled = !autoRefreshEnabled;
+            toggleAutoRefreshBtn.classList.toggle('active', autoRefreshEnabled);
+            toggleAutoRefreshBtn.innerHTML = autoRefreshEnabled 
+                ? '<i class="fas fa-play"></i> Auto-refresh ON' 
+                : '<i class="fas fa-pause"></i> Auto-refresh OFF';
+            
+            if (autoRefreshEnabled) {
+                const doctorId = hiddenInput.value;
+                if (doctorId) {
+                    tokenRefreshInterval = setInterval(() => fetchAndRenderTokens(doctorId), 10000);
+                }
+            } else {
+                clearInterval(tokenRefreshInterval);
+            }
+        });
+
+        // Filter buttons
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.filter-btn')) {
+                const filterBtn = e.target.closest('.filter-btn');
+                const filter = filterBtn.dataset.filter;
+                
+                document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+                filterBtn.classList.add('active');
+                
+                currentFilter = filter;
+                applyTokenFilter(filter);
+            }
+        });
 
         searchInput.addEventListener('input', () => {
             clearTimeout(searchDebounce);
@@ -2858,8 +3367,11 @@ document.addEventListener("DOMContentLoaded", function() {
             hiddenInput.value = '';
             if (query.length === 0) {
                 clearInterval(tokenRefreshInterval);
-                tokenContainer.innerHTML = '<p class="no-items-message">Please select a doctor to see their live token queue for today.</p>';
+                tokenContainer.innerHTML = '<p class="no-items-message"><i class="fas fa-search"></i><br>Please select a doctor to see their live token queue for today.</p>';
                 searchResults.style.display = 'none';
+                statsContainer.style.display = 'none';
+                filterContainer.style.display = 'none';
+                doctorInfoContainer.style.display = 'none';
                 return;
             }
             if (query.length < 2) {
@@ -2873,7 +3385,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     const result = await response.json();
                     if (result.success && result.data.length > 0) {
                         searchResults.innerHTML = result.data.map(doc =>
-                            `<div class="search-result-item" data-id="${doc.id}" data-name="${doc.name}">${doc.name}</div>`
+                            `<div class="search-result-item" data-id="${doc.id}" data-name="${doc.name}" data-specialty="${doc.specialty || 'General Practice'}">${doc.name} - ${doc.specialty || 'General Practice'}</div>`
                         ).join('');
                         searchResults.style.display = 'block';
                     } else {
@@ -2891,12 +3403,34 @@ document.addEventListener("DOMContentLoaded", function() {
             if (item && item.dataset.id) {
                 const doctorId = item.dataset.id;
                 const doctorName = item.dataset.name;
+                const doctorSpecialty = item.dataset.specialty || 'General Practice';
+                
                 searchInput.value = doctorName; 
                 hiddenInput.value = doctorId;
                 searchResults.style.display = 'none';
+                
+                // Store doctor data
+                currentDoctorData = {
+                    id: doctorId,
+                    name: doctorName,
+                    specialty: doctorSpecialty
+                };
+                
+                // Show doctor info card
+                document.getElementById('doctor-name-display').textContent = doctorName;
+                document.getElementById('doctor-specialty-display').textContent = doctorSpecialty;
+                doctorInfoContainer.style.display = 'block';
+                
+                // Show stats and filters
+                statsContainer.style.display = 'block';
+                filterContainer.style.display = 'block';
+                
                 clearInterval(tokenRefreshInterval);
                 fetchAndRenderTokens(doctorId);
-                tokenRefreshInterval = setInterval(() => fetchAndRenderTokens(doctorId), 20000);
+                
+                if (autoRefreshEnabled) {
+                    tokenRefreshInterval = setInterval(() => fetchAndRenderTokens(doctorId), 10000);
+                }
             }
         });
         
@@ -2909,45 +3443,132 @@ document.addEventListener("DOMContentLoaded", function() {
         liveTokensInitialized = true;
     }
 
+    function updateStatistics(tokenData) {
+        let waiting = 0, inConsultation = 0, completed = 0, total = 0;
+        
+        for (const slotTitle in tokenData) {
+            tokenData[slotTitle].forEach(token => {
+                total++;
+                if (token.token_status === 'waiting') waiting++;
+                else if (token.token_status === 'in_consultation') inConsultation++;
+                else if (token.token_status === 'completed') completed++;
+            });
+        }
+        
+        document.getElementById('stat-waiting-count').textContent = waiting;
+        document.getElementById('stat-consultation-count').textContent = inConsultation;
+        document.getElementById('stat-completed-count').textContent = completed;
+        document.getElementById('stat-total-count').textContent = total;
+    }
+
+    function applyTokenFilter(filter) {
+        const allCards = document.querySelectorAll('.token-card');
+        
+        allCards.forEach(card => {
+            card.classList.remove('filtered-out');
+            if (filter !== 'all') {
+                const cardStatus = card.className.match(/status-([a-z_-]+)/)?.[1];
+                if (cardStatus && cardStatus !== filter.replace('_', '-')) {
+                    card.classList.add('filtered-out');
+                }
+            }
+        });
+    }
+
     async function fetchAndRenderTokens(doctorId) {
         const container = document.getElementById('token-display-container');
         
         try {
+            // Show skeleton loader
+            container.innerHTML = `
+                <div class="token-grid-container">
+                    ${Array(4).fill().map(() => `
+                        <div class="token-skeleton skeleton-loader"></div>
+                    `).join('')}
+                </div>
+            `;
+            
             const response = await fetch(`api.php?fetch=fetch_tokens&doctor_id=${doctorId}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
 
             const tokenData = result.data;
+            
+            // Update last updated time
+            const now = new Date();
+            document.getElementById('last-update-time').textContent = now.toLocaleTimeString('en-IN', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            
             if (Object.keys(tokenData).length === 0) {
-                container.innerHTML = `<p class="no-items-message">No appointments or tokens found for this doctor today.</p>`;
+                container.innerHTML = `<p class="no-items-message"><i class="fas fa-calendar-times"></i><br>No appointments or tokens found for this doctor today.</p>`;
+                updateStatistics({});
                 return;
             }
 
+            // Update statistics
+            updateStatistics(tokenData);
+
             let html = '';
+            let globalPosition = 1;
+            
             for (const slotTitle in tokenData) {
-                html += `<h4 class="token-slot-header">${slotTitle}</h4>`;
+                html += `<h4 class="token-slot-header">
+                    <span><i class="fas fa-clock"></i> ${slotTitle}</span>
+                    <span class="slot-time-badge">${tokenData[slotTitle].length} patients</span>
+                </h4>`;
                 html += '<div class="token-grid-container">'; 
                 
                 tokenData[slotTitle].forEach(token => {
+                    const showPosition = token.token_status === 'waiting';
                     html += `
-                        <div class="token-card status-${token.token_status.replace('_', '-')}">
-                            <div class="token-number">${token.token_number || 'N/A'}</div>
+                        <div class="token-card status-${token.token_status.replace('_', '-')}" data-status="${token.token_status}">
+                            <div class="token-number">#${token.token_number || 'N/A'}</div>
                             <div class="token-patient-info">
                                 <div class="patient-name">${token.patient_name}</div>
                                 <div class="patient-id">${token.patient_display_id}</div>
+                                <div class="appointment-time">
+                                    <i class="fas fa-clock"></i> ${slotTitle}
+                                </div>
+                                ${showPosition ? `<div class="queue-position">Position: ${globalPosition}</div>` : ''}
                             </div>
                             <div class="token-status">${token.token_status.replace('_', ' ')}</div>
                         </div>
                     `;
+                    if (token.token_status === 'waiting') globalPosition++;
                 });
 
                 html += '</div>';
             }
             container.innerHTML = html;
-
+            
+            // Reapply current filter
+            applyTokenFilter(currentFilter);
         } catch (error) {
-            console.error('Failed to fetch tokens:', error);
-            container.innerHTML = `<p class="no-items-message" style="color: var(--danger-color)">Could not load token data.</p>`;
+            console.error("Error fetching tokens:", error);
+            container.innerHTML = `<p class="no-items-message" style="color: var(--danger-color);"><i class="fas fa-exclamation-triangle"></i><br>Error loading tokens. Please try again.</p>`;
         }
     }
 });
+
+// --- Global Utility Functions ---
+
+/**
+ * Toggle password visibility
+ */
+function togglePasswordVisibility(inputId) {
+    const input = document.getElementById(inputId);
+    const icon = input.parentElement.querySelector('.toggle-password');
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+    } else {
+        input.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+    }
+}

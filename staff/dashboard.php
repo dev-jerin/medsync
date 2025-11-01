@@ -109,6 +109,33 @@ require_once 'api.php';
                             <strong><?php echo $username; ?></strong>
                             <span><?php echo ucfirst($_SESSION['role']); ?></span>
                         </div>
+                        <i class="fas fa-chevron-down dropdown-arrow"></i>
+                        
+                        <!-- Profile Dropdown Menu -->
+                        <div class="profile-dropdown" id="profile-dropdown">
+                            <div class="dropdown-header">
+                                <img src="<?php echo $profile_picture_path; ?>?v=<?php echo time(); ?>" alt="Profile" class="dropdown-avatar">
+                                <div class="dropdown-user-info">
+                                    <strong><?php echo $username; ?></strong>
+                                    <span><?php echo $email; ?></span>
+                                    <small><?php echo ucfirst($_SESSION['role']); ?> • <?php echo $display_user_id; ?></small>
+                                </div>
+                            </div>
+                            <div class="dropdown-divider"></div>
+                            <div class="dropdown-body">
+                                <a href="#" class="dropdown-item" data-page="profile">
+                                    <i class="fas fa-user-circle"></i>
+                                    <span>My Profile</span>
+                                </a>
+                            </div>
+                            <div class="dropdown-divider"></div>
+                            <div class="dropdown-footer">
+                                <a href="../logout.php" class="dropdown-item logout-item">
+                                    <i class="fas fa-sign-out-alt"></i>
+                                    <span>Logout</span>
+                                </a>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -198,7 +225,17 @@ require_once 'api.php';
                 <div class="content-panel">
                     <div class="page-header">
                         <h3><i class="fas fa-ticket-alt"></i> Live Token Queue</h3>
+                        <div class="header-actions">
+                            <button id="refresh-tokens-btn" class="btn-action" title="Refresh tokens manually">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                            <button id="toggle-auto-refresh" class="btn-action active" title="Toggle auto-refresh">
+                                <i class="fas fa-play"></i> Auto-refresh ON
+                            </button>
+                        </div>
                     </div>
+                    
+                    <!-- Doctor Selection and Statistics -->
                     <div class="filters">
                         <div class="patient-search-container" style="flex-grow: 1;">
                             <input type="text" id="token-doctor-search" placeholder="Search for a doctor by name..." autocomplete="off">
@@ -206,6 +243,76 @@ require_once 'api.php';
                             <div id="token-doctor-search-results" class="search-results-list"></div>
                         </div>
                     </div>
+                    
+                    <!-- Token Statistics Dashboard -->
+                    <div id="token-stats-container" style="display: none;">
+                        <div class="stats-grid">
+                            <div class="stat-card stat-waiting">
+                                <div class="stat-icon"><i class="fas fa-clock"></i></div>
+                                <div class="stat-content">
+                                    <div class="stat-value" id="stat-waiting-count">0</div>
+                                    <div class="stat-label">Waiting</div>
+                                </div>
+                            </div>
+                            <div class="stat-card stat-consultation">
+                                <div class="stat-icon"><i class="fas fa-stethoscope"></i></div>
+                                <div class="stat-content">
+                                    <div class="stat-value" id="stat-consultation-count">0</div>
+                                    <div class="stat-label">In Consultation</div>
+                                </div>
+                            </div>
+                            <div class="stat-card stat-completed">
+                                <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
+                                <div class="stat-content">
+                                    <div class="stat-value" id="stat-completed-count">0</div>
+                                    <div class="stat-label">Completed</div>
+                                </div>
+                            </div>
+                            <div class="stat-card stat-total">
+                                <div class="stat-icon"><i class="fas fa-users"></i></div>
+                                <div class="stat-content">
+                                    <div class="stat-value" id="stat-total-count">0</div>
+                                    <div class="stat-label">Total Today</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Filter Buttons -->
+                    <div id="token-filter-container" style="display: none;">
+                        <div class="filter-buttons">
+                            <button class="filter-btn active" data-filter="all">
+                                <i class="fas fa-list"></i> All Tokens
+                            </button>
+                            <button class="filter-btn" data-filter="waiting">
+                                <i class="fas fa-clock"></i> Waiting Only
+                            </button>
+                            <button class="filter-btn" data-filter="in_consultation">
+                                <i class="fas fa-stethoscope"></i> In Consultation
+                            </button>
+                            <button class="filter-btn" data-filter="completed">
+                                <i class="fas fa-check-circle"></i> Completed
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Selected Doctor Info -->
+                    <div id="selected-doctor-info" style="display: none;">
+                        <div class="doctor-info-card">
+                            <div class="doctor-avatar">
+                                <i class="fas fa-user-md"></i>
+                            </div>
+                            <div class="doctor-details">
+                                <h4 id="doctor-name-display"></h4>
+                                <p id="doctor-specialty-display"></p>
+                            </div>
+                            <div class="last-updated">
+                                <small><i class="fas fa-clock"></i> Last updated: <span id="last-update-time">Never</span></small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Token Display Container -->
                     <div id="token-display-container">
                         <p class="no-items-message">Please select a doctor to see their live token queue for today.</p>
                     </div>
@@ -240,16 +347,80 @@ require_once 'api.php';
                     <div class="page-header">
                         <h3><i class="fas fa-bed-pulse"></i> Bed Management Overview</h3>
                         <div class="header-actions">
-                            <button class="btn btn-secondary" id="bulk-update-beds-btn" style="display: none;"><i class="fas fa-check-double"></i> Mark as Available</button>
+                            <button class="btn btn-secondary" id="refresh-beds-btn"><i class="fas fa-sync-alt"></i> Refresh</button>
+                            <button class="btn btn-secondary" id="toggle-bed-auto-refresh" class="active"><i class="fas fa-play"></i> Auto-refresh ON</button>
                             <button class="btn btn-primary" id="add-new-bed-btn"><i class="fas fa-plus"></i> Add New Bed / Room</button>
                         </div>
                     </div>
+                    
+                    <!-- Bed Statistics Dashboard -->
+                    <div class="bed-stats-grid" id="bed-stats-container">
+                        <div class="bed-stat-card total">
+                            <div class="stat-icon"><i class="fas fa-bed"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-label">Total Beds/Rooms</div>
+                                <div class="stat-value" id="bed-stat-total">0</div>
+                            </div>
+                        </div>
+                        <div class="bed-stat-card available">
+                            <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-label">Available</div>
+                                <div class="stat-value" id="bed-stat-available">0</div>
+                                <div class="stat-percent" id="bed-stat-available-percent">0%</div>
+                            </div>
+                        </div>
+                        <div class="bed-stat-card occupied">
+                            <div class="stat-icon"><i class="fas fa-user-injured"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-label">Occupied</div>
+                                <div class="stat-value" id="bed-stat-occupied">0</div>
+                                <div class="stat-percent" id="bed-stat-occupied-percent">0%</div>
+                            </div>
+                        </div>
+                        <div class="bed-stat-card cleaning">
+                            <div class="stat-icon"><i class="fas fa-broom"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-label">Cleaning</div>
+                                <div class="stat-value" id="bed-stat-cleaning">0</div>
+                                <div class="stat-percent" id="bed-stat-cleaning-percent">0%</div>
+                            </div>
+                        </div>
+                        <div class="bed-stat-card reserved">
+                            <div class="stat-icon"><i class="fas fa-bookmark"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-label">Reserved</div>
+                                <div class="stat-value" id="bed-stat-reserved">0</div>
+                                <div class="stat-percent" id="bed-stat-reserved-percent">0%</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Quick Filters -->
+                    <div class="bed-quick-filters" id="bed-quick-filters">
+                        <button class="bed-filter-btn active" data-bed-filter="all">
+                            <i class="fas fa-th"></i> All
+                        </button>
+                        <button class="bed-filter-btn" data-bed-filter="available">
+                            <i class="fas fa-check-circle"></i> Available
+                        </button>
+                        <button class="bed-filter-btn" data-bed-filter="occupied">
+                            <i class="fas fa-user-injured"></i> Occupied
+                        </button>
+                        <button class="bed-filter-btn" data-bed-filter="cleaning">
+                            <i class="fas fa-broom"></i> Cleaning
+                        </button>
+                        <button class="bed-filter-btn" data-bed-filter="reserved">
+                            <i class="fas fa-bookmark"></i> Reserved
+                        </button>
+                    </div>
+                    
                     <div class="filters">
                         <input type="text" id="bed-search-filter" placeholder="Search by Patient or Bed No..." style="flex-grow: 2;">
                         <select id="bed-location-filter">
                             <option value="all">All Wards & Rooms</option>
                         </select>
-                        <select id="bed-status-filter">
+                        <select id="bed-status-filter" style="display: none;">
                             <option value="all">All Statuses</option>
                             <option value="available">Available</option>
                             <option value="occupied">Occupied</option>
@@ -257,12 +428,7 @@ require_once 'api.php';
                             <option value="reserved">Reserved</option>
                         </select>
                     </div>
-                    <div class="bed-legend">
-                        <div class="legend-item"><span class="legend-color available"></span> Available</div>
-                        <div class="legend-item"><span class="legend-color occupied"></span> Occupied</div>
-                        <div class="legend-item"><span class="legend-color cleaning"></span> Cleaning</div>
-                        <div class="legend-item"><span class="legend-color reserved"></span> Reserved</div>
-                    </div>
+                    
                     <div class="bed-grid-container" id="bed-grid-container">
                         </div>
                 </div>
@@ -447,7 +613,8 @@ require_once 'api.php';
                         <thead>
                             <tr>
                                 <th>Order ID</th>
-                                <th>Patient</th>
+                                <th>Patient Info</th>
+                                <th>Age/Gender</th>
                                 <th>Test</th>
                                 <th>Cost</th>
                                 <th>Status</th>
@@ -465,26 +632,41 @@ require_once 'api.php';
                         <h3><i class="fas fa-users-cog"></i> User Management</h3><button class="btn btn-primary"
                             id="add-new-user-btn"><i class="fas fa-user-plus"></i> Add New User</button>
                     </div>
-                    <div class="filters"><input type="text" id="user-search" class="search-bar"
-                            placeholder="Search by name or ID..."><select id="user-role-filter">
+                    
+                    <div class="filters">
+                        <input type="text" id="user-search" class="search-bar" placeholder="Search by name, ID, email, or phone...">
+                        <select id="user-role-filter">
                             <option value="all">All Roles</option>
                             <option value="doctor">Doctors</option>
                             <option value="user">Patients</option>
-                        </select></div>
-                    <table class="data-table" id="users-table">
-                        <thead>
-                            <tr>
-                                <th>User ID</th>
-                                <th>Name</th>
-                                <th>Role</th>
-                                <th>Email</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            </tbody>
-                    </table>
+                        </select>
+                        <select id="user-status-filter">
+                            <option value="all">All Status</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="data-table" id="users-table">
+                            <thead>
+                                <tr>
+                                    <th>Photo</th>
+                                    <th>User ID</th>
+                                    <th>Name</th>
+                                    <th>Gender</th>
+                                    <th>Age/DOB</th>
+                                    <th>Phone</th>
+                                    <th>Role</th>
+                                    <th>Email</th>
+                                    <th>Status</th>
+                                    <th>Last Active</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
@@ -561,14 +743,27 @@ require_once 'api.php';
                     <div id="personal-info-tab" class="profile-tab-content active">
                         <form id="personal-info-form" class="settings-form" novalidate>
                             <h4>Edit Your Personal Details</h4>
-                            <div class="profile-picture-editor">
-                                <img src="<?php echo $profile_picture_path; ?>?v=<?php echo time(); ?>"
-                                    alt="Staff Avatar" class="editable-profile-picture">
-                                <label for="profile-picture-upload" class="edit-picture-btn" title="Upload new picture">
-                                    <i class="fas fa-camera"></i>
-                                    <input type="file" id="profile-picture-upload"
-                                        accept="image/jpeg, image/png, image/gif">
-                                </label>
+                            <div class="profile-picture-section">
+                                <div class="profile-picture-editor">
+                                    <img src="<?php echo $profile_picture_path; ?>?v=<?php echo time(); ?>"
+                                        alt="Staff Avatar" class="editable-profile-picture" id="staff-profile-picture"
+                                        data-current-picture="<?php echo $profile_picture_filename; ?>">
+                                    <div class="profile-picture-overlay">
+                                        <label for="profile-picture-upload" class="picture-action-btn upload-btn" title="Upload from device">
+                                            <i class="fas fa-upload"></i>
+                                            <input type="file" id="profile-picture-upload"
+                                                accept="image/jpeg, image/png, image/gif">
+                                        </label>
+                                        <button type="button" class="picture-action-btn webcam-btn" id="open-webcam-btn" title="Take photo with webcam">
+                                            <i class="fas fa-camera"></i>
+                                        </button>
+                                        <button type="button" class="picture-action-btn remove-btn" id="remove-profile-picture-btn" 
+                                            title="Remove profile picture" <?php echo ($profile_picture_filename === 'default.png') ? 'style="display: none;"' : ''; ?>>
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <p class="profile-picture-hint">Hover to upload, take photo, or remove picture</p>
                             </div>
                             <div class="form-grid">
                                 <div class="form-group">
@@ -627,6 +822,7 @@ require_once 'api.php';
                     <div id="security-tab" class="profile-tab-content">
                         <form id="security-form" class="settings-form" novalidate>
                             <h4>Change Your Password</h4>
+                            <p class="form-description">Keep your account secure by using a strong password and updating it regularly.</p>
                             <div class="form-grid">
                                 <div class="form-group full-width">
                                     <label for="current-password">Current Password</label>
@@ -643,6 +839,9 @@ require_once 'api.php';
                                             autocomplete="new-password">
                                         <i class="fas fa-eye-slash toggle-password"></i>
                                     </div>
+                                    <div class="password-strength">
+                                        <div class="password-strength-bar" id="password-strength-bar"></div>
+                                    </div>
                                 </div>
                                 <div class="form-group">
                                     <label for="confirm-password">Confirm New Password</label>
@@ -652,6 +851,15 @@ require_once 'api.php';
                                         <i class="fas fa-eye-slash toggle-password"></i>
                                     </div>
                                 </div>
+                            </div>
+                            <div class="password-requirements">
+                                <h5>Password Requirements:</h5>
+                                <ul>
+                                    <li>Minimum 6 characters long</li>
+                                    <li>Include at least one uppercase letter (recommended)</li>
+                                    <li>Include at least one number (recommended)</li>
+                                    <li>Include at least one special character (recommended)</li>
+                                </ul>
                             </div>
                             <div class="form-actions">
                                 <button type="submit" class="btn btn-primary"><i class="fas fa-key"></i> Update
@@ -688,7 +896,7 @@ require_once 'api.php';
     <input type="hidden" id="current-user-id" value="<?php echo $_SESSION['user_id']; ?>">
     
     <div class="modal-overlay" id="user-management-modal">
-        <div class="modal-container">
+        <div class="modal-container modal-lg">
             <div class="modal-header">
                 <h4 id="user-modal-title">Add New User</h4>
                 <button class="modal-close-btn">&times;</button>
@@ -698,60 +906,115 @@ require_once 'api.php';
                     <input type="hidden" name="id" id="user-id">
                     <input type="hidden" name="action" id="user-form-action">
                     
-                    <div class="form-group">
-                        <label for="user-name">Full Name</label>
-                        <input type="text" id="user-name" name="name" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="user-username">Username</label>
-                        <input type="text" id="user-username" name="username" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="user-email">Email</label>
-                        <input type="email" id="user-email" name="email" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="user-phone">Phone Number</label>
-                        <input type="tel" id="user-phone" name="phone" placeholder="+919876543210" maxlength="13">
-                        <small class="validation-error" id="user-phone-error"></small>
-                    </div>
-                    <div class="form-group">
-                        <label for="user-dob">Date of Birth</label>
-                        <input type="date" id="user-dob" name="date_of_birth" max="<?php echo date('Y-m-d'); ?>">
-                        <small class="validation-error" id="user-dob-error"></small>
-                    </div>
-                    <div class="form-group" id="active-group" style="display: none;">
-                        <label for="user-active">Account Status</label>
-                        <select id="user-active" name="active">
-                            <option value="1">Active</option>
-                            <option value="0">Inactive</option>
-                        </select>
-                    </div>
-                    <div class="form-group" id="password-group">
-                        <label for="user-password">Password</label>
-                        <input type="password" id="user-password" name="password" required>
-                        <small>Required for new users. Leave blank when editing to keep the same password.</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="user-role">Role</label>
-                        <select id="user-role" name="role" required>
-                            <option value="user">Patient</option>
-                            <option value="doctor">Doctor</option>
-                        </select>
+                    <!-- Basic Information Section -->
+                    <div class="form-section">
+                        <h5 class="form-section-title"><i class="fas fa-user"></i> Basic Information</h5>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="user-name"><span class="required">*</span> Full Name</label>
+                                <input type="text" id="user-name" name="name" placeholder="Enter full name" required>
+                                <small class="field-hint">Legal name as per ID documents</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="user-username"><span class="required">*</span> Username</label>
+                                <input type="text" id="user-username" name="username" placeholder="Choose a username" required>
+                                <small class="field-hint">Unique identifier for login (cannot be changed later)</small>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="user-email"><span class="required">*</span> Email Address</label>
+                                <input type="email" id="user-email" name="email" placeholder="user@example.com" required>
+                                <small class="field-hint">Primary email for notifications</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="user-phone">Phone Number</label>
+                                <input type="tel" id="user-phone" name="phone" placeholder="+919876543210" maxlength="13">
+                                <small class="validation-error" id="user-phone-error"></small>
+                                <small class="field-hint">Format: +91XXXXXXXXXX</small>
+                            </div>
+                        </div>
                     </div>
                     
-                    <div id="doctor-fields" style="display:none; border-top: 1px solid var(--border-color); margin-top: 1rem; padding-top: 1rem;">
-                        <div class="form-group">
-                            <label for="doctor-specialty">Specialty</label>
-                            <select id="doctor-specialty" name="specialty_id">
+                    <!-- Personal Details Section -->
+                    <div class="form-section">
+                        <h5 class="form-section-title"><i class="fas fa-id-card"></i> Personal Details</h5>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="user-gender"><span class="required">*</span> Gender</label>
+                                <select id="user-gender" name="gender" required>
+                                    <option value="">-- Select Gender --</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
                                 </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="user-dob">Date of Birth</label>
+                                <input type="date" id="user-dob" name="date_of_birth" max="<?php echo date('Y-m-d'); ?>">
+                                <small class="validation-error" id="user-dob-error"></small>
+                                <small class="field-hint">Age will be calculated automatically</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Account Settings Section -->
+                    <div class="form-section">
+                        <h5 class="form-section-title"><i class="fas fa-cog"></i> Account Settings</h5>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="user-role"><span class="required">*</span> Account Type</label>
+                                <select id="user-role" name="role" required>
+                                    <option value="user">Patient</option>
+                                    <option value="doctor">Doctor</option>
+                                </select>
+                                <small class="field-hint">User role determines access permissions</small>
+                            </div>
+                            <div class="form-group" id="active-group" style="display: none;">
+                                <label for="user-active">Account Status</label>
+                                <select id="user-active" name="active">
+                                    <option value="1">✓ Active</option>
+                                    <option value="0">✗ Inactive</option>
+                                </select>
+                                <small class="field-hint">Inactive accounts cannot login</small>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row" id="password-group">
+                            <div class="form-group">
+                                <label for="user-password"><span class="required">*</span> Password</label>
+                                <div class="password-wrapper">
+                                    <input type="password" id="user-password" name="password" placeholder="Enter password" required>
+                                    <i class="fas fa-eye toggle-password" onclick="togglePasswordVisibility('user-password')"></i>
+                                </div>
+                                <small class="field-hint">Minimum 6 characters. Leave blank when editing to keep current password.</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Doctor-Specific Fields -->
+                    <div id="doctor-fields" class="form-section" style="display:none;">
+                        <h5 class="form-section-title"><i class="fas fa-user-md"></i> Doctor Information</h5>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="doctor-specialty">Medical Specialty</label>
+                                <select id="doctor-specialty" name="specialty_id">
+                                    <option value="">-- Select Specialty --</option>
+                                </select>
+                                <small class="field-hint">Doctor's area of specialization</small>
+                            </div>
                         </div>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary modal-close-btn">Cancel</button>
-                <button type="submit" form="user-management-form" class="btn btn-primary">Save User</button>
+                <button type="button" class="btn btn-secondary modal-close-btn">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="submit" form="user-management-form" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Save User
+                </button>
             </div>
         </div>
     </div>
@@ -934,6 +1197,33 @@ require_once 'api.php';
                 <button class="modal-close-btn">&times;</button>
             </div>
             <div class="modal-body">
+                <!-- Patient Information Display (shown when editing) -->
+                <div id="patient-info-display" style="display:none; background: #f0f7ff; border-left: 4px solid #0067FF; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
+                    <h4 style="margin: 0 0 10px 0; color: #0067FF; font-size: 16px;">
+                        <i class="fas fa-user-circle"></i> Patient Information
+                    </h4>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; font-size: 14px;">
+                        <div>
+                            <strong>Name:</strong> <span id="display-patient-name"></span>
+                        </div>
+                        <div>
+                            <strong>ID:</strong> <span id="display-patient-id"></span>
+                        </div>
+                        <div>
+                            <strong>Age:</strong> <span id="display-patient-age"></span>
+                        </div>
+                        <div>
+                            <strong>Gender:</strong> <span id="display-patient-gender"></span>
+                        </div>
+                        <div>
+                            <strong>DOB:</strong> <span id="display-patient-dob"></span>
+                        </div>
+                        <div>
+                            <strong>Phone:</strong> <span id="display-patient-phone"></span>
+                        </div>
+                    </div>
+                </div>
+                
                 <form id="lab-order-form" novalidate>
                     <input type="hidden" name="id" id="lab-order-id">
                     <input type="hidden" name="action" id="lab-form-action">
@@ -1185,6 +1475,40 @@ require_once 'api.php';
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary modal-close-btn">Cancel</button>
                 <button type="submit" form="process-payment-form" class="btn btn-primary">Confirm Payment</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Webcam Capture Modal -->
+    <div id="webcam-modal" class="modal-overlay">
+        <div class="modal-container webcam-modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-camera"></i> Capture Profile Picture</h3>
+                <button type="button" class="modal-close-btn" id="close-webcam-modal">&times;</button>
+            </div>
+            <div class="modal-body webcam-modal-body">
+                <div class="webcam-container">
+                    <video id="webcam-video" autoplay playsinline></video>
+                    <canvas id="webcam-canvas" style="display: none;"></canvas>
+                    <div id="webcam-preview" class="webcam-preview" style="display: none;">
+                        <img id="webcam-captured-image" alt="Captured">
+                    </div>
+                </div>
+                <div class="webcam-status" id="webcam-status">
+                    <i class="fas fa-info-circle"></i> <span>Initializing camera...</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="webcam-cancel-btn">Cancel</button>
+                <button type="button" class="btn btn-primary" id="webcam-capture-btn">
+                    <i class="fas fa-camera"></i> Capture
+                </button>
+                <button type="button" class="btn btn-warning" id="webcam-retake-btn" style="display: none;">
+                    <i class="fas fa-redo"></i> Retake
+                </button>
+                <button type="button" class="btn btn-success" id="webcam-use-btn" style="display: none;">
+                    <i class="fas fa-check"></i> Use This Photo
+                </button>
             </div>
         </div>
     </div>
