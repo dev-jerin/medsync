@@ -1058,6 +1058,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                                 require_once '../mail/templates.php';
                                 require_once '../mail/send_mail.php';
                                 
+                                date_default_timezone_set('Asia/Kolkata');
                                 $current_datetime = date('d M Y, h:i A');
                                 $email_body = getAccountModificationTemplate($name, $old_user_data['username'], $email_changes, $current_datetime, 'You (Self-Updated)');
                                 
@@ -1114,6 +1115,7 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                                 require_once '../mail/templates.php';
                                 require_once '../mail/send_mail.php';
                                 
+                                date_default_timezone_set('Asia/Kolkata');
                                 $current_datetime = date('d M Y, h:i A');
                                 $ip_address = $_SERVER['REMOTE_ADDR'];
                                 $email_body = getPasswordResetConfirmationTemplate($user_data['name'], $current_datetime, $ip_address);
@@ -1419,6 +1421,13 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                             throw new Exception("You are not authorized to edit users with the role '{$target_role}'.");
                         }
 
+                        // Fetch old user data for comparison and email notification
+                        $stmt_old = $conn->prepare("SELECT name, email, phone, gender, date_of_birth, username, is_active FROM users WHERE id = ?");
+                        $stmt_old->bind_param("i", $target_user_id);
+                        $stmt_old->execute();
+                        $old_user_data = $stmt_old->get_result()->fetch_assoc();
+                        $stmt_old->close();
+
                         $name = trim($_POST['name']);
                         $email = filter_var(trim($_POST['email']), FILTER_VALIDATE_EMAIL);
                         $phone = !empty($_POST['phone']) ? trim($_POST['phone']) : null;
@@ -1460,6 +1469,65 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $target_display_id = $stmt_get_id->get_result()->fetch_assoc()['display_user_id'];
                         $stmt_get_id->close();
                         log_activity($conn, $user_id, 'update_user', $target_user_id, "Updated profile for user '{$name}' ({$target_display_id}).");
+
+                        // Track changes and send email notification
+                        $email_changes = [];
+                        if ($old_user_data['name'] !== $name) {
+                            $email_changes['Name'] = ['old' => $old_user_data['name'], 'new' => $name];
+                        }
+                        if ($old_user_data['email'] !== $email) {
+                            $email_changes['Email'] = ['old' => $old_user_data['email'], 'new' => $email];
+                        }
+                        if ($old_user_data['phone'] !== $phone) {
+                            $email_changes['Phone Number'] = ['old' => ($old_user_data['phone'] ?: 'Not set'), 'new' => ($phone ?: 'Not set')];
+                        }
+                        if (($old_user_data['gender'] ?? '') !== ($gender ?? '')) {
+                            $email_changes['Gender'] = ['old' => ($old_user_data['gender'] ?: 'Not set'), 'new' => ($gender ?: 'Not set')];
+                        }
+                        if (($old_user_data['date_of_birth'] ?? '') !== ($date_of_birth ?? '')) {
+                            $email_changes['Date of Birth'] = ['old' => ($old_user_data['date_of_birth'] ?: 'Not set'), 'new' => ($date_of_birth ?: 'Not set')];
+                        }
+                        if ((int)$old_user_data['is_active'] !== $active) {
+                            $email_changes['Account Status'] = ['old' => ($old_user_data['is_active'] ? 'Active' : 'Inactive'), 'new' => ($active ? 'Active' : 'Inactive')];
+                        }
+                        
+                        // Send email notification if there are changes
+                        if (!empty($email_changes)) {
+                            try {
+                                require_once '../mail/templates.php';
+                                require_once '../mail/send_mail.php';
+                                
+                                // Get staff name for the notification
+                                $stmt_staff = $conn->prepare("SELECT name FROM users WHERE id = ?");
+                                $stmt_staff->bind_param("i", $user_id);
+                                $stmt_staff->execute();
+                                $staff_name = $stmt_staff->get_result()->fetch_assoc()['name'];
+                                $stmt_staff->close();
+                                
+                                date_default_timezone_set('Asia/Kolkata');
+                                $current_datetime = date('d M Y, h:i A');
+                                $admin_name = "Staff Member: {$staff_name}";
+                                $email_body = getAccountModificationTemplate($name, $old_user_data['username'], $email_changes, $current_datetime, $admin_name);
+                                
+                                // Send to the updated email address
+                                send_mail('MedSync', $email, 'Your MedSync Account Has Been Updated', $email_body);
+                                
+                                // If email was changed, also notify the old email
+                                if (isset($email_changes['Email']) && !empty($old_user_data['email'])) {
+                                    $old_email_body = getAccountModificationTemplate(
+                                        $old_user_data['name'], 
+                                        $old_user_data['username'], 
+                                        $email_changes, 
+                                        $current_datetime, 
+                                        $admin_name
+                                    );
+                                    send_mail('MedSync', $old_user_data['email'], 'Your MedSync Account Has Been Updated', $old_email_body);
+                                }
+                            } catch (Exception $email_error) {
+                                // Email sending failed, but don't block the update
+                                // Log error silently
+                            }
+                        }
 
                         $conn->commit();
                         $transaction_active = false;

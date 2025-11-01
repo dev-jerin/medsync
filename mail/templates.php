@@ -66,6 +66,7 @@ HTML;
  * @return string The complete HTML email body.
  */
 function getWelcomeEmailTemplate($name, $username, $display_user_id, $ip_address = null) {
+    date_default_timezone_set('Asia/Kolkata');
     $currentYear = date('Y');
     $ip_address = $ip_address ?: $_SERVER['REMOTE_ADDR'];
     $currentDateTime = date('d M Y, h:i A');
@@ -120,6 +121,7 @@ HTML;
  * @return string The complete HTML email body.
  */
 function getPasswordResetEmailTemplate($name, $otp, $ip_address = null) {
+    date_default_timezone_set('Asia/Kolkata');
     $currentYear = date('Y');
     $ip_address = $ip_address ?: $_SERVER['REMOTE_ADDR'];
     $currentDateTime = date('d M Y, h:i A');
@@ -307,6 +309,7 @@ HTML;
  * @return string HTML email template
  */
 function getLabResultReadyTemplate($name, $test_name, $test_date = null, $result_status = 'Ready', $datetime = null) {
+    date_default_timezone_set('Asia/Kolkata');
     $currentYear = date('Y');
     $datetime = $datetime ?? date('d M Y, h:i A');
     
