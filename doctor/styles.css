@@ -544,6 +544,41 @@ input:checked + .theme-slider:before {
 .status.cancelled { background-color: var(--danger-color); color: var(--text-on-primary); }
 .status.processing { background-color: var(--info-color); color: var(--text-on-primary); }
 
+/* Token Status Badges */
+.token-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.token-status-badge.waiting {
+    background-color: rgba(241, 196, 15, 0.15);
+    color: var(--warning-color);
+    border: 1px solid rgba(241, 196, 15, 0.3);
+}
+.token-status-badge.in-consultation {
+    background-color: rgba(22, 160, 133, 0.15);
+    color: var(--secondary-color);
+    border: 1px solid rgba(22, 160, 133, 0.3);
+}
+.token-status-badge.completed {
+    background-color: rgba(149, 165, 166, 0.15);
+    color: #7f8c8d;
+    border: 1px solid rgba(149, 165, 166, 0.3);
+}
+.token-status-badge.skipped {
+    background-color: rgba(231, 76, 60, 0.15);
+    color: var(--danger-color);
+    border: 1px solid rgba(231, 76, 60, 0.3);
+}
+.token-status-badge i {
+    font-size: 0.65rem;
+}
+
 
 /* Action Buttons */
 .action-btn {

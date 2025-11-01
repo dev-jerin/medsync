@@ -157,7 +157,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         <div class="grid-card" style="grid-column: 1 / -1;">
                             <h3><i class="fas fa-user-clock"></i> Today's Appointment Queue</h3>
                             <table class="data-table">
-                                <thead><tr><th>Token</th><th>Patient Name</th><th>Time</th><th>Status</th><th>Action</th></tr></thead>
+                                <thead><tr><th>Token</th><th>Patient Name</th><th>Time Slot</th><th>Status</th><th>Action</th></tr></thead>
                                 <tbody id="dashboard-appointments-tbody">
                                     </tbody>
                             </table>

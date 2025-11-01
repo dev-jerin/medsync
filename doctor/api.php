@@ -313,11 +313,12 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
 
         // 2. Fetch today's appointment queue (Limit 5 for the dashboard)
         $appt_sql = "
-            SELECT a.id, a.token_number, p.name AS patient_name, a.appointment_date, a.status
+            SELECT a.id, a.token_number, p.name AS patient_name, a.appointment_date, 
+                   a.slot_start_time, a.slot_end_time, a.status, a.token_status, p.id as user_id
             FROM appointments a
             JOIN users p ON a.user_id = p.id
             WHERE a.doctor_id = ? AND DATE(a.appointment_date) = CURDATE() AND a.status = 'scheduled'
-            ORDER BY a.appointment_date ASC LIMIT 5
+            ORDER BY a.slot_start_time ASC, a.token_number ASC LIMIT 5
         ";
         $stmt = $conn->prepare($appt_sql);
         $stmt->bind_param("i", $current_user_id);
@@ -549,8 +550,8 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
             $new_id = ($encounter_id > 0) ? $encounter_id : $conn->insert_id;
             $stmt->close();
 
-            // --- NEW: Update the appointment status to 'completed' ---
-            $stmt_appt = $conn->prepare("UPDATE appointments SET status = 'completed' WHERE id = ? AND doctor_id = ?");
+            // --- Update the appointment status to 'completed' and token_status to 'completed' ---
+            $stmt_appt = $conn->prepare("UPDATE appointments SET status = 'completed', token_status = 'completed' WHERE id = ? AND doctor_id = ?");
             $stmt_appt->bind_param("ii", $appointment_id, $current_user_id);
             if (!$stmt_appt->execute()) {
                 throw new Exception('Failed to update appointment status.');
@@ -571,6 +572,37 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         exit();
     }
 
+
+    // ==========================================================
+    // --- TOKEN STATUS UPDATE ACTION ---
+    // ==========================================================
+    if ($action == 'update_token_status' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $appointment_id = (int)($_POST['appointment_id'] ?? 0);
+        $new_status = $_POST['token_status'] ?? '';
+        
+        $allowed_statuses = ['waiting', 'in_consultation', 'completed', 'skipped'];
+        
+        if (empty($appointment_id) || !in_array($new_status, $allowed_statuses)) {
+            echo json_encode(['success' => false, 'message' => 'Invalid parameters']);
+            exit();
+        }
+        
+        try {
+            $stmt = $conn->prepare("UPDATE appointments SET token_status = ? WHERE id = ? AND doctor_id = ?");
+            $stmt->bind_param("sii", $new_status, $appointment_id, $current_user_id);
+            
+            if ($stmt->execute() && $stmt->affected_rows > 0) {
+                log_activity($conn, $current_user_id, 'Token Status Updated', null, "Appointment ID: {$appointment_id} to {$new_status}");
+                echo json_encode(['success' => true, 'message' => 'Token status updated successfully']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'No changes made or appointment not found']);
+            }
+            $stmt->close();
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
+        }
+        exit();
+    }
 
     // ==========================================================
     // --- ADMISSIONS & DISCHARGE ACTIONS ---
@@ -722,7 +754,8 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         $filter_date = $_GET['date'] ?? null;
 
         $sql = "
-            SELECT a.id, a.user_id, a.appointment_date, a.status, a.token_number, p.name AS patient_name, p.display_user_id AS patient_display_id
+            SELECT a.id, a.user_id, a.appointment_date, a.slot_start_time, a.slot_end_time, 
+                   a.status, a.token_number, a.token_status, p.name AS patient_name, p.display_user_id AS patient_display_id
             FROM appointments a JOIN users p ON a.user_id = p.id
             WHERE a.doctor_id = ? 
         ";
@@ -741,7 +774,7 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
             }
         }
 
-        $sql .= " ORDER BY a.appointment_date ASC";
+        $sql .= " ORDER BY a.appointment_date ASC, a.slot_start_time ASC, a.token_number ASC";
 
         $stmt = $conn->prepare($sql);
         if (!$stmt) die(json_encode(['success' => false, 'message' => 'Query preparation failed: ' . $conn->error]));
