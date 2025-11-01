@@ -109,6 +109,33 @@ require_once 'api.php';
                             <strong><?php echo $username; ?></strong>
                             <span><?php echo ucfirst($_SESSION['role']); ?></span>
                         </div>
+                        <i class="fas fa-chevron-down dropdown-arrow"></i>
+                        
+                        <!-- Profile Dropdown Menu -->
+                        <div class="profile-dropdown" id="profile-dropdown">
+                            <div class="dropdown-header">
+                                <img src="<?php echo $profile_picture_path; ?>?v=<?php echo time(); ?>" alt="Profile" class="dropdown-avatar">
+                                <div class="dropdown-user-info">
+                                    <strong><?php echo $username; ?></strong>
+                                    <span><?php echo $email; ?></span>
+                                    <small><?php echo ucfirst($_SESSION['role']); ?> • <?php echo $display_user_id; ?></small>
+                                </div>
+                            </div>
+                            <div class="dropdown-divider"></div>
+                            <div class="dropdown-body">
+                                <a href="#" class="dropdown-item" data-page="profile">
+                                    <i class="fas fa-user-circle"></i>
+                                    <span>My Profile</span>
+                                </a>
+                            </div>
+                            <div class="dropdown-divider"></div>
+                            <div class="dropdown-footer">
+                                <a href="../logout.php" class="dropdown-item logout-item">
+                                    <i class="fas fa-sign-out-alt"></i>
+                                    <span>Logout</span>
+                                </a>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </header>

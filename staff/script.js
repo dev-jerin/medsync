@@ -319,9 +319,15 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     document.addEventListener('click', (e) => {
+        // Close notification panel
         if (!notificationPanel.contains(e.target) && !notificationBell.contains(e.target)) {
             notificationPanel.classList.remove('show');
         }
+        // Close profile dropdown
+        if (userProfileWidget && !userProfileWidget.contains(e.target)) {
+            userProfileWidget.classList.remove('active');
+        }
+        // Close bed status dropdowns
         document.querySelectorAll('.bed-status-dropdown.active').forEach(dropdown => {
             if (!dropdown.previousElementSibling.contains(e.target)) {
                 dropdown.classList.remove('active');
@@ -334,6 +340,39 @@ document.addEventListener("DOMContentLoaded", function() {
         notificationPanel.classList.remove('show');
         document.querySelector('.nav-link[data-page="notifications"]').click();
     });
+
+    // --- PROFILE DROPDOWN TOGGLE ---
+    const userProfileWidget = document.getElementById('user-profile-widget');
+    const profileDropdown = document.getElementById('profile-dropdown');
+
+    if (userProfileWidget && profileDropdown) {
+        userProfileWidget.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userProfileWidget.classList.toggle('active');
+            // Close notification panel if open
+            notificationPanel.classList.remove('show');
+        });
+
+        // Handle dropdown item clicks
+        profileDropdown.querySelectorAll('.dropdown-item[data-page]').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                const pageId = item.dataset.page;
+                const navLink = document.querySelector(`.nav-link[data-page="${pageId}"]`);
+                if (navLink) {
+                    navLink.click();
+                }
+                userProfileWidget.classList.remove('active');
+            });
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!userProfileWidget.contains(e.target)) {
+                userProfileWidget.classList.remove('active');
+            }
+        });
+    }
 
     const markAllReadBtn = document.getElementById('mark-all-read-btn');
     if(markAllReadBtn) {

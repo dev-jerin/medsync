@@ -106,11 +106,141 @@ body {
 .main-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
 .main-header h1 { font-size: 1.8rem; font-weight: 600; }
 .header-widgets { display: flex; align-items: center; gap: 1.5rem; }
-.user-profile-widget { display: flex; align-items: center; gap: 1rem; background-color: var(--background-panel); padding: 0.5rem; border-radius: var(--border-radius); box-shadow: var(--shadow-md); cursor: pointer; }
+.user-profile-widget { display: flex; align-items: center; gap: 1rem; background-color: var(--background-panel); padding: 0.5rem; border-radius: var(--border-radius); box-shadow: var(--shadow-md); cursor: pointer; position: relative; transition: all 0.3s ease; }
+.user-profile-widget:hover { background-color: rgba(52, 152, 219, 0.1); }
 .user-profile-widget .profile-picture { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary-color); }
 .user-profile-widget .profile-info { display: flex; flex-direction: column; }
 .user-profile-widget strong { font-weight: 600; line-height: 1.2; }
 .user-profile-widget span { font-size: 0.85rem; color: var(--text-muted); text-transform: capitalize; }
+.user-profile-widget .dropdown-arrow { font-size: 0.75rem; color: var(--text-muted); transition: transform 0.3s ease; }
+.user-profile-widget.active .dropdown-arrow { transform: rotate(180deg); }
+
+/* Profile Dropdown Menu */
+.profile-dropdown {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 280px;
+    background-color: var(--background-panel);
+    border-radius: var(--border-radius);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: all 0.3s ease;
+    z-index: 1000;
+    border: 1px solid var(--border-color);
+}
+
+.user-profile-widget.active .profile-dropdown {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.profile-dropdown .dropdown-header {
+    padding: 1.5rem;
+    background: linear-gradient(135deg, var(--primary-color), #2980b9);
+    border-radius: var(--border-radius) var(--border-radius) 0 0;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.profile-dropdown .dropdown-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    object-fit: cover;
+}
+
+.profile-dropdown .dropdown-user-info {
+    flex: 1;
+    color: white;
+    overflow: hidden;
+}
+
+.profile-dropdown .dropdown-user-info strong {
+    display: block;
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 0.2rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.profile-dropdown .dropdown-user-info span {
+    display: block;
+    font-size: 0.85rem;
+    opacity: 0.9;
+    margin-bottom: 0.3rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.profile-dropdown .dropdown-user-info small {
+    display: block;
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+
+.profile-dropdown .dropdown-divider {
+    height: 1px;
+    background-color: var(--border-color);
+    margin: 0;
+}
+
+.profile-dropdown .dropdown-body {
+    padding: 0.5rem 0;
+}
+
+.profile-dropdown .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1.5rem;
+    color: var(--text-dark);
+    text-decoration: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.profile-dropdown .dropdown-item:hover {
+    background-color: rgba(52, 152, 219, 0.1);
+}
+
+.profile-dropdown .dropdown-item i {
+    width: 20px;
+    text-align: center;
+    font-size: 1.1rem;
+    color: var(--primary-color);
+}
+
+.profile-dropdown .dropdown-item span {
+    flex: 1;
+    font-size: 0.95rem;
+}
+
+.profile-dropdown .dropdown-footer {
+    padding: 0.5rem 0;
+}
+
+.profile-dropdown .logout-item {
+    color: var(--danger-color);
+    font-weight: 500;
+}
+
+.profile-dropdown .logout-item i {
+    color: var(--danger-color);
+}
+
+.profile-dropdown .logout-item:hover {
+    background-color: rgba(231, 76, 60, 0.1);
+}
+
 
 /* --- Theme Toggle --- */
 .theme-toggle-widget { display: flex; align-items: center; gap: 0.5rem; }
