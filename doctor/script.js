@@ -1946,6 +1946,230 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
+    // --- Profile Picture Upload Functionality ---
+    const profilePictureUpload = document.getElementById('profile-picture-upload');
+    const removeProfilePictureBtn = document.getElementById('remove-profile-picture-btn');
+    
+    if (profilePictureUpload) {
+        profilePictureUpload.addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            // Validate file type
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+            if (!allowedTypes.includes(file.type)) {
+                alert('Please upload a valid image file (JPEG, PNG, or GIF).');
+                this.value = '';
+                return;
+            }
+            
+            // Validate file size (max 5MB)
+            if (file.size > 5 * 1024 * 1024) {
+                alert('File size must be less than 5MB.');
+                this.value = '';
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('profile_picture', file);
+            formData.append('action', 'updateProfilePicture');
+            
+            try {
+                const response = await fetch('api.php', { method: 'POST', body: formData });
+                const result = await response.json();
+                
+                if (result.success && result.new_image_url) {
+                    const newUrl = `${result.new_image_url}?v=${new Date().getTime()}`;
+                    document.querySelectorAll('.profile-picture, .editable-profile-picture').forEach(img => {
+                        img.src = newUrl;
+                    });
+                    if (removeProfilePictureBtn) removeProfilePictureBtn.style.display = 'flex';
+                    alert('Profile picture updated successfully!');
+                } else {
+                    alert(`Error: ${result.message || 'Failed to update profile picture.'}`);
+                }
+            } catch (error) {
+                console.error('Error uploading profile picture:', error);
+                alert('An error occurred while uploading the profile picture.');
+            }
+            
+            this.value = '';
+        });
+    }
+    
+    if (removeProfilePictureBtn) {
+        removeProfilePictureBtn.addEventListener('click', async function() {
+            if (!confirm('Are you sure you want to remove your profile picture?')) return;
+            
+            const formData = new FormData();
+            formData.append('action', 'removeProfilePicture');
+            
+            try {
+                const response = await fetch('api.php', { method: 'POST', body: formData });
+                const result = await response.json();
+                
+                if (result.success) {
+                    const defaultUrl = `../uploads/profile_pictures/default.png?v=${new Date().getTime()}`;
+                    document.querySelectorAll('.profile-picture, .editable-profile-picture').forEach(img => {
+                        img.src = defaultUrl;
+                    });
+                    this.style.display = 'none';
+                    alert('Profile picture removed successfully!');
+                } else {
+                    alert(`Error: ${result.message || 'Failed to remove profile picture.'}`);
+                }
+            } catch (error) {
+                console.error('Error removing profile picture:', error);
+                alert('An error occurred while removing the profile picture.');
+            }
+        });
+    }
+
+    // --- WEBCAM CAPTURE FUNCTIONALITY ---
+    const webcamModal = document.getElementById('webcam-modal');
+    const webcamVideo = document.getElementById('webcam-video');
+    const webcamCanvas = document.getElementById('webcam-canvas');
+    const webcamPreview = document.getElementById('webcam-preview');
+    const webcamCapturedImage = document.getElementById('webcam-captured-image');
+    const webcamStatus = document.getElementById('webcam-status');
+    
+    const openWebcamBtn = document.getElementById('open-webcam-btn');
+    const closeWebcamModalBtn = document.getElementById('close-webcam-modal');
+    const webcamCancelBtn = document.getElementById('webcam-cancel-btn');
+    const webcamCaptureBtn = document.getElementById('webcam-capture-btn');
+    const webcamRetakeBtn = document.getElementById('webcam-retake-btn');
+    const webcamUseBtn = document.getElementById('webcam-use-btn');
+    
+    let webcamStream = null;
+    let capturedBlob = null;
+
+    const updateWebcamStatus = (message, type = 'info') => {
+        webcamStatus.className = `webcam-status ${type}`;
+        const icon = type === 'error' ? 'fa-exclamation-circle' : type === 'success' ? 'fa-check-circle' : 'fa-info-circle';
+        webcamStatus.innerHTML = `<i class="fas ${icon}"></i> <span>${message}</span>`;
+    };
+
+    const startWebcam = async () => {
+        try {
+            updateWebcamStatus('Starting camera...', 'info');
+            webcamStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: 'user'
+                } 
+            });
+            webcamVideo.srcObject = webcamStream;
+            webcamVideo.style.display = 'block';
+            webcamPreview.style.display = 'none';
+            webcamCaptureBtn.style.display = 'inline-block';
+            webcamRetakeBtn.style.display = 'none';
+            webcamUseBtn.style.display = 'none';
+            updateWebcamStatus('Camera ready! Click "Capture" to take a photo.', 'success');
+        } catch (error) {
+            console.error('Webcam error:', error);
+            updateWebcamStatus('Unable to access camera. Please check permissions.', 'error');
+        }
+    };
+
+    const stopWebcam = () => {
+        if (webcamStream) {
+            webcamStream.getTracks().forEach(track => track.stop());
+            webcamStream = null;
+            webcamVideo.srcObject = null;
+        }
+    };
+
+    const capturePhoto = () => {
+        const context = webcamCanvas.getContext('2d');
+        webcamCanvas.width = webcamVideo.videoWidth;
+        webcamCanvas.height = webcamVideo.videoHeight;
+        context.drawImage(webcamVideo, 0, 0);
+        
+        webcamCanvas.toBlob((blob) => {
+            capturedBlob = blob;
+            const url = URL.createObjectURL(blob);
+            webcamCapturedImage.src = url;
+            webcamVideo.style.display = 'none';
+            webcamPreview.style.display = 'flex';
+            webcamCaptureBtn.style.display = 'none';
+            webcamRetakeBtn.style.display = 'inline-block';
+            webcamUseBtn.style.display = 'inline-block';
+            updateWebcamStatus('Photo captured! Use it or retake.', 'success');
+        }, 'image/jpeg', 0.9);
+    };
+
+    const retakePhoto = () => {
+        webcamVideo.style.display = 'block';
+        webcamPreview.style.display = 'none';
+        webcamCaptureBtn.style.display = 'inline-block';
+        webcamRetakeBtn.style.display = 'none';
+        webcamUseBtn.style.display = 'none';
+        capturedBlob = null;
+        updateWebcamStatus('Camera ready! Click "Capture" to take a photo.', 'success');
+    };
+
+    const uploadCapturedPhoto = async () => {
+        if (!capturedBlob) return;
+        
+        const formData = new FormData();
+        formData.append('profile_picture', capturedBlob, 'webcam-capture.jpg');
+        formData.append('action', 'updateProfilePicture');
+
+        try {
+            updateWebcamStatus('Uploading photo...', 'info');
+            webcamUseBtn.disabled = true;
+            
+            const response = await fetch('api.php', { method: 'POST', body: formData });
+            const result = await response.json();
+            
+            if (!response.ok || !result.success) throw new Error(result.message || 'Upload failed');
+            
+            if (result.new_image_url) {
+                const newUrl = `${result.new_image_url}?v=${new Date().getTime()}`;
+                document.querySelectorAll('.profile-picture, .editable-profile-picture').forEach(img => {
+                    img.src = newUrl;
+                });
+                if (removeProfilePictureBtn) removeProfilePictureBtn.style.display = 'flex';
+                alert('Profile picture updated successfully!');
+            }
+            
+            closeWebcam();
+        } catch (error) {
+            updateWebcamStatus(error.message, 'error');
+            webcamUseBtn.disabled = false;
+        }
+    };
+
+    const closeWebcam = () => {
+        if (webcamModal) {
+            webcamModal.classList.remove('active');
+            stopWebcam();
+            capturedBlob = null;
+        }
+    };
+
+    // Event Listeners for Webcam
+    if (openWebcamBtn) {
+        openWebcamBtn.addEventListener('click', () => {
+            webcamModal.classList.add('active');
+            startWebcam();
+        });
+    }
+
+    if (closeWebcamModalBtn) closeWebcamModalBtn.addEventListener('click', closeWebcam);
+    if (webcamCancelBtn) webcamCancelBtn.addEventListener('click', closeWebcam);
+    if (webcamCaptureBtn) webcamCaptureBtn.addEventListener('click', capturePhoto);
+    if (webcamRetakeBtn) webcamRetakeBtn.addEventListener('click', retakePhoto);
+    if (webcamUseBtn) webcamUseBtn.addEventListener('click', uploadCapturedPhoto);
+
+    // Close modal on outside click
+    if (webcamModal) {
+        webcamModal.addEventListener('click', (e) => {
+            if (e.target === webcamModal) closeWebcam();
+        });
+    }
+
     const securityForm = document.getElementById('security-form');
     if (securityForm) {
         securityForm.addEventListener('submit', async function(e) {

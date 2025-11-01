@@ -1125,6 +1125,91 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         }
         exit();
     }
+
+    if ($action == 'updateProfilePicture') {
+        try {
+            if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == UPLOAD_ERR_OK) {
+                $upload_dir = '../uploads/profile_pictures/';
+                if (!is_dir($upload_dir) && !mkdir($upload_dir, 0755, true)) {
+                    throw new Exception('Failed to create upload directory.');
+                }
+
+                $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
+                $file_mime_type = mime_content_type($_FILES['profile_picture']['tmp_name']);
+                if (!in_array($file_mime_type, $allowed_types)) {
+                    throw new Exception('Invalid file type. Only JPG, PNG, and GIF are allowed.');
+                }
+                if ($_FILES['profile_picture']['size'] > 5242880) { // 5MB limit
+                    throw new Exception('File is too large. Maximum size is 5MB.');
+                }
+
+                $file_extension = strtolower(pathinfo($_FILES['profile_picture']['name'], PATHINFO_EXTENSION));
+                $new_filename = 'doctor_' . $current_user_id . '_' . time() . '.' . $file_extension;
+
+                $stmt_select = $conn->prepare("SELECT profile_picture FROM users WHERE id = ?");
+                $stmt_select->bind_param("i", $current_user_id);
+                $stmt_select->execute();
+                $old_picture_filename = $stmt_select->get_result()->fetch_assoc()['profile_picture'];
+                $stmt_select->close();
+
+                if (move_uploaded_file($_FILES['profile_picture']['tmp_name'], $upload_dir . $new_filename)) {
+                    $stmt_update = $conn->prepare("UPDATE users SET profile_picture = ? WHERE id = ?");
+                    $stmt_update->bind_param("si", $new_filename, $current_user_id);
+                    if ($stmt_update->execute()) {
+                        if ($old_picture_filename && $old_picture_filename !== 'default.png' && file_exists($upload_dir . $old_picture_filename)) {
+                            unlink($upload_dir . $old_picture_filename);
+                        }
+                        log_activity($conn, $current_user_id, 'Profile Picture Updated', $current_user_id, 'Doctor updated their profile picture.');
+                        echo json_encode(['success' => true, 'message' => 'Profile picture updated.', 'new_image_url' => '../uploads/profile_pictures/' . $new_filename]);
+                    } else {
+                        unlink($upload_dir . $new_filename);
+                        throw new Exception('Database update failed.');
+                    }
+                    $stmt_update->close();
+                } else {
+                    throw new Exception('Failed to move uploaded file.');
+                }
+            } else {
+                $error_code = $_FILES['profile_picture']['error'] ?? UPLOAD_ERR_NO_FILE;
+                throw new Exception('File upload error code: ' . $error_code);
+            }
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    if ($action == 'removeProfilePicture') {
+        try {
+            $stmt_select = $conn->prepare("SELECT profile_picture FROM users WHERE id = ?");
+            $stmt_select->bind_param("i", $current_user_id);
+            $stmt_select->execute();
+            $current_picture = $stmt_select->get_result()->fetch_assoc()['profile_picture'];
+            $stmt_select->close();
+
+            if ($current_picture && $current_picture !== 'default.png') {
+                $upload_dir = '../uploads/profile_pictures/';
+                $old_file_path = $upload_dir . $current_picture;
+                if (file_exists($old_file_path)) {
+                    unlink($old_file_path);
+                }
+            }
+
+            $stmt_update = $conn->prepare("UPDATE users SET profile_picture = 'default.png' WHERE id = ?");
+            $stmt_update->bind_param("i", $current_user_id);
+            if ($stmt_update->execute()) {
+                log_activity($conn, $current_user_id, 'Profile Picture Removed', $current_user_id, 'Doctor removed their profile picture.');
+                echo json_encode(['success' => true, 'message' => 'Profile picture removed successfully.', 'new_image_url' => '../uploads/profile_pictures/default.png']);
+            } else {
+                throw new Exception('Failed to remove profile picture.');
+            }
+            $stmt_update->close();
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit();
+    }
+    
     // ==========================================================
     // --- MESSENGER ACTIONS ---
     // ==========================================================
