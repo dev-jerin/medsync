@@ -1293,6 +1293,189 @@ body.dark-theme .send-btn:disabled {
 }
 
 /* --- Live Token Styles --- */
+/* Token Statistics Dashboard */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin: 1.5rem 0;
+}
+
+.stat-card {
+    background-color: var(--background-panel);
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-md);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    border-left: 4px solid;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+.stat-card.stat-waiting { border-left-color: var(--warning-color); }
+.stat-card.stat-consultation { border-left-color: var(--primary-color); }
+.stat-card.stat-completed { border-left-color: var(--secondary-color); }
+.stat-card.stat-total { border-left-color: var(--info-color); }
+
+.stat-icon {
+    font-size: 2.5rem;
+    opacity: 0.8;
+}
+
+.stat-card.stat-waiting .stat-icon { color: var(--warning-color); }
+.stat-card.stat-consultation .stat-icon { color: var(--primary-color); }
+.stat-card.stat-completed .stat-icon { color: var(--secondary-color); }
+.stat-card.stat-total .stat-icon { color: var(--info-color); }
+
+.stat-content {
+    flex: 1;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    line-height: 1;
+}
+
+.stat-label {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Filter Buttons */
+.filter-buttons {
+    display: flex;
+    gap: 1rem;
+    margin: 1.5rem 0;
+    flex-wrap: wrap;
+}
+
+.filter-btn {
+    padding: 0.7rem 1.5rem;
+    border: 2px solid var(--border-color);
+    background-color: var(--background-panel);
+    color: var(--text-dark);
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.filter-btn:hover {
+    border-color: var(--primary-color);
+    background-color: rgba(52, 152, 219, 0.1);
+}
+
+.filter-btn.active {
+    background-color: var(--primary-color);
+    color: var(--text-on-primary);
+    border-color: var(--primary-color);
+}
+
+/* Doctor Info Card */
+.doctor-info-card {
+    background: linear-gradient(135deg, var(--primary-color) 0%, #2980b9 100%);
+    color: var(--text-on-primary);
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    box-shadow: var(--shadow-md);
+}
+
+.doctor-avatar {
+    width: 60px;
+    height: 60px;
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+}
+
+.doctor-details {
+    flex: 1;
+}
+
+.doctor-details h4 {
+    margin: 0 0 0.3rem 0;
+    font-size: 1.3rem;
+}
+
+.doctor-details p {
+    margin: 0;
+    opacity: 0.9;
+    font-size: 0.95rem;
+}
+
+.last-updated {
+    opacity: 0.8;
+    font-size: 0.85rem;
+}
+
+/* Header Actions */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.header-actions {
+    display: flex;
+    gap: 0.8rem;
+}
+
+.btn-action {
+    padding: 0.6rem 1.2rem;
+    border: 2px solid var(--border-color);
+    background-color: var(--background-panel);
+    color: var(--text-dark);
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.btn-action:hover {
+    border-color: var(--primary-color);
+    background-color: rgba(52, 152, 219, 0.1);
+}
+
+.btn-action.active {
+    background-color: var(--secondary-color);
+    color: var(--text-on-primary);
+    border-color: var(--secondary-color);
+}
+
+.btn-action i.fa-sync-alt {
+    transition: transform 0.5s ease;
+}
+
+.btn-action:active i.fa-sync-alt {
+    transform: rotate(360deg);
+}
+
 .token-slot-header {
     margin-top: 2rem;
     margin-bottom: 1rem;
@@ -1300,10 +1483,22 @@ body.dark-theme .send-btn:disabled {
     border-bottom: 2px solid var(--primary-color);
     font-weight: 600;
     color: var(--primary-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .token-slot-header:first-of-type {
     margin-top: 0;
+}
+
+.slot-time-badge {
+    background-color: var(--primary-color);
+    color: var(--text-on-primary);
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
 }
 
 #token-display-container .token-grid-container {
@@ -1323,11 +1518,29 @@ body.dark-theme .send-btn:disabled {
     align-items: center;
     text-align: center;
     border-top: 5px solid;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease, opacity 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.token-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at top right, rgba(255, 255, 255, 0.1), transparent);
+    pointer-events: none;
 }
 
 .token-card:hover {
     transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+
+.token-card.filtered-out {
+    display: none;
 }
 
 .token-number {
@@ -1335,10 +1548,14 @@ body.dark-theme .send-btn:disabled {
     font-weight: 700;
     color: var(--primary-color);
     line-height: 1;
+    position: relative;
+    z-index: 1;
 }
 
 .token-patient-info {
     margin: 1rem 0;
+    position: relative;
+    z-index: 1;
 }
 
 .patient-name {
@@ -1351,6 +1568,30 @@ body.dark-theme .send-btn:disabled {
     color: var(--text-muted);
 }
 
+.appointment-time {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    justify-content: center;
+}
+
+.appointment-time i {
+    font-size: 0.75rem;
+}
+
+.queue-position {
+    background-color: rgba(52, 152, 219, 0.1);
+    color: var(--primary-color);
+    padding: 0.3rem 0.8rem;
+    border-radius: 15px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+}
+
 .token-status {
     margin-top: auto;
     padding: 0.4rem 1rem;
@@ -1359,30 +1600,144 @@ body.dark-theme .send-btn:disabled {
     font-size: 0.8rem;
     text-transform: capitalize;
     color: #fff;
+    position: relative;
+    z-index: 1;
 }
 
-/* Status-specific colors */
-.token-card.status-waiting { border-top-color: var(--warning-color); }
-.token-card.status-waiting .token-status { background-color: var(--warning-color); color: var(--text-dark); }
+/* Status-specific colors and animations */
+.token-card.status-waiting { 
+    border-top-color: var(--warning-color); 
+}
+.token-card.status-waiting .token-status { 
+    background-color: var(--warning-color); 
+    color: var(--text-dark); 
+}
 
 .token-card.status-in-consultation { 
     border-top-color: var(--primary-color); 
-    transform: scale(1.05);
+    transform: scale(1.03);
     box-shadow: 0 8px 25px rgba(52, 152, 219, 0.3);
+    animation: pulse-consultation 2s infinite;
 }
-.token-card.status-in-consultation .token-status { background-color: var(--primary-color); }
+.token-card.status-in-consultation .token-status { 
+    background-color: var(--primary-color); 
+}
+
+@keyframes pulse-consultation {
+    0%, 100% {
+        box-shadow: 0 8px 25px rgba(52, 152, 219, 0.3);
+    }
+    50% {
+        box-shadow: 0 12px 30px rgba(52, 152, 219, 0.5);
+    }
+}
 
 .token-card.status-completed { 
     border-top-color: var(--secondary-color);
-    opacity: 0.7;
+    opacity: 0.75;
 }
-.token-card.status-completed .token-status { background-color: var(--secondary-color); }
+.token-card.status-completed .token-status { 
+    background-color: var(--secondary-color); 
+}
 
 .token-card.status-skipped { 
     border-top-color: var(--danger-color);
     opacity: 0.6;
 }
-.token-card.status-skipped .token-status { background-color: var(--danger-color); }
+.token-card.status-skipped .token-status { 
+    background-color: var(--danger-color); 
+}
+
+/* Skeleton Loading */
+.skeleton-loader {
+    animation: skeleton-loading 1.5s infinite;
+    background: linear-gradient(90deg, 
+        var(--background-panel) 25%, 
+        var(--border-color) 50%, 
+        var(--background-panel) 75%);
+    background-size: 200% 100%;
+}
+
+@keyframes skeleton-loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.token-skeleton {
+    background-color: var(--background-panel);
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-md);
+    height: 200px;
+}
+
+/* Empty state styling */
+.no-items-message {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+}
+
+.no-items-message i {
+    font-size: 3rem;
+    display: block;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+/* Fade in animation for token cards */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.token-card {
+    animation: fadeInUp 0.4s ease-out;
+}
+
+.token-card:nth-child(1) { animation-delay: 0.05s; }
+.token-card:nth-child(2) { animation-delay: 0.1s; }
+.token-card:nth-child(3) { animation-delay: 0.15s; }
+.token-card:nth-child(4) { animation-delay: 0.2s; }
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .filter-buttons {
+        flex-direction: column;
+    }
+    
+    .filter-btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .header-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .doctor-info-card {
+        flex-direction: column;
+        text-align: center;
+    }
+}
 
 /* --- Webcam Modal Styles --- */
 .webcam-modal-content { 

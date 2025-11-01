@@ -3181,6 +3181,9 @@ document.addEventListener("DOMContentLoaded", function() {
     const liveTokensPage = document.getElementById('live-tokens-page');
     let liveTokensInitialized = false;
     let tokenRefreshInterval;
+    let autoRefreshEnabled = true;
+    let currentFilter = 'all';
+    let currentDoctorData = null;
 
     function initializeLiveTokens() {
         if (liveTokensInitialized || !liveTokensPage) return;
@@ -3189,7 +3192,52 @@ document.addEventListener("DOMContentLoaded", function() {
         const searchResults = document.getElementById('token-doctor-search-results');
         const hiddenInput = document.getElementById('token-doctor-id-hidden');
         const tokenContainer = document.getElementById('token-display-container');
+        const refreshBtn = document.getElementById('refresh-tokens-btn');
+        const toggleAutoRefreshBtn = document.getElementById('toggle-auto-refresh');
+        const statsContainer = document.getElementById('token-stats-container');
+        const filterContainer = document.getElementById('token-filter-container');
+        const doctorInfoContainer = document.getElementById('selected-doctor-info');
         let searchDebounce;
+
+        // Manual refresh button
+        refreshBtn.addEventListener('click', () => {
+            const doctorId = hiddenInput.value;
+            if (doctorId) {
+                fetchAndRenderTokens(doctorId);
+            }
+        });
+
+        // Toggle auto-refresh
+        toggleAutoRefreshBtn.addEventListener('click', () => {
+            autoRefreshEnabled = !autoRefreshEnabled;
+            toggleAutoRefreshBtn.classList.toggle('active', autoRefreshEnabled);
+            toggleAutoRefreshBtn.innerHTML = autoRefreshEnabled 
+                ? '<i class="fas fa-play"></i> Auto-refresh ON' 
+                : '<i class="fas fa-pause"></i> Auto-refresh OFF';
+            
+            if (autoRefreshEnabled) {
+                const doctorId = hiddenInput.value;
+                if (doctorId) {
+                    tokenRefreshInterval = setInterval(() => fetchAndRenderTokens(doctorId), 10000);
+                }
+            } else {
+                clearInterval(tokenRefreshInterval);
+            }
+        });
+
+        // Filter buttons
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.filter-btn')) {
+                const filterBtn = e.target.closest('.filter-btn');
+                const filter = filterBtn.dataset.filter;
+                
+                document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+                filterBtn.classList.add('active');
+                
+                currentFilter = filter;
+                applyTokenFilter(filter);
+            }
+        });
 
         searchInput.addEventListener('input', () => {
             clearTimeout(searchDebounce);
@@ -3197,8 +3245,11 @@ document.addEventListener("DOMContentLoaded", function() {
             hiddenInput.value = '';
             if (query.length === 0) {
                 clearInterval(tokenRefreshInterval);
-                tokenContainer.innerHTML = '<p class="no-items-message">Please select a doctor to see their live token queue for today.</p>';
+                tokenContainer.innerHTML = '<p class="no-items-message"><i class="fas fa-search"></i><br>Please select a doctor to see their live token queue for today.</p>';
                 searchResults.style.display = 'none';
+                statsContainer.style.display = 'none';
+                filterContainer.style.display = 'none';
+                doctorInfoContainer.style.display = 'none';
                 return;
             }
             if (query.length < 2) {
@@ -3212,7 +3263,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     const result = await response.json();
                     if (result.success && result.data.length > 0) {
                         searchResults.innerHTML = result.data.map(doc =>
-                            `<div class="search-result-item" data-id="${doc.id}" data-name="${doc.name}">${doc.name}</div>`
+                            `<div class="search-result-item" data-id="${doc.id}" data-name="${doc.name}" data-specialty="${doc.specialty || 'General Practice'}">${doc.name} - ${doc.specialty || 'General Practice'}</div>`
                         ).join('');
                         searchResults.style.display = 'block';
                     } else {
@@ -3230,12 +3281,34 @@ document.addEventListener("DOMContentLoaded", function() {
             if (item && item.dataset.id) {
                 const doctorId = item.dataset.id;
                 const doctorName = item.dataset.name;
+                const doctorSpecialty = item.dataset.specialty || 'General Practice';
+                
                 searchInput.value = doctorName; 
                 hiddenInput.value = doctorId;
                 searchResults.style.display = 'none';
+                
+                // Store doctor data
+                currentDoctorData = {
+                    id: doctorId,
+                    name: doctorName,
+                    specialty: doctorSpecialty
+                };
+                
+                // Show doctor info card
+                document.getElementById('doctor-name-display').textContent = doctorName;
+                document.getElementById('doctor-specialty-display').textContent = doctorSpecialty;
+                doctorInfoContainer.style.display = 'block';
+                
+                // Show stats and filters
+                statsContainer.style.display = 'block';
+                filterContainer.style.display = 'block';
+                
                 clearInterval(tokenRefreshInterval);
                 fetchAndRenderTokens(doctorId);
-                tokenRefreshInterval = setInterval(() => fetchAndRenderTokens(doctorId), 20000);
+                
+                if (autoRefreshEnabled) {
+                    tokenRefreshInterval = setInterval(() => fetchAndRenderTokens(doctorId), 10000);
+                }
             }
         });
         
@@ -3248,45 +3321,112 @@ document.addEventListener("DOMContentLoaded", function() {
         liveTokensInitialized = true;
     }
 
+    function updateStatistics(tokenData) {
+        let waiting = 0, inConsultation = 0, completed = 0, total = 0;
+        
+        for (const slotTitle in tokenData) {
+            tokenData[slotTitle].forEach(token => {
+                total++;
+                if (token.token_status === 'waiting') waiting++;
+                else if (token.token_status === 'in_consultation') inConsultation++;
+                else if (token.token_status === 'completed') completed++;
+            });
+        }
+        
+        document.getElementById('stat-waiting-count').textContent = waiting;
+        document.getElementById('stat-consultation-count').textContent = inConsultation;
+        document.getElementById('stat-completed-count').textContent = completed;
+        document.getElementById('stat-total-count').textContent = total;
+    }
+
+    function applyTokenFilter(filter) {
+        const allCards = document.querySelectorAll('.token-card');
+        
+        allCards.forEach(card => {
+            card.classList.remove('filtered-out');
+            if (filter !== 'all') {
+                const cardStatus = card.className.match(/status-([a-z_-]+)/)?.[1];
+                if (cardStatus && cardStatus !== filter.replace('_', '-')) {
+                    card.classList.add('filtered-out');
+                }
+            }
+        });
+    }
+
     async function fetchAndRenderTokens(doctorId) {
         const container = document.getElementById('token-display-container');
         
         try {
+            // Show skeleton loader
+            container.innerHTML = `
+                <div class="token-grid-container">
+                    ${Array(4).fill().map(() => `
+                        <div class="token-skeleton skeleton-loader"></div>
+                    `).join('')}
+                </div>
+            `;
+            
             const response = await fetch(`api.php?fetch=fetch_tokens&doctor_id=${doctorId}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
 
             const tokenData = result.data;
+            
+            // Update last updated time
+            const now = new Date();
+            document.getElementById('last-update-time').textContent = now.toLocaleTimeString('en-IN', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            
             if (Object.keys(tokenData).length === 0) {
-                container.innerHTML = `<p class="no-items-message">No appointments or tokens found for this doctor today.</p>`;
+                container.innerHTML = `<p class="no-items-message"><i class="fas fa-calendar-times"></i><br>No appointments or tokens found for this doctor today.</p>`;
+                updateStatistics({});
                 return;
             }
 
+            // Update statistics
+            updateStatistics(tokenData);
+
             let html = '';
+            let globalPosition = 1;
+            
             for (const slotTitle in tokenData) {
-                html += `<h4 class="token-slot-header">${slotTitle}</h4>`;
+                html += `<h4 class="token-slot-header">
+                    <span><i class="fas fa-clock"></i> ${slotTitle}</span>
+                    <span class="slot-time-badge">${tokenData[slotTitle].length} patients</span>
+                </h4>`;
                 html += '<div class="token-grid-container">'; 
                 
                 tokenData[slotTitle].forEach(token => {
+                    const showPosition = token.token_status === 'waiting';
                     html += `
-                        <div class="token-card status-${token.token_status.replace('_', '-')}">
-                            <div class="token-number">${token.token_number || 'N/A'}</div>
+                        <div class="token-card status-${token.token_status.replace('_', '-')}" data-status="${token.token_status}">
+                            <div class="token-number">#${token.token_number || 'N/A'}</div>
                             <div class="token-patient-info">
                                 <div class="patient-name">${token.patient_name}</div>
                                 <div class="patient-id">${token.patient_display_id}</div>
+                                <div class="appointment-time">
+                                    <i class="fas fa-clock"></i> ${slotTitle}
+                                </div>
+                                ${showPosition ? `<div class="queue-position">Position: ${globalPosition}</div>` : ''}
                             </div>
                             <div class="token-status">${token.token_status.replace('_', ' ')}</div>
                         </div>
                     `;
+                    if (token.token_status === 'waiting') globalPosition++;
                 });
 
                 html += '</div>';
             }
             container.innerHTML = html;
-
+            
+            // Reapply current filter
+            applyTokenFilter(currentFilter);
         } catch (error) {
-            console.error('Failed to fetch tokens:', error);
-            container.innerHTML = `<p class="no-items-message" style="color: var(--danger-color)">Could not load token data.</p>`;
+            console.error("Error fetching tokens:", error);
+            container.innerHTML = `<p class="no-items-message" style="color: var(--danger-color);"><i class="fas fa-exclamation-triangle"></i><br>Error loading tokens. Please try again.</p>`;
         }
     }
 });

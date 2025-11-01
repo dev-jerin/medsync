@@ -198,7 +198,17 @@ require_once 'api.php';
                 <div class="content-panel">
                     <div class="page-header">
                         <h3><i class="fas fa-ticket-alt"></i> Live Token Queue</h3>
+                        <div class="header-actions">
+                            <button id="refresh-tokens-btn" class="btn-action" title="Refresh tokens manually">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                            <button id="toggle-auto-refresh" class="btn-action active" title="Toggle auto-refresh">
+                                <i class="fas fa-play"></i> Auto-refresh ON
+                            </button>
+                        </div>
                     </div>
+                    
+                    <!-- Doctor Selection and Statistics -->
                     <div class="filters">
                         <div class="patient-search-container" style="flex-grow: 1;">
                             <input type="text" id="token-doctor-search" placeholder="Search for a doctor by name..." autocomplete="off">
@@ -206,6 +216,76 @@ require_once 'api.php';
                             <div id="token-doctor-search-results" class="search-results-list"></div>
                         </div>
                     </div>
+                    
+                    <!-- Token Statistics Dashboard -->
+                    <div id="token-stats-container" style="display: none;">
+                        <div class="stats-grid">
+                            <div class="stat-card stat-waiting">
+                                <div class="stat-icon"><i class="fas fa-clock"></i></div>
+                                <div class="stat-content">
+                                    <div class="stat-value" id="stat-waiting-count">0</div>
+                                    <div class="stat-label">Waiting</div>
+                                </div>
+                            </div>
+                            <div class="stat-card stat-consultation">
+                                <div class="stat-icon"><i class="fas fa-stethoscope"></i></div>
+                                <div class="stat-content">
+                                    <div class="stat-value" id="stat-consultation-count">0</div>
+                                    <div class="stat-label">In Consultation</div>
+                                </div>
+                            </div>
+                            <div class="stat-card stat-completed">
+                                <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
+                                <div class="stat-content">
+                                    <div class="stat-value" id="stat-completed-count">0</div>
+                                    <div class="stat-label">Completed</div>
+                                </div>
+                            </div>
+                            <div class="stat-card stat-total">
+                                <div class="stat-icon"><i class="fas fa-users"></i></div>
+                                <div class="stat-content">
+                                    <div class="stat-value" id="stat-total-count">0</div>
+                                    <div class="stat-label">Total Today</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Filter Buttons -->
+                    <div id="token-filter-container" style="display: none;">
+                        <div class="filter-buttons">
+                            <button class="filter-btn active" data-filter="all">
+                                <i class="fas fa-list"></i> All Tokens
+                            </button>
+                            <button class="filter-btn" data-filter="waiting">
+                                <i class="fas fa-clock"></i> Waiting Only
+                            </button>
+                            <button class="filter-btn" data-filter="in_consultation">
+                                <i class="fas fa-stethoscope"></i> In Consultation
+                            </button>
+                            <button class="filter-btn" data-filter="completed">
+                                <i class="fas fa-check-circle"></i> Completed
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Selected Doctor Info -->
+                    <div id="selected-doctor-info" style="display: none;">
+                        <div class="doctor-info-card">
+                            <div class="doctor-avatar">
+                                <i class="fas fa-user-md"></i>
+                            </div>
+                            <div class="doctor-details">
+                                <h4 id="doctor-name-display"></h4>
+                                <p id="doctor-specialty-display"></p>
+                            </div>
+                            <div class="last-updated">
+                                <small><i class="fas fa-clock"></i> Last updated: <span id="last-update-time">Never</span></small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Token Display Container -->
                     <div id="token-display-container">
                         <p class="no-items-message">Please select a doctor to see their live token queue for today.</p>
                     </div>

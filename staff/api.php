@@ -298,9 +298,10 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                 case 'active_doctors':
                     $search_query = isset($_GET['search']) ? sanitize_search_input($_GET['search']) : '';
                     $sql = "
-                        SELECT u.id, u.name, u.display_user_id
+                        SELECT u.id, u.name, u.display_user_id, s.name as specialty
                         FROM users u 
                         JOIN doctors d ON u.id = d.user_id 
+                        LEFT JOIN specialities s ON d.specialty_id = s.id
                         WHERE u.is_active = 1
                     ";
                     $params = [];
