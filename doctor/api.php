@@ -362,6 +362,7 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         $sql = "
             SELECT 
                 a.id AS admission_id,
+                a.admission_date,
                 p.name AS patient_name,
                 p.display_user_id,
                 dc_summary.initiated_at, -- Use the earliest creation time as the initiation time
