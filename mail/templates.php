@@ -224,6 +224,12 @@ HTML;
 function getAccountModificationTemplate($name, $username, $changes, $datetime, $admin_name = 'System Administrator') {
     $currentYear = date('Y');
     
+    // Determine if this is a self-update or admin update
+    $isSelfUpdate = (stripos($admin_name, 'self') !== false || stripos($admin_name, 'you') !== false);
+    $introMessage = $isSelfUpdate 
+        ? "This is to notify you that you have successfully updated your MedSync account details."
+        : "This is to notify you that your MedSync account details have been updated by an administrator.";
+    
     // Build the changes list HTML
     $changesHtml = '';
     foreach ($changes as $field => $change) {
@@ -262,7 +268,7 @@ function getAccountModificationTemplate($name, $username, $changes, $datetime, $
         <div class="header"><h1>Account Update Notification</h1></div>
         <div class="content-body">
             <p>Dear <strong>{$name}</strong>,</p>
-            <p>This is to notify you that your MedSync account details have been updated by an administrator.</p>
+            <p>{$introMessage}</p>
             
             <div class="changes-box">
                 <h3 style="margin-top: 0; color: #0067FF;">Changes Made:</h3>
@@ -271,7 +277,7 @@ function getAccountModificationTemplate($name, $username, $changes, $datetime, $
             
             <div class="alert-box">
                 <p style="margin: 0;"><strong>📋 Modification Details:</strong></p>
-                <p style="margin: 5px 0 0 0;">Modified by: <strong>System Administrator</strong><br>
+                <p style="margin: 5px 0 0 0;">Modified by: <strong>{$admin_name}</strong><br>
                 Date & Time: <strong>{$datetime}</strong></p>
             </div>
             

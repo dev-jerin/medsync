@@ -995,6 +995,13 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         }
                     }
                     
+                    // Fetch old user data for comparison
+                    $stmt_old = $conn->prepare("SELECT name, email, phone, date_of_birth, username FROM users WHERE id = ?");
+                    $stmt_old->bind_param("i", $user_id);
+                    $stmt_old->execute();
+                    $old_user_data = $stmt_old->get_result()->fetch_assoc();
+                    $stmt_old->close();
+                    
                     $dept_stmt = $conn->prepare("SELECT id FROM departments WHERE name = ?");
                     $dept_stmt->bind_param("s", $department_name);
                     $dept_stmt->execute();
@@ -1028,6 +1035,52 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                         $conn->commit();
                         $transaction_active = false;
                         $_SESSION['username'] = $name;
+                        
+                        // Track changes for email notification
+                        $email_changes = [];
+                        if ($old_user_data['name'] !== $name) {
+                            $email_changes['Name'] = ['old' => $old_user_data['name'], 'new' => $name];
+                        }
+                        if ($old_user_data['email'] !== $email) {
+                            $email_changes['Email'] = ['old' => $old_user_data['email'], 'new' => $email];
+                        }
+                        if ($old_user_data['phone'] !== $phone) {
+                            $email_changes['Phone Number'] = ['old' => ($old_user_data['phone'] ?: 'Not set'), 'new' => ($phone ?: 'Not set')];
+                        }
+                        if (($old_user_data['date_of_birth'] ?? '') !== ($date_of_birth ?? '')) {
+                            $email_changes['Date of Birth'] = ['old' => ($old_user_data['date_of_birth'] ?: 'Not set'), 'new' => ($date_of_birth ?: 'Not set')];
+                        }
+                        $email_changes['Department'] = $department_name;
+                        
+                        // Send email notification if there are changes
+                        if (!empty($email_changes)) {
+                            try {
+                                require_once '../mail/templates.php';
+                                require_once '../mail/send_mail.php';
+                                
+                                $current_datetime = date('d M Y, h:i A');
+                                $email_body = getAccountModificationTemplate($name, $old_user_data['username'], $email_changes, $current_datetime, 'You (Self-Updated)');
+                                
+                                // Send to the updated email address
+                                send_mail('MedSync', $email, 'Your MedSync Account Has Been Updated', $email_body);
+                                
+                                // If email was changed, also notify the old email
+                                if (isset($email_changes['Email']) && !empty($old_user_data['email'])) {
+                                    $old_email_body = getAccountModificationTemplate(
+                                        $old_user_data['name'], 
+                                        $old_user_data['username'], 
+                                        $email_changes, 
+                                        $current_datetime, 
+                                        'You (Self-Updated)'
+                                    );
+                                    send_mail('MedSync', $old_user_data['email'], 'Your MedSync Account Has Been Updated', $old_email_body);
+                                }
+                            } catch (Exception $email_error) {
+                                // Email sending failed, but don't block the update
+                                // Log error silently
+                            }
+                        }
+                        
                         $response = ['success' => true, 'message' => 'Personal information updated successfully.'];
                     } else {
                         throw new Exception('Database update failed. Please try again.');
@@ -1040,22 +1093,37 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     if ($new_password !== $_POST['confirm_password']) {
                         throw new Exception('New password and confirmation do not match.');
                     }
-                    if (strlen($new_password) < 8) {
-                        throw new Exception('New password must be at least 8 characters long.');
+                    if (strlen($new_password) < 6) {
+                        throw new Exception('New password must be at least 6 characters long.');
                     }
 
-                    $stmt = $conn->prepare("SELECT password FROM users WHERE id = ?");
-                    $stmt->bind_param("i", $user_id);
-                    $stmt->execute();
-                    $result = $stmt->get_result()->fetch_assoc();
-                    $stmt->close();
+                    // Fetch user data for email notification
+                    $stmt_user_data = $conn->prepare("SELECT name, email, username, password FROM users WHERE id = ?");
+                    $stmt_user_data->bind_param("i", $user_id);
+                    $stmt_user_data->execute();
+                    $user_data = $stmt_user_data->get_result()->fetch_assoc();
+                    $stmt_user_data->close();
 
-                    if ($result && password_verify($current_password, $result['password'])) {
+                    if ($user_data && password_verify($current_password, $user_data['password'])) {
                         $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
                         $stmt_update = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
                         $stmt_update->bind_param("si", $hashed_password, $user_id);
                         if ($stmt_update->execute()) {
-                            $response = ['success' => true, 'message' => 'Password changed successfully.'];
+                            // Send password change confirmation email
+                            try {
+                                require_once '../mail/templates.php';
+                                require_once '../mail/send_mail.php';
+                                
+                                $current_datetime = date('d M Y, h:i A');
+                                $ip_address = $_SERVER['REMOTE_ADDR'];
+                                $email_body = getPasswordResetConfirmationTemplate($user_data['name'], $current_datetime, $ip_address);
+                                
+                                send_mail('MedSync Security Alert', $user_data['email'], 'Your MedSync Password Was Changed', $email_body);
+                            } catch (Exception $email_error) {
+                                // Email sending failed, but don't block the password change
+                            }
+                            
+                            $response = ['success' => true, 'message' => 'Password changed successfully. A confirmation email has been sent.'];
                         } else {
                             throw new Exception('Failed to update password.');
                         }
