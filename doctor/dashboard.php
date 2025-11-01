@@ -293,19 +293,12 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
             <div id="notifications-page" class="page">
                 <div class="content-panel">
                     <div class="page-header">
-                        <h3><i class="fas fa-bell"></i> All Notifications</h3>
+                        <h3><i class="fas fa-bell"></i> Notifications</h3>
                         <button class="btn btn-secondary" id="mark-all-read-btn">Mark All as Read</button>
                     </div>
-                    <div class="filters">
-                        <select id="notification-type-filter">
-                            <option value="all">All Types</option>
-                            <option value="announcement">Announcements</option>
-                            <option value="lab">Lab Results</option>
-                            <option value="discharge">Discharge Updates</option>
-                        </select>
-                    </div>
                     <div class="notification-list-container">
-                        </div>
+                        <p class="no-items-message">Loading notifications...</p>
+                    </div>
                 </div>
             </div>
 

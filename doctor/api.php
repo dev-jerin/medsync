@@ -1571,6 +1571,76 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         exit();
     }
 
+    // ==========================================================
+    // --- NOTIFICATIONS ---
+    // ==========================================================
+    if ($action == 'get_notifications') {
+        $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
+        
+        // Get user role
+        $stmt_role = $conn->prepare("SELECT r.role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?");
+        $stmt_role->bind_param("i", $current_user_id);
+        $stmt_role->execute();
+        $user_role = $stmt_role->get_result()->fetch_assoc()['role_name'] ?? '';
+        $stmt_role->close();
+        
+        $stmt = $conn->prepare(
+            "SELECT 
+                n.id, n.message, n.is_read, n.created_at,
+                u.name as sender_name, r.role_name as sender_role
+             FROM notifications n
+             LEFT JOIN users u ON n.sender_id = u.id
+             LEFT JOIN roles r ON u.role_id = r.id
+             WHERE (n.recipient_user_id = ? OR n.recipient_role = ? OR n.recipient_role = 'all')
+             ORDER BY n.created_at DESC
+             LIMIT ?"
+        );
+        $stmt->bind_param("isi", $current_user_id, $user_role, $limit);
+        $stmt->execute();
+        $notifications = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+        echo json_encode(['success' => true, 'data' => $notifications]);
+        exit();
+    }
+
+    if ($action == 'get_unread_notification_count') {
+        // Get user role
+        $stmt_role = $conn->prepare("SELECT r.role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?");
+        $stmt_role->bind_param("i", $current_user_id);
+        $stmt_role->execute();
+        $user_role = $stmt_role->get_result()->fetch_assoc()['role_name'] ?? '';
+        $stmt_role->close();
+        
+        $stmt = $conn->prepare(
+            "SELECT COUNT(id) as unread_count FROM notifications WHERE is_read = 0 AND (recipient_user_id = ? OR recipient_role = ? OR recipient_role = 'all')"
+        );
+        $stmt->bind_param("is", $current_user_id, $user_role);
+        $stmt->execute();
+        $count = $stmt->get_result()->fetch_assoc()['unread_count'];
+        $stmt->close();
+        echo json_encode(['success' => true, 'data' => ['count' => $count]]);
+        exit();
+    }
+
+    if ($action == 'mark_all_notifications_read') {
+        // Get user role
+        $stmt_role = $conn->prepare("SELECT r.role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?");
+        $stmt_role->bind_param("i", $current_user_id);
+        $stmt_role->execute();
+        $user_role = $stmt_role->get_result()->fetch_assoc()['role_name'] ?? '';
+        $stmt_role->close();
+        
+        $stmt = $conn->prepare(
+            "UPDATE notifications SET is_read = 1 WHERE is_read = 0 AND (recipient_user_id = ? OR recipient_role = ? OR recipient_role = 'all')"
+        );
+        $stmt->bind_param("is", $current_user_id, $user_role);
+        $stmt->execute();
+        $affected = $stmt->affected_rows;
+        $stmt->close();
+        echo json_encode(['success' => true, 'message' => "$affected notifications marked as read"]);
+        exit();
+    }
+
 
     // Fallback for any unknown action
     echo json_encode(['success' => false, 'message' => 'Invalid action specified.']);

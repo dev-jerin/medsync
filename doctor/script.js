@@ -79,6 +79,117 @@ document.addEventListener("DOMContentLoaded", function() {
 
 
     // ===================================================================
+    // --- Notification Widget Logic ---
+    // ===================================================================
+    const notificationBell = document.getElementById('notification-bell');
+    const notificationBadge = document.getElementById('notification-badge');
+    const notificationPanel = document.getElementById('notification-panel');
+    const notificationDropdownBody = notificationPanel ? notificationPanel.querySelector('.dropdown-body') : null;
+    const viewAllNotificationsLink = document.getElementById('view-all-notifications-link');
+
+    const fetchUnreadNotificationCount = async () => {
+        try {
+            const response = await fetch('api.php?action=get_unread_notification_count');
+            const result = await response.json();
+            if (result.success && result.data.count > 0) {
+                notificationBadge.textContent = result.data.count > 9 ? '9+' : result.data.count;
+                notificationBadge.classList.remove('hidden');
+                notificationBadge.style.display = 'flex';
+            } else {
+                notificationBadge.classList.add('hidden');
+                notificationBadge.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Failed to fetch notification count:', error);
+        }
+    };
+    
+    function timeSince(date) {
+        const seconds = Math.floor((new Date() - date) / 1000);
+        let interval = seconds / 31536000;
+        if (interval > 1) return Math.floor(interval) + " years ago";
+        interval = seconds / 2592000;
+        if (interval > 1) return Math.floor(interval) + " months ago";
+        interval = seconds / 86400;
+        if (interval > 1) return Math.floor(interval) + " days ago";
+        interval = seconds / 3600;
+        if (interval > 1) return Math.floor(interval) + " hours ago";
+        interval = seconds / 60;
+        if (interval > 1) return Math.floor(interval) + " minutes ago";
+        return Math.floor(seconds) + " seconds ago";
+    }
+
+    const renderNotifications = (notifications, container) => {
+        if (!container) return;
+        if (notifications.length === 0) {
+            container.innerHTML = '<p class="no-items-message">No notifications found.</p>';
+            return;
+        }
+
+        container.innerHTML = notifications.map(n => {
+            const isReadClass = n.is_read == 1 ? 'read' : 'unread';
+            let sender = n.sender_name || 'System';
+            let senderRole = n.sender_role ? n.sender_role.charAt(0).toUpperCase() + n.sender_role.slice(1) : '';
+            const senderDisplay = senderRole ? `${sender} (${senderRole})` : sender;
+            const iconClass = 'fas fa-info-circle item-icon announcement';
+
+            return `
+                <div class="notification-list-item ${isReadClass}" data-id="${n.id}">
+                    <div class="item-icon-wrapper"><i class="${iconClass}"></i></div>
+                    <div class="item-content">
+                        <p><strong>${senderDisplay}:</strong> ${n.message}</p>
+                        <small>${timeSince(new Date(n.created_at))}</small>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    };
+    
+    const fetchAndRenderNotifications = async (container, limit = 50) => {
+        if (!container) return;
+        container.innerHTML = '<p class="no-items-message">Loading...</p>';
+        try {
+            const response = await fetch(`api.php?action=get_notifications&limit=${limit}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            renderNotifications(result.data, container);
+        } catch (error) {
+            console.error('Failed to fetch notifications:', error);
+            container.innerHTML = `<p class="no-items-message" style="color: var(--danger-color)">Failed to load notifications.</p>`;
+        }
+    };
+    
+    if (notificationBell) {
+        notificationBell.addEventListener('click', (e) => {
+            e.stopPropagation();
+            notificationPanel.classList.toggle('active');
+            if (notificationPanel.classList.contains('active')) {
+                fetchAndRenderNotifications(notificationDropdownBody, 5);
+            }
+        });
+    }
+
+    if (viewAllNotificationsLink) {
+        viewAllNotificationsLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            notificationPanel.classList.remove('active');
+            const notificationsNavLink = document.querySelector('.nav-link[data-page="notifications"]');
+            if (notificationsNavLink) notificationsNavLink.click();
+        });
+    }
+
+    // Close notification dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (notificationPanel && !notificationPanel.contains(e.target) && !notificationBell.contains(e.target)) {
+            notificationPanel.classList.remove('active');
+        }
+    });
+
+    // Fetch notification count on load and periodically
+    fetchUnreadNotificationCount();
+    setInterval(fetchUnreadNotificationCount, 30000); // Every 30 seconds
+
+    // ===================================================================
     // --- Dashboard Page Logic ---
     // ===================================================================
     async function loadDashboardData() {
@@ -305,11 +416,80 @@ document.addEventListener("DOMContentLoaded", function() {
     // --- END: DISCHARGE PROCESS LOGIC ---
 
     // ===================================================================
-    // --- Patient Encounter Logic ---
+    // --- NOTIFICATIONS PAGE LOGIC ---
     // ===================================================================
+    async function loadAllNotifications() {
+        const notificationListContainer = document.querySelector('.notification-list-container');
+        if (!notificationListContainer) return;
+        
+        notificationListContainer.innerHTML = '<p class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Loading notifications...</p>';
+        
+        try {
+            const response = await fetch('api.php?action=get_notifications&limit=100');
+            const result = await response.json();
+            
+            if (result.success) {
+                renderAllNotifications(result.data, notificationListContainer);
+            } else {
+                notificationListContainer.innerHTML = `<p class="no-items-message">${result.message || 'No notifications found.'}</p>`;
+            }
+        } catch (error) {
+            console.error('Failed to load all notifications:', error);
+            notificationListContainer.innerHTML = `<p class="no-items-message" style="color: var(--danger-color);">Failed to load notifications.</p>`;
+        }
+    }
 
-    // Use event delegation for the "Start" buttons
-    document.querySelector('.main-content').addEventListener('click', function(e) {
+    function renderAllNotifications(notifications, container) {
+        if (!container) return;
+        if (notifications.length === 0) {
+            container.innerHTML = '<p class="no-items-message">No notifications found.</p>';
+            return;
+        }
+
+        container.innerHTML = notifications.map(n => {
+            const isReadClass = n.is_read == 1 ? 'read' : 'unread';
+            let sender = n.sender_name || 'System';
+            let senderRole = n.sender_role ? n.sender_role.charAt(0).toUpperCase() + n.sender_role.slice(1) : '';
+            const senderDisplay = senderRole ? `${sender} (${senderRole})` : sender;
+            const iconClass = 'fas fa-info-circle item-icon announcement';
+
+            return `
+                <div class="notification-list-item ${isReadClass}" data-id="${n.id}">
+                    <div class="item-icon-wrapper"><i class="${iconClass}"></i></div>
+                    <div class="item-content">
+                        <p><strong>${senderDisplay}:</strong> ${n.message}</p>
+                        <small>${timeSince(new Date(n.created_at))}</small>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Mark all as read button handler
+    const markAllReadBtn = document.getElementById('mark-all-read-btn');
+    if (markAllReadBtn) {
+        markAllReadBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('api.php?action=mark_all_notifications_read', {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                if (result.success) {
+                    loadAllNotifications();
+                    fetchUnreadNotificationCount();
+                } else {
+                    alert(result.message || 'Failed to mark notifications as read');
+                }
+            } catch (error) {
+                console.error('Failed to mark all as read:', error);
+                alert('Failed to mark notifications as read');
+            }
+        });
+    }
+    // --- END: NOTIFICATIONS PAGE LOGIC ---
+
+    // --- START: PATIENT ENCOUNTER LOGIC ---
+    document.addEventListener('click', function(e) {
         const startBtn = e.target.closest('.start-consultation-btn');
         if (startBtn) {
             const appointmentId = startBtn.dataset.appointmentId;
@@ -1384,6 +1564,9 @@ document.addEventListener("DOMContentLoaded", function() {
             if (pageId === 'discharge') {
                 loadDischargeRequests();
             }
+            if (pageId === 'notifications') {
+                loadAllNotifications();
+            }
             if (pageId === 'messenger') {
                 initializeMessenger();
                 updateUnreadBadge();
@@ -1413,6 +1596,10 @@ document.addEventListener("DOMContentLoaded", function() {
             if (!sidebar.contains(e.target) && !hamburgerBtn.contains(e.target)) {
                 closeMenu();
             }
+        }
+        // Close notification panel when clicking outside
+        if (notificationPanel && !notificationPanel.contains(e.target) && !notificationBell.contains(e.target)) {
+            notificationPanel.classList.remove('show');
         }
     });
     
