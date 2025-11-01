@@ -1591,6 +1591,33 @@ document.addEventListener("DOMContentLoaded", function() {
 
     hamburgerBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
     overlay.addEventListener('click', closeMenu);
+    
+    // --- PROFILE DROPDOWN TOGGLE ---
+    const userProfileWidget = document.getElementById('user-profile-widget');
+    const profileDropdown = document.getElementById('profile-dropdown');
+
+    if (userProfileWidget && profileDropdown) {
+        userProfileWidget.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userProfileWidget.classList.toggle('active');
+            // Close notification panel if open
+            if (notificationPanel) notificationPanel.classList.remove('active');
+        });
+
+        // Handle dropdown item clicks
+        profileDropdown.querySelectorAll('.dropdown-item[data-page]').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                const pageId = item.dataset.page;
+                const navLink = document.querySelector(`.nav-link[data-page="${pageId}"]`);
+                if (navLink) {
+                    navLink.click();
+                }
+                userProfileWidget.classList.remove('active');
+            });
+        });
+    }
+    
     document.addEventListener('click', (e) => {
         if (window.innerWidth <= 992 && sidebar.classList.contains('active')) {
             if (!sidebar.contains(e.target) && !hamburgerBtn.contains(e.target)) {
@@ -1599,7 +1626,11 @@ document.addEventListener("DOMContentLoaded", function() {
         }
         // Close notification panel when clicking outside
         if (notificationPanel && !notificationPanel.contains(e.target) && !notificationBell.contains(e.target)) {
-            notificationPanel.classList.remove('show');
+            notificationPanel.classList.remove('active');
+        }
+        // Close profile dropdown when clicking outside
+        if (userProfileWidget && !userProfileWidget.contains(e.target)) {
+            userProfileWidget.classList.remove('active');
         }
     });
     
