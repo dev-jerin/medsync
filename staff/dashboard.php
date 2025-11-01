@@ -656,6 +656,7 @@ require_once 'api.php';
                     <div id="security-tab" class="profile-tab-content">
                         <form id="security-form" class="settings-form" novalidate>
                             <h4>Change Your Password</h4>
+                            <p class="form-description">Keep your account secure by using a strong password and updating it regularly.</p>
                             <div class="form-grid">
                                 <div class="form-group full-width">
                                     <label for="current-password">Current Password</label>
@@ -672,6 +673,9 @@ require_once 'api.php';
                                             autocomplete="new-password">
                                         <i class="fas fa-eye-slash toggle-password"></i>
                                     </div>
+                                    <div class="password-strength">
+                                        <div class="password-strength-bar" id="password-strength-bar"></div>
+                                    </div>
                                 </div>
                                 <div class="form-group">
                                     <label for="confirm-password">Confirm New Password</label>
@@ -681,6 +685,15 @@ require_once 'api.php';
                                         <i class="fas fa-eye-slash toggle-password"></i>
                                     </div>
                                 </div>
+                            </div>
+                            <div class="password-requirements">
+                                <h5>Password Requirements:</h5>
+                                <ul>
+                                    <li>Minimum 6 characters long</li>
+                                    <li>Include at least one uppercase letter (recommended)</li>
+                                    <li>Include at least one number (recommended)</li>
+                                    <li>Include at least one special character (recommended)</li>
+                                </ul>
                             </div>
                             <div class="form-actions">
                                 <button type="submit" class="btn btn-primary"><i class="fas fa-key"></i> Update
