@@ -37,7 +37,12 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     <li><a href="#" class="nav-link" data-page="prescriptions"><i class="fas fa-file-prescription"></i> Prescriptions</a></li>
                     <li><a href="#" class="nav-link" data-page="admissions"><i class="fas fa-procedures"></i> Admissions</a></li>
                     <li><a href="#" class="nav-link" data-page="bed-management"><i class="fas fa-bed-pulse"></i> Bed Management</a></li>
-                    <li><a href="#" class="nav-link" data-page="messenger"><i class="fas fa-paper-plane"></i> Messenger</a></li>
+                    <li class="nav-item" data-page="messenger">
+                        <a href="#" class="nav-link" data-page="messenger">
+                            <i class="fas fa-paper-plane"></i> Messenger
+                            <span class="notification-badge" style="display: none;">0</span>
+                        </a>
+                    </li>
                     <li><a href="#" class="nav-link" data-page="notifications"><i class="fas fa-bell"></i> Notifications</a></li>
                     <li><a href="#" class="nav-link" data-page="discharge"><i class="fas fa-sign-out-alt"></i> Discharge Requests</a></li>
                     <li><a href="#" class="nav-link" data-page="labs"><i class="fas fa-vials"></i> Lab Orders</a></li>
@@ -268,12 +273,13 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
 
                     </div>
                     <div class="chat-window">
-                        <div class="chat-header">
-                            <span id="chat-with-user">Select a Conversation</span>
+                        <div class="chat-header" id="chat-with-user">
+                            <span>Select a Conversation</span>
                         </div>
                         <div class="chat-messages" id="chat-messages-container">
                              <div class="message-placeholder" style="text-align: center; padding: 2rem; color: var(--text-muted);">
-                                Please select a conversation from the left to view messages.
+                                <i class="fas fa-comments" style="font-size: 3rem; margin-bottom: 1rem;"></i>
+                                <p>Please select a conversation from the left to view messages.</p>
                             </div>
                         </div>
                         <form class="chat-input" id="message-form">

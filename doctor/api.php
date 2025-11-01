@@ -1257,14 +1257,66 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
 
     if ($action == 'get_messages' && isset($_GET['conversation_id'])) {
         $conversation_id = (int)$_GET['conversation_id'];
+        $after_id = isset($_GET['after_id']) ? (int)$_GET['after_id'] : 0;
+        
         $update_stmt = $conn->prepare("UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND receiver_id = ?");
         $update_stmt->bind_param("ii", $conversation_id, $current_user_id);
         $update_stmt->execute();
-        $msg_stmt = $conn->prepare("SELECT id, sender_id, message_text, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC");
-        $msg_stmt->bind_param("i", $conversation_id);
+        
+        if ($after_id > 0) {
+            // Get only new messages after the specified ID
+            $msg_stmt = $conn->prepare("SELECT id, sender_id, message_text, created_at FROM messages WHERE conversation_id = ? AND id > ? ORDER BY created_at ASC");
+            $msg_stmt->bind_param("ii", $conversation_id, $after_id);
+        } else {
+            // Get all messages
+            $msg_stmt = $conn->prepare("SELECT id, sender_id, message_text, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC");
+            $msg_stmt->bind_param("i", $conversation_id);
+        }
+        
         $msg_stmt->execute();
         $messages = $msg_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         echo json_encode(['success' => true, 'data' => $messages]);
+        exit();
+    }
+
+    if ($action == 'delete_message' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $message_id = (int)$_POST['message_id'];
+        
+        // Verify the message belongs to the current user
+        $check_stmt = $conn->prepare("SELECT sender_id FROM messages WHERE id = ?");
+        $check_stmt->bind_param("i", $message_id);
+        $check_stmt->execute();
+        $result = $check_stmt->get_result();
+        
+        if ($result->num_rows === 0) {
+            echo json_encode(['success' => false, 'message' => 'Message not found.']);
+            exit();
+        }
+        
+        $message = $result->fetch_assoc();
+        if ($message['sender_id'] != $current_user_id) {
+            echo json_encode(['success' => false, 'message' => 'You can only delete your own messages.']);
+            exit();
+        }
+        
+        // Delete the message
+        $delete_stmt = $conn->prepare("DELETE FROM messages WHERE id = ?");
+        $delete_stmt->bind_param("i", $message_id);
+        
+        if ($delete_stmt->execute()) {
+            echo json_encode(['success' => true, 'message' => 'Message deleted successfully.']);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Failed to delete message.']);
+        }
+        exit();
+    }
+
+    if ($action == 'get_unread_count') {
+        $stmt = $conn->prepare("SELECT COUNT(*) as unread_count FROM messages WHERE receiver_id = ? AND is_read = 0");
+        $stmt->bind_param("i", $current_user_id);
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        echo json_encode(['success' => true, 'count' => (int)$result['unread_count']]);
         exit();
     }
 

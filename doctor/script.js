@@ -1357,6 +1357,11 @@ document.addEventListener("DOMContentLoaded", function() {
             navLinks.forEach(navLink => navLink.classList.remove('active'));
             link.classList.add('active');
             
+            // Stop message refresh when leaving messenger
+            if (pageId !== 'messenger') {
+                stopMessageRefresh();
+            }
+            
             if (pageId === 'bed-management') {
                 initializeOccupancyManagement();
             }
@@ -1381,6 +1386,7 @@ document.addEventListener("DOMContentLoaded", function() {
             }
             if (pageId === 'messenger') {
                 initializeMessenger();
+                updateUnreadBadge();
             }
             if (pageId === 'profile') {
                 if(document.querySelector('.profile-tab-link[data-tab="audit-log"]').classList.contains('active')) {
@@ -1393,6 +1399,12 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
     });
+
+    // Update unread badge on page load and periodically
+    if (typeof updateUnreadBadge === 'function') {
+        updateUnreadBadge();
+        setInterval(updateUnreadBadge, 30000); // Update every 30 seconds
+    }
 
     hamburgerBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
     overlay.addEventListener('click', closeMenu);
@@ -1621,7 +1633,9 @@ document.addEventListener("DOMContentLoaded", function() {
     // ===================================================================
     const messengerPage = document.getElementById('messenger-page');
     let messengerInitialized = false;
-    let activeConversation = { conversationId: null, otherUserId: null, otherUserName: null };
+    let activeConversation = { conversationId: null, otherUserId: null, otherUserName: null, otherUserPicture: null };
+    let messageRefreshInterval = null;
+    let lastMessageId = 0;
 
     function initializeMessenger() {
         if (messengerInitialized || !messengerPage) return;
@@ -1633,6 +1647,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const messagesContainer = document.getElementById('chat-messages-container');
 
         loadConversations();
+        updateUnreadBadge();
 
         messageForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1659,12 +1674,13 @@ document.addEventListener("DOMContentLoaded", function() {
                     if (!activeConversation.conversationId) {
                          await loadConversations(result.data.conversation_id);
                     }
+                    lastMessageId = result.data.id;
                 } else {
-                    alert('Error: ' + result.message);
+                    showToast(result.message, 'error', 'Send Failed');
                 }
             } catch (error) {
                 console.error('Send message error:', error);
-                alert('Failed to send message.');
+                showToast('Failed to send message.', 'error', 'Network Error');
             } finally {
                  originalButton.disabled = false;
                  originalButton.innerHTML = `<i class="fas fa-paper-plane"></i>`;
@@ -1679,22 +1695,32 @@ document.addEventListener("DOMContentLoaded", function() {
             document.querySelectorAll('.conversation-item.active').forEach(item => item.classList.remove('active'));
             conversationItem.classList.add('active');
 
-            const { conversationId, otherUserId, otherUserName } = conversationItem.dataset;
+            const { conversationId, otherUserId, otherUserName, otherUserPicture, otherUserRole } = conversationItem.dataset;
             
             activeConversation = {
                 conversationId: conversationId || null,
                 otherUserId: parseInt(otherUserId),
-                otherUserName: otherUserName
+                otherUserName: otherUserName,
+                otherUserPicture: otherUserPicture || null,
+                otherUserRole: otherUserRole || ''
             };
             
-            chatHeader.textContent = otherUserName;
+            updateChatHeader();
             
             if (conversationId) {
                 loadMessages(conversationId);
                 const unreadIndicator = conversationItem.querySelector('.unread-indicator');
+                const unreadCount = conversationItem.querySelector('.unread-count');
                 if (unreadIndicator) unreadIndicator.style.display = 'none';
+                if (unreadCount) unreadCount.remove();
+                updateUnreadBadge();
+                startMessageRefresh();
             } else {
-                messagesContainer.innerHTML = `<div class="message-placeholder">Start the conversation with ${otherUserName}.</div>`;
+                messagesContainer.innerHTML = `<div class="message-placeholder">
+                    <i class="fas fa-comments" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem;"></i>
+                    <p>Start the conversation with ${otherUserName}.</p>
+                </div>`;
+                stopMessageRefresh();
             }
             messageInput.focus();
         });
@@ -1738,7 +1764,11 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
 
             } else {
-                listItemsContainer.innerHTML = '<p style="padding: 1rem; text-align: center;">No conversations yet.</p>';
+                listItemsContainer.innerHTML = `<div style="padding: 2rem; text-align: center;">
+                    <i class="fas fa-inbox" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem;"></i>
+                    <p style="color: var(--text-muted);">No conversations yet.</p>
+                    <p style="color: var(--text-muted); font-size: 0.85rem;">Search for users to start chatting!</p>
+                </div>`;
             }
         } catch (error) {
             console.error('Error loading conversations:', error);
@@ -1750,21 +1780,35 @@ document.addEventListener("DOMContentLoaded", function() {
         const listItemsContainer = document.getElementById('conversation-list-items');
         if (!listItemsContainer) return;
 
-        const lastMessageTime = convo.last_message_time ? new Date(convo.last_message_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        const lastMessageTime = convo.last_message_time ? formatMessageTime(new Date(convo.last_message_time)) : '';
+        
+        // Generate avatar HTML
+        let avatarHtml = '';
+        if (convo.other_user_profile_picture) {
+            avatarHtml = `<img src="../uploads/profile_pictures/${convo.other_user_profile_picture}" alt="${convo.other_user_name}">`;
+        } else {
+            const initials = getInitials(convo.other_user_name);
+            avatarHtml = `<span>${initials}</span>`;
+        }
+        
+        // Capitalize role name
+        const roleName = convo.other_user_role ? convo.other_user_role.charAt(0).toUpperCase() + convo.other_user_role.slice(1) : '';
         
         const conversationHtml = `
             <div class="conversation-item" 
                 data-conversation-id="${convo.conversation_id}" 
                 data-other-user-id="${convo.other_user_id}"
-                data-other-user-name="${convo.other_user_name}">
-                <i class="fas ${getIconForRole(convo.other_user_role)} user-avatar"></i>
+                data-other-user-name="${convo.other_user_name}"
+                data-other-user-picture="${convo.other_user_profile_picture || ''}"
+                data-other-user-role="${roleName}">
+                <div class="user-avatar">${avatarHtml}</div>
                 <div class="user-details">
                     <div class="user-name">${convo.other_user_name}</div>
                     <div class="last-message">${convo.last_message || 'No messages yet.'}</div>
                 </div>
                 <div class="message-meta">
                     <div class="message-time">${lastMessageTime}</div>
-                    ${convo.unread_count > 0 ? '<span class="unread-indicator"></span>' : ''}
+                    ${convo.unread_count > 0 ? `<span class="unread-count">${convo.unread_count}</span>` : ''}
                 </div>
             </div>
         `;
@@ -1781,10 +1825,15 @@ document.addEventListener("DOMContentLoaded", function() {
             messagesContainer.innerHTML = '';
 
             if (result.success && result.data.length > 0) {
-                result.data.forEach(msg => renderMessage(msg));
+                renderMessagesWithDates(result.data);
                 scrollToBottom(messagesContainer);
+                lastMessageId = result.data[result.data.length - 1].id;
             } else {
-                messagesContainer.innerHTML = '<div class="message-placeholder">No messages in this conversation yet.</div>';
+                messagesContainer.innerHTML = `<div class="message-placeholder">
+                    <i class="fas fa-comments" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem;"></i>
+                    <p>No messages in this conversation yet.</p>
+                    <p style="font-size: 0.85rem;">Send a message to start chatting!</p>
+                </div>`;
             }
         } catch (error) {
             console.error('Error loading messages:', error);
@@ -1792,23 +1841,78 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-    function renderMessage(msg, isNew = false) {
+    function renderMessagesWithDates(messages) {
+        const messagesContainer = document.getElementById('chat-messages-container');
+        let lastDate = null;
+        let lastSenderId = null;
+        
+        messages.forEach((msg, index) => {
+            const msgDate = new Date(msg.created_at);
+            const dateStr = formatDate(msgDate);
+            
+            // Add date separator if date changed
+            if (dateStr !== lastDate) {
+                const separatorHtml = `<div class="date-separator"><span>${dateStr}</span></div>`;
+                messagesContainer.insertAdjacentHTML('beforeend', separatorHtml);
+                lastDate = dateStr;
+                lastSenderId = null; // Reset sender grouping on new date
+            }
+            
+            // Check if this message should be grouped with previous
+            const isGrouped = lastSenderId === msg.sender_id && index > 0;
+            renderMessage(msg, false, isGrouped);
+            lastSenderId = msg.sender_id;
+        });
+    }
+
+    function renderMessage(msg, isNew = false, isGrouped = false) {
         const messagesContainer = document.getElementById('chat-messages-container');
         const messageType = msg.sender_id == currentUserId ? 'sent' : 'received';
-        const timestamp = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const timestamp = formatMessageTime(new Date(msg.created_at));
+        const fullTimestamp = new Date(msg.created_at).toLocaleString();
 
         const sanitizedText = document.createElement('p');
         sanitizedText.textContent = msg.message_text;
 
+        const groupedClass = isGrouped ? 'grouped' : '';
+        
         const messageHtml = `
-            <div class="message ${messageType}">
+            <div class="message ${messageType} ${groupedClass}" data-message-id="${msg.id}">
                 <div class="message-content">
                     ${sanitizedText.outerHTML}
-                    <span class="message-timestamp">${timestamp}</span>
+                    <span class="message-timestamp" title="${fullTimestamp}">${timestamp}</span>
                 </div>
+                ${messageType === 'sent' ? `
+                <div class="message-actions">
+                    <button class="message-action-btn copy-message" title="Copy message">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                    <button class="message-action-btn delete-message" title="Delete message">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>` : `
+                <div class="message-actions">
+                    <button class="message-action-btn copy-message" title="Copy message">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>`}
             </div>
         `;
         messagesContainer.insertAdjacentHTML('beforeend', messageHtml);
+        
+        // Add event listeners for message actions
+        const messageEl = messagesContainer.lastElementChild;
+        const copyBtn = messageEl.querySelector('.copy-message');
+        const deleteBtn = messageEl.querySelector('.delete-message');
+        
+        if (copyBtn) {
+            copyBtn.addEventListener('click', () => copyMessageText(msg.message_text));
+        }
+        
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => deleteMessage(msg.id));
+        }
+        
         if(isNew) scrollToBottom(messagesContainer);
     }
     
@@ -1826,14 +1930,27 @@ document.addEventListener("DOMContentLoaded", function() {
 
             if (result.success && result.data.length > 0) {
                 result.data.forEach(user => {
+                    // Generate avatar HTML
+                    let avatarHtml = '';
+                    if (user.profile_picture) {
+                        avatarHtml = `<img src="../uploads/profile_pictures/${user.profile_picture}" alt="${user.name}">`;
+                    } else {
+                        const initials = getInitials(user.name);
+                        avatarHtml = `<span>${initials}</span>`;
+                    }
+                    
+                    const roleName = user.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : '';
+                    
                     const searchResultHtml = `
                         <div class="conversation-item" 
                             data-conversation-id="${user.conversation_id || ''}"
                             data-other-user-id="${user.id}"
-                            data-other-user-name="${user.name}">
-                            <i class="fas ${getIconForRole(user.role)} user-avatar"></i>
+                            data-other-user-name="${user.name}"
+                            data-other-user-picture="${user.profile_picture || ''}"
+                            data-other-user-role="${roleName}">
+                            <div class="user-avatar">${avatarHtml}</div>
                             <div class="user-details">
-                                <div class="user-name">${user.name} <small>(${user.role})</small></div>
+                                <div class="user-name">${user.name} <small>(${roleName})</small></div>
                                 <div class="last-message">${user.conversation_id ? '' : 'Click to start a new conversation.'}</div>
                             </div>
                         </div>
@@ -1841,7 +1958,10 @@ document.addEventListener("DOMContentLoaded", function() {
                     listItemsContainer.insertAdjacentHTML('beforeend', searchResultHtml);
                 });
             } else {
-                listItemsContainer.innerHTML = '<p style="padding: 1rem; text-align: center;">No users found.</p>';
+                listItemsContainer.innerHTML = `<div style="padding: 2rem; text-align: center;">
+                    <i class="fas fa-user-slash" style="font-size: 2.5rem; color: var(--text-muted); margin-bottom: 1rem;"></i>
+                    <p style="color: var(--text-muted);">No users found.</p>
+                </div>`;
             }
         } catch (error) {
             console.error('Error searching users:', error);
@@ -1849,17 +1969,186 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
+    // Auto-refresh messages
+    function startMessageRefresh() {
+        stopMessageRefresh();
+        messageRefreshInterval = setInterval(async () => {
+            if (activeConversation.conversationId) {
+                await checkNewMessages();
+            }
+        }, 5000); // Check every 5 seconds
+    }
+
+    function stopMessageRefresh() {
+        if (messageRefreshInterval) {
+            clearInterval(messageRefreshInterval);
+            messageRefreshInterval = null;
+        }
+    }
+
+    async function checkNewMessages() {
+        if (!activeConversation.conversationId) return;
+        
+        try {
+            const response = await fetch(`api.php?action=get_messages&conversation_id=${activeConversation.conversationId}&after_id=${lastMessageId}`);
+            const result = await response.json();
+            
+            if (result.success && result.data.length > 0) {
+                const messagesContainer = document.getElementById('chat-messages-container');
+                const wasAtBottom = isScrolledToBottom(messagesContainer);
+                
+                result.data.forEach(msg => {
+                    renderMessage(msg, true);
+                    lastMessageId = msg.id;
+                });
+                
+                if (wasAtBottom) {
+                    scrollToBottom(messagesContainer);
+                }
+                
+                // Update conversation list
+                loadConversations(activeConversation.conversationId);
+            }
+        } catch (error) {
+            console.error('Error checking new messages:', error);
+        }
+    }
+
+    // Message actions
+    function copyMessageText(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            showToast('Message copied to clipboard!', 'success', 'Copied');
+        }).catch(() => {
+            showToast('Failed to copy message.', 'error', 'Copy Failed');
+        });
+    }
+
+    async function deleteMessage(messageId) {
+        if (!confirm('Are you sure you want to delete this message?')) return;
+        
+        try {
+            const formData = new FormData();
+            formData.append('action', 'delete_message');
+            formData.append('message_id', messageId);
+            
+            const response = await fetch('api.php', { method: 'POST', body: formData });
+            const result = await response.json();
+            
+            if (result.success) {
+                const messageEl = document.querySelector(`.message[data-message-id="${messageId}"]`);
+                if (messageEl) {
+                    messageEl.style.animation = 'fadeOut 0.3s ease';
+                    setTimeout(() => messageEl.remove(), 300);
+                }
+                showToast('Message deleted successfully.', 'success', 'Deleted');
+            } else {
+                showToast(result.message, 'error', 'Delete Failed');
+            }
+        } catch (error) {
+            console.error('Error deleting message:', error);
+            showToast('Failed to delete message.', 'error', 'Error');
+        }
+    }
+
+    // Update chat header with avatar
+    function updateChatHeader() {
+        const chatHeader = document.getElementById('chat-with-user');
+        
+        let avatarHtml = '';
+        if (activeConversation.otherUserPicture) {
+            avatarHtml = `<img src="../uploads/profile_pictures/${activeConversation.otherUserPicture}" alt="${activeConversation.otherUserName}">`;
+        } else {
+            const initials = getInitials(activeConversation.otherUserName);
+            avatarHtml = `<span>${initials}</span>`;
+        }
+        
+        chatHeader.innerHTML = `
+            <div class="chat-header-user">
+                <div class="user-avatar">${avatarHtml}</div>
+                <div>
+                    <div style="font-weight: 600;">${activeConversation.otherUserName}</div>
+                    <div style="font-size: 0.85rem; color: var(--text-muted);">${activeConversation.otherUserRole || ''}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Update unread badge in sidebar
+    async function updateUnreadBadge() {
+        try {
+            const response = await fetch('api.php?action=get_unread_count');
+            const result = await response.json();
+            
+            if (result.success) {
+                const badge = document.querySelector('.nav-item[data-page="messenger"] .notification-badge');
+                if (result.count > 0) {
+                    if (badge) {
+                        badge.textContent = result.count;
+                        badge.style.display = 'flex';
+                    }
+                } else {
+                    if (badge) {
+                        badge.style.display = 'none';
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error updating unread badge:', error);
+        }
+    }
+
+    // Utility functions
+    function getInitials(name) {
+        return name
+            .split(' ')
+            .map(word => word[0])
+            .join('')
+            .toUpperCase()
+            .substring(0, 2);
+    }
+
+    function formatDate(date) {
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        if (date.toDateString() === today.toDateString()) {
+            return 'Today';
+        } else if (date.toDateString() === yesterday.toDateString()) {
+            return 'Yesterday';
+        } else if (date.getFullYear() === today.getFullYear()) {
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        } else {
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+    }
+
+    function formatMessageTime(date) {
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+        
+        if (diffMins < 1) {
+            return 'Just now';
+        } else if (diffMins < 60) {
+            return `${diffMins}m ago`;
+        } else if (diffHours < 24) {
+            return `${diffHours}h ago`;
+        } else if (diffDays < 7) {
+            return `${diffDays}d ago`;
+        } else {
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+    }
+
     function scrollToBottom(element) {
         if(element) element.scrollTop = element.scrollHeight;
     }
 
-    function getIconForRole(role) {
-        switch(role) {
-            case 'admin': return 'fa-user-shield';
-            case 'doctor': return 'fa-user-doctor';
-            case 'staff': return 'fa-user-nurse';
-            default: return 'fa-user';
-        }
+    function isScrolledToBottom(element) {
+        return element.scrollHeight - element.scrollTop <= element.clientHeight + 50;
     }
 
     // ===================================================================
