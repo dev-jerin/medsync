@@ -50,6 +50,7 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     transition: background-color 0.3s, color 0.3s;
+    overflow-x: hidden;
 }
 
 .dashboard-layout {
@@ -64,19 +65,22 @@ body {
     box-shadow: 0 0 25px rgba(0,0,0,0.05);
     display: flex;
     flex-direction: column;
-    padding: 1.5rem;
+    padding: 1.5rem 1rem;
     transition: left 0.3s ease-in-out, background-color 0.3s;
     z-index: 1000;
     position: fixed;
     height: 100%;
     left: 0;
+    box-sizing: border-box;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .sidebar-header {
     display: flex;
     align-items: center;
     margin-bottom: 2.5rem;
-    padding: 0 0.5rem;
+    padding: 0;
 }
 
 .sidebar-header .logo-img {
@@ -94,6 +98,7 @@ body {
 .sidebar-nav {
     flex-grow: 1;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .sidebar-nav ul {
