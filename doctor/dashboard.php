@@ -88,10 +88,37 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         </div>
                     </div>
                     <div class="user-profile-widget" id="user-profile-widget">
-                        <img src="<?php echo $profile_picture_path; ?>" alt="Doctor Avatar" class="profile-picture">
+                        <img src="<?php echo $profile_picture_path; ?>?v=<?php echo time(); ?>" alt="Doctor Avatar" class="profile-picture">
                         <div class="profile-info">
                             <strong>Dr. <?php echo $full_name; ?></strong>
                             <span><?php echo $specialty ?: 'Specialty not set'; ?></span>
+                        </div>
+                        <i class="fas fa-chevron-down dropdown-arrow"></i>
+                        
+                        <!-- Profile Dropdown Menu -->
+                        <div class="profile-dropdown" id="profile-dropdown">
+                            <div class="dropdown-header">
+                                <img src="<?php echo $profile_picture_path; ?>?v=<?php echo time(); ?>" alt="Profile" class="dropdown-avatar">
+                                <div class="dropdown-user-info">
+                                    <strong>Dr. <?php echo $full_name; ?></strong>
+                                    <span><?php echo $email; ?></span>
+                                    <small>Doctor • <?php echo $display_user_id; ?></small>
+                                </div>
+                            </div>
+                            <div class="dropdown-divider"></div>
+                            <div class="dropdown-body">
+                                <a href="#" class="dropdown-item" data-page="profile">
+                                    <i class="fas fa-user-circle"></i>
+                                    <span>My Profile</span>
+                                </a>
+                            </div>
+                            <div class="dropdown-divider"></div>
+                            <div class="dropdown-footer">
+                                <a href="../logout.php" class="dropdown-item logout-item">
+                                    <i class="fas fa-sign-out-alt"></i>
+                                    <span>Logout</span>
+                                </a>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -130,7 +157,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                         <div class="grid-card" style="grid-column: 1 / -1;">
                             <h3><i class="fas fa-user-clock"></i> Today's Appointment Queue</h3>
                             <table class="data-table">
-                                <thead><tr><th>Token</th><th>Patient Name</th><th>Time</th><th>Status</th><th>Action</th></tr></thead>
+                                <thead><tr><th>Token</th><th>Patient Name</th><th>Time Slot</th><th>Status</th><th>Action</th></tr></thead>
                                 <tbody id="dashboard-appointments-tbody">
                                     </tbody>
                             </table>

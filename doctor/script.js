@@ -217,19 +217,76 @@ document.addEventListener("DOMContentLoaded", function() {
                     appointmentsTbody.innerHTML = ''; 
                     if (data.appointments.length > 0) {
                         data.appointments.forEach(appt => {
-                            const time = new Date(appt.appointment_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                            // Format time slot
+                            let timeSlot = 'N/A';
+                            if (appt.slot_start_time && appt.slot_end_time) {
+                                const startTime = appt.slot_start_time.substring(0, 5); // HH:MM
+                                const endTime = appt.slot_end_time.substring(0, 5); // HH:MM
+                                timeSlot = `${startTime} - ${endTime}`;
+                            } else if (appt.appointment_date) {
+                                // Fallback: Extract time from appointment_date and add 15 min duration
+                                const apptDate = new Date(appt.appointment_date);
+                                const startTime = apptDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                const endDate = new Date(apptDate.getTime() + 15 * 60000); // Add 15 minutes
+                                const endTime = endDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                timeSlot = `${startTime} - ${endTime}`;
+                            }
+                            
+                            // Determine token status badge
+                            const tokenStatus = appt.token_status || 'waiting';
+                            let tokenStatusBadge = '';
+                            let tokenStatusClass = '';
+                            
+                            switch(tokenStatus) {
+                                case 'waiting':
+                                    tokenStatusBadge = '<i class="fas fa-hourglass-half"></i> Waiting';
+                                    tokenStatusClass = 'waiting';
+                                    break;
+                                case 'in_consultation':
+                                    tokenStatusBadge = '<i class="fas fa-user-md"></i> In Consultation';
+                                    tokenStatusClass = 'in-consultation';
+                                    break;
+                                case 'completed':
+                                    tokenStatusBadge = '<i class="fas fa-check-circle"></i> Completed';
+                                    tokenStatusClass = 'completed';
+                                    break;
+                                case 'skipped':
+                                    tokenStatusBadge = '<i class="fas fa-forward"></i> Skipped';
+                                    tokenStatusClass = 'skipped';
+                                    break;
+                            }
+                            
                             const tr = document.createElement('tr');
+                            tr.setAttribute('data-appointment-id', appt.id);
                             tr.innerHTML = `
-                                <td data-label="Token">${appt.token_number || 'N/A'}</td>
+                                <td data-label="Token">
+                                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                        <strong>#${appt.token_number || 'N/A'}</strong>
+                                        <small class="token-status-badge ${tokenStatusClass}">${tokenStatusBadge}</small>
+                                    </div>
+                                </td>
                                 <td data-label="Patient Name">${appt.patient_name}</td>
-                                <td data-label="Time">${time}</td>
+                                <td data-label="Time Slot">${timeSlot}</td>
                                 <td data-label="Status"><span class="status ${appt.status.toLowerCase()}">${appt.status}</span></td>
                                 <td data-label="Action">
-                                    <button class="action-btn start-consultation-btn" 
-                                            data-appointment-id="${appt.id}" 
-                                            data-patient-name="${appt.patient_name}">
-                                        <i class="fas fa-play-circle"></i> Start
-                                    </button>
+                                    ${tokenStatus === 'waiting' ? `
+                                        <button class="action-btn start-consultation-btn" 
+                                                data-appointment-id="${appt.id}" 
+                                                data-patient-name="${appt.patient_name}">
+                                            <i class="fas fa-play-circle"></i> Start
+                                        </button>
+                                    ` : tokenStatus === 'in_consultation' ? `
+                                        <button class="action-btn continue-consultation-btn" 
+                                                data-appointment-id="${appt.id}" 
+                                                data-patient-name="${appt.patient_name}"
+                                                style="background-color: var(--success-color);">
+                                            <i class="fas fa-stethoscope"></i> Continue
+                                        </button>
+                                    ` : `
+                                        <button class="action-btn view-record" data-id="${appt.user_id}">
+                                            <i class="fas fa-file-medical"></i> View
+                                        </button>
+                                    `}
                                 </td>
                             `;
                             appointmentsTbody.appendChild(tr);
@@ -491,9 +548,12 @@ document.addEventListener("DOMContentLoaded", function() {
     // --- START: PATIENT ENCOUNTER LOGIC ---
     document.addEventListener('click', function(e) {
         const startBtn = e.target.closest('.start-consultation-btn');
-        if (startBtn) {
-            const appointmentId = startBtn.dataset.appointmentId;
-            const patientName = startBtn.dataset.patientName;
+        const continueBtn = e.target.closest('.continue-consultation-btn');
+        
+        if (startBtn || continueBtn) {
+            const btn = startBtn || continueBtn;
+            const appointmentId = btn.dataset.appointmentId;
+            const patientName = btn.dataset.patientName;
             openEncounterModal(appointmentId, patientName);
         }
     });
@@ -511,6 +571,24 @@ document.addEventListener("DOMContentLoaded", function() {
         // Set initial state
         document.getElementById('encounter-modal-title').textContent = `Consultation for: ${patientName}`;
         modal.classList.add('active');
+        
+        // Update token status to 'in_consultation' when starting
+        try {
+            const statusFormData = new FormData();
+            statusFormData.append('action', 'update_token_status');
+            statusFormData.append('appointment_id', appointmentId);
+            statusFormData.append('token_status', 'in_consultation');
+            
+            await fetch('api.php', {
+                method: 'POST',
+                body: statusFormData
+            });
+            
+            // Refresh dashboard to show updated status
+            loadDashboardData();
+        } catch (error) {
+            console.error('Failed to update token status:', error);
+        }
         
         try {
             const response = await fetch(`api.php?action=get_encounter_details&appointment_id=${appointmentId}`);
@@ -1591,6 +1669,33 @@ document.addEventListener("DOMContentLoaded", function() {
 
     hamburgerBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
     overlay.addEventListener('click', closeMenu);
+    
+    // --- PROFILE DROPDOWN TOGGLE ---
+    const userProfileWidget = document.getElementById('user-profile-widget');
+    const profileDropdown = document.getElementById('profile-dropdown');
+
+    if (userProfileWidget && profileDropdown) {
+        userProfileWidget.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userProfileWidget.classList.toggle('active');
+            // Close notification panel if open
+            if (notificationPanel) notificationPanel.classList.remove('active');
+        });
+
+        // Handle dropdown item clicks
+        profileDropdown.querySelectorAll('.dropdown-item[data-page]').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                const pageId = item.dataset.page;
+                const navLink = document.querySelector(`.nav-link[data-page="${pageId}"]`);
+                if (navLink) {
+                    navLink.click();
+                }
+                userProfileWidget.classList.remove('active');
+            });
+        });
+    }
+    
     document.addEventListener('click', (e) => {
         if (window.innerWidth <= 992 && sidebar.classList.contains('active')) {
             if (!sidebar.contains(e.target) && !hamburgerBtn.contains(e.target)) {
@@ -1599,7 +1704,11 @@ document.addEventListener("DOMContentLoaded", function() {
         }
         // Close notification panel when clicking outside
         if (notificationPanel && !notificationPanel.contains(e.target) && !notificationBell.contains(e.target)) {
-            notificationPanel.classList.remove('show');
+            notificationPanel.classList.remove('active');
+        }
+        // Close profile dropdown when clicking outside
+        if (userProfileWidget && !userProfileWidget.contains(e.target)) {
+            userProfileWidget.classList.remove('active');
         }
     });
     
@@ -1673,7 +1782,17 @@ document.addEventListener("DOMContentLoaded", function() {
         appointments.forEach(appt => {
             const appointmentDate = new Date(appt.appointment_date);
             const formattedDate = appointmentDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-            const formattedTime = appointmentDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+            
+            // Format time slot
+            let timeDisplay = '';
+            if (appt.slot_start_time && appt.slot_end_time) {
+                const startTime = appt.slot_start_time.substring(0, 5); // HH:MM
+                const endTime = appt.slot_end_time.substring(0, 5); // HH:MM
+                timeDisplay = `${startTime} - ${endTime}`;
+            } else {
+                // Fallback to appointment_date if slots are not set
+                timeDisplay = appointmentDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+            }
 
             const item = document.createElement('div');
             item.className = 'appointment-item';
@@ -1681,7 +1800,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 <div class="patient-info">
                     <div class="patient-name">${appt.patient_name} (${appt.patient_display_id})</div>
                     <div class="appointment-details">
-                        <i class="fas fa-calendar-alt"></i> ${formattedDate} at ${formattedTime}
+                        <i class="fas fa-calendar-alt"></i> ${formattedDate} | <i class="fas fa-clock"></i> ${timeDisplay}
                     </div>
                 </div>
                 <div class="appointment-status">
