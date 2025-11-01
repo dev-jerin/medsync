@@ -1080,7 +1080,184 @@ body.dark-theme .timeline-content span {
     right: 1rem;
     cursor: pointer;
     color: var(--text-muted);
+    transition: color 0.3s;
 }
+.toggle-password:hover {
+    color: var(--primary-color);
+}
+
+/* Password Strength Indicator */
+.password-strength {
+    margin-top: 0.5rem;
+    height: 4px;
+    background-color: var(--border-color);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.password-strength-bar {
+    height: 100%;
+    width: 0;
+    transition: width 0.3s ease, background-color 0.3s ease;
+}
+.password-strength-bar.weak { 
+    background-color: var(--danger-color); 
+    width: 33%; 
+}
+.password-strength-bar.medium { 
+    background-color: var(--warning-color); 
+    width: 66%; 
+}
+.password-strength-bar.strong { 
+    background-color: var(--secondary-color); 
+    width: 100%; 
+}
+.password-strength-text {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+.password-strength-text.weak { 
+    color: var(--danger-color); 
+}
+.password-strength-text.medium { 
+    color: var(--warning-color); 
+}
+.password-strength-text.strong { 
+    color: var(--secondary-color); 
+}
+
+/* Password Requirements */
+.password-requirements {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background-color: var(--background-body);
+    border-left: 3px solid var(--info-color);
+    border-radius: 6px;
+}
+.password-requirements h5 {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.9rem;
+    color: var(--text-dark);
+    font-weight: 600;
+}
+.password-requirements ul {
+    margin: 0;
+    padding-left: 0;
+    list-style: none;
+}
+.password-requirements li {
+    padding: 0.25rem 0;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.password-requirements li i {
+    font-size: 0.9rem;
+    color: var(--danger-color);
+    transition: color 0.3s;
+}
+.password-requirements li.valid i {
+    color: var(--secondary-color);
+}
+.password-requirements li i.fa-times-circle {
+    color: var(--danger-color);
+}
+.password-requirements li i.fa-check-circle {
+    color: var(--secondary-color);
+}
+
+/* Toast Notifications */
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.toast {
+    min-width: 300px;
+    max-width: 400px;
+    background: var(--background-panel);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 1rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    border-left: 4px solid var(--primary-color);
+    animation: slideInRight 0.3s ease;
+    position: relative;
+}
+.toast.success {
+    border-left-color: var(--secondary-color);
+}
+.toast.error {
+    border-left-color: var(--danger-color);
+}
+.toast.warning {
+    border-left-color: var(--warning-color);
+}
+.toast.info {
+    border-left-color: var(--info-color);
+}
+.toast-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+.toast.success .toast-icon {
+    color: var(--secondary-color);
+}
+.toast.error .toast-icon {
+    color: var(--danger-color);
+}
+.toast.warning .toast-icon {
+    color: var(--warning-color);
+}
+.toast.info .toast-icon {
+    color: var(--info-color);
+}
+.toast-content {
+    flex-grow: 1;
+}
+.toast-title {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    color: var(--text-dark);
+}
+.toast-message {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+.toast-close {
+    background: none;
+    border: none;
+    font-size: 1.25rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    transition: color 0.3s;
+}
+.toast-close:hover {
+    color: var(--text-dark);
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
 .notification-options {
     display: flex;
     flex-direction: column;

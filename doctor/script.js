@@ -1865,6 +1865,118 @@ document.addEventListener("DOMContentLoaded", function() {
     // ===================================================================
     // --- Profile Settings Page Logic ---
     // ===================================================================
+    
+    // Toast Notification System
+    function showToast(message, type = 'info', title = '') {
+        const toastContainer = document.getElementById('toast-container');
+        if (!toastContainer) return;
+        
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        
+        const icons = {
+            success: 'fa-check-circle',
+            error: 'fa-exclamation-circle',
+            warning: 'fa-exclamation-triangle',
+            info: 'fa-info-circle'
+        };
+        
+        const titles = {
+            success: title || 'Success',
+            error: title || 'Error',
+            warning: title || 'Warning',
+            info: title || 'Information'
+        };
+        
+        toast.innerHTML = `
+            <div class="toast-icon">
+                <i class="fas ${icons[type]}"></i>
+            </div>
+            <div class="toast-content">
+                <div class="toast-title">${titles[type]}</div>
+                <div class="toast-message">${message}</div>
+            </div>
+            <button class="toast-close" onclick="this.parentElement.remove()">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+        
+        toastContainer.appendChild(toast);
+        
+        // Auto remove after 5 seconds
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(100%)';
+            setTimeout(() => toast.remove(), 300);
+        }, 5000);
+    }
+    
+    // Password Strength Checker
+    function checkPasswordStrength(password) {
+        let strength = 0;
+        const requirements = {
+            length: password.length >= 8,
+            uppercase: /[A-Z]/.test(password),
+            lowercase: /[a-z]/.test(password),
+            number: /[0-9]/.test(password),
+            special: /[!@#$%^&*(),.?":{}|<>]/.test(password)
+        };
+        
+        // Update requirement indicators
+        Object.keys(requirements).forEach(key => {
+            const element = document.getElementById(`req-${key}`);
+            if (element) {
+                const icon = element.querySelector('i');
+                if (requirements[key]) {
+                    element.classList.add('valid');
+                    icon.classList.remove('fa-times-circle');
+                    icon.classList.add('fa-check-circle');
+                    strength++;
+                } else {
+                    element.classList.remove('valid');
+                    icon.classList.remove('fa-check-circle');
+                    icon.classList.add('fa-times-circle');
+                }
+            }
+        });
+        
+        return { strength, requirements };
+    }
+    
+    // Update password strength indicator
+    function updatePasswordStrength(password) {
+        const strengthBar = document.getElementById('password-strength-bar');
+        const strengthText = document.getElementById('password-strength-text');
+        
+        if (!strengthBar || !strengthText) return;
+        
+        const { strength } = checkPasswordStrength(password);
+        
+        // Remove all classes
+        strengthBar.classList.remove('weak', 'medium', 'strong');
+        strengthText.classList.remove('weak', 'medium', 'strong');
+        
+        if (password.length === 0) {
+            strengthBar.style.width = '0';
+            strengthText.textContent = '';
+            return;
+        }
+        
+        if (strength <= 2) {
+            strengthBar.classList.add('weak');
+            strengthText.classList.add('weak');
+            strengthText.textContent = 'Weak password';
+        } else if (strength <= 4) {
+            strengthBar.classList.add('medium');
+            strengthText.classList.add('medium');
+            strengthText.textContent = 'Medium strength';
+        } else {
+            strengthBar.classList.add('strong');
+            strengthText.classList.add('strong');
+            strengthText.textContent = 'Strong password';
+        }
+    }
+    
     const personalInfoForm = document.getElementById('personal-info-form');
     if (personalInfoForm) {
         const profilePage = document.getElementById('profile-page');
@@ -1925,7 +2037,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 const result = await response.json();
     
                 if (result.success) {
-                    alert('Profile updated successfully!');
+                    showToast('Profile updated successfully!', 'success');
                     const newName = formData.get('name');
                     const specialtySelect = document.getElementById('profile-specialty');
                     const newSpecialty = specialtySelect.options[specialtySelect.selectedIndex].text;
@@ -1934,11 +2046,11 @@ document.addEventListener("DOMContentLoaded", function() {
                     document.querySelector('.user-profile-widget .profile-info span').textContent = newSpecialty;
                     document.querySelector('.welcome-message h2').textContent = `Welcome back, Dr. ${newName}!`;
                 } else {
-                    alert(`Error: ${result.message || 'An unknown error occurred.'}`);
+                    showToast(result.message || 'An unknown error occurred.', 'error');
                 }
             } catch (error) {
                 console.error('Error updating profile:', error);
-                alert('A network error occurred. Please try again.');
+                showToast('A network error occurred. Please try again.', 'error');
             } finally {
                 saveButton.disabled = false;
                 saveButton.innerHTML = originalButtonText;
@@ -1984,13 +2096,13 @@ document.addEventListener("DOMContentLoaded", function() {
                         img.src = newUrl;
                     });
                     if (removeProfilePictureBtn) removeProfilePictureBtn.style.display = 'flex';
-                    alert('Profile picture updated successfully!');
+                    showToast('Profile picture updated successfully!', 'success');
                 } else {
-                    alert(`Error: ${result.message || 'Failed to update profile picture.'}`);
+                    showToast(result.message || 'Failed to update profile picture.', 'error');
                 }
             } catch (error) {
                 console.error('Error uploading profile picture:', error);
-                alert('An error occurred while uploading the profile picture.');
+                showToast('An error occurred while uploading the profile picture.', 'error');
             }
             
             this.value = '';
@@ -2014,13 +2126,13 @@ document.addEventListener("DOMContentLoaded", function() {
                         img.src = defaultUrl;
                     });
                     this.style.display = 'none';
-                    alert('Profile picture removed successfully!');
+                    showToast('Profile picture removed successfully!', 'success');
                 } else {
-                    alert(`Error: ${result.message || 'Failed to remove profile picture.'}`);
+                    showToast(result.message || 'Failed to remove profile picture.', 'error');
                 }
             } catch (error) {
                 console.error('Error removing profile picture:', error);
-                alert('An error occurred while removing the profile picture.');
+                showToast('An error occurred while removing the profile picture.', 'error');
             }
         });
     }
@@ -2131,7 +2243,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     img.src = newUrl;
                 });
                 if (removeProfilePictureBtn) removeProfilePictureBtn.style.display = 'flex';
-                alert('Profile picture updated successfully!');
+                showToast('Profile picture updated successfully!', 'success');
             }
             
             closeWebcam();
@@ -2172,18 +2284,47 @@ document.addEventListener("DOMContentLoaded", function() {
 
     const securityForm = document.getElementById('security-form');
     if (securityForm) {
+        // Add password strength indicator
+        const newPasswordInput = document.getElementById('new-password');
+        const confirmPasswordInput = document.getElementById('confirm-password');
+        const confirmPasswordError = document.getElementById('confirm-password-error');
+        
+        if (newPasswordInput) {
+            newPasswordInput.addEventListener('input', function() {
+                updatePasswordStrength(this.value);
+            });
+        }
+        
+        if (confirmPasswordInput) {
+            confirmPasswordInput.addEventListener('input', function() {
+                const newPassword = newPasswordInput.value;
+                if (this.value && this.value !== newPassword) {
+                    confirmPasswordError.textContent = 'Passwords do not match';
+                    confirmPasswordError.style.display = 'block';
+                } else {
+                    confirmPasswordError.textContent = '';
+                    confirmPasswordError.style.display = 'none';
+                }
+            });
+        }
+        
         securityForm.addEventListener('submit', async function(e) {
             e.preventDefault();
 
             const newPassword = document.getElementById('new-password').value;
             const confirmPassword = document.getElementById('confirm-password').value;
 
-            if (newPassword.length < 8) {
-                alert('New password must be at least 8 characters long.');
+            // Validate password requirements
+            const { requirements } = checkPasswordStrength(newPassword);
+            const allRequirementsMet = Object.values(requirements).every(val => val === true);
+            
+            if (!allRequirementsMet) {
+                showToast('Please meet all password requirements', 'error');
                 return;
             }
+            
             if (newPassword !== confirmPassword) {
-                alert('New password and confirmation do not match.');
+                showToast('New password and confirmation do not match.', 'error');
                 return;
             }
 
@@ -2203,14 +2344,26 @@ document.addEventListener("DOMContentLoaded", function() {
                 const result = await response.json();
 
                 if (result.success) {
-                    alert('Password updated successfully!');
+                    showToast('Password updated successfully!', 'success');
                     this.reset();
+                    // Reset password strength indicator
+                    const strengthBar = document.getElementById('password-strength-bar');
+                    const strengthText = document.getElementById('password-strength-text');
+                    if (strengthBar) strengthBar.style.width = '0';
+                    if (strengthText) strengthText.textContent = '';
+                    // Reset requirements
+                    document.querySelectorAll('.password-requirements li').forEach(li => {
+                        li.classList.remove('valid');
+                        const icon = li.querySelector('i');
+                        icon.classList.remove('fa-check-circle');
+                        icon.classList.add('fa-times-circle');
+                    });
                 } else {
-                    alert(`Error: ${result.message || 'An unknown error occurred.'}`);
+                    showToast(result.message || 'An unknown error occurred.', 'error');
                 }
             } catch (error) {
                 console.error('Error updating password:', error);
-                alert('A network error occurred. Please try again.');
+                showToast('A network error occurred. Please try again.', 'error');
             } finally {
                 saveButton.disabled = false;
                 saveButton.innerHTML = originalButtonText;

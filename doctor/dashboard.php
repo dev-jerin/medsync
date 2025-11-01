@@ -443,9 +443,17 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                                     <input type="text" id="profile-qualifications" name="qualifications" value="<?php echo htmlspecialchars($qualifications ?? '', ENT_QUOTES, 'UTF-8'); ?>" placeholder="e.g., MBBS, MD, FRCS">
                                     <small class="validation-error"></small>
                                 </div>
-                                 <div class="form-group">
+                                <div class="form-group">
                                     <label for="profile-id">Doctor ID</label>
                                     <input type="text" id="profile-id" name="display_id" value="<?php echo htmlspecialchars($display_user_id, ENT_QUOTES, 'UTF-8'); ?>" readonly>
+                                </div>
+                                <div class="form-group">
+                                    <label for="profile-office-floor">Office Floor</label>
+                                    <input type="text" id="profile-office-floor" name="office_floor" placeholder="e.g., 2nd Floor, Ground Floor">
+                                </div>
+                                <div class="form-group full-width">
+                                    <label for="profile-office-room">Office Room Number</label>
+                                    <input type="text" id="profile-office-room" name="office_room_number" placeholder="e.g., Room 205, Cabin 12">
                                 </div>
                             </div>
                             <div class="form-actions">
@@ -457,6 +465,18 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                     <div id="security-tab" class="profile-tab-content">
                         <form id="security-form" class="settings-form">
                             <h4>Change Your Password</h4>
+                            
+                            <div class="password-requirements">
+                                <h5>Password Requirements:</h5>
+                                <ul>
+                                    <li id="req-length"><i class="fas fa-times-circle"></i> At least 8 characters</li>
+                                    <li id="req-uppercase"><i class="fas fa-times-circle"></i> At least one uppercase letter</li>
+                                    <li id="req-lowercase"><i class="fas fa-times-circle"></i> At least one lowercase letter</li>
+                                    <li id="req-number"><i class="fas fa-times-circle"></i> At least one number</li>
+                                    <li id="req-special"><i class="fas fa-times-circle"></i> At least one special character</li>
+                                </ul>
+                            </div>
+                            
                             <div class="form-grid">
                                 <div class="form-group full-width">
                                     <label for="current-password">Current Password</label>
@@ -471,6 +491,10 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                                         <input type="password" id="new-password" name="new_password" required>
                                         <i class="fas fa-eye-slash toggle-password"></i>
                                     </div>
+                                    <div class="password-strength">
+                                        <div class="password-strength-bar" id="password-strength-bar"></div>
+                                    </div>
+                                    <small class="password-strength-text" id="password-strength-text"></small>
                                 </div>
                                 <div class="form-group">
                                     <label for="confirm-password">Confirm New Password</label>
@@ -478,6 +502,7 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
                                         <input type="password" id="confirm-password" name="confirm_password" required>
                                         <i class="fas fa-eye-slash toggle-password"></i>
                                     </div>
+                                    <small class="validation-error" id="confirm-password-error"></small>
                                 </div>
                             </div>
                             <div class="form-actions">
@@ -989,6 +1014,10 @@ $profile_picture_path = "../uploads/profile_pictures/" . $profile_picture;
         </div>
 
     </div>
+    
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container"></div>
+    
     <script>
         // Pass the session user ID to JavaScript for client-side logic
         const currentUserId = <?php echo json_encode($_SESSION['user_id']); ?>;
