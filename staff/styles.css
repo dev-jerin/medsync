@@ -442,6 +442,117 @@ input:checked + .theme-slider:before { transform: translateX(20px); }
 .legend-color.occupied { background-color: var(--danger-color); }
 .legend-color.cleaning { background-color: var(--warning-color); }
 .legend-color.reserved { background-color: var(--info-color); }
+
+/* Bed Statistics Dashboard */
+.bed-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.bed-stat-card {
+    background: linear-gradient(135deg, var(--background-panel), var(--background-body));
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    border-left: 4px solid;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s ease;
+}
+
+.bed-stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+}
+
+.bed-stat-card.total { border-left-color: #3498db; }
+.bed-stat-card.available { border-left-color: var(--secondary-color); }
+.bed-stat-card.occupied { border-left-color: var(--danger-color); }
+.bed-stat-card.cleaning { border-left-color: var(--warning-color); }
+.bed-stat-card.reserved { border-left-color: var(--info-color); }
+
+.bed-stat-card .stat-icon {
+    font-size: 2.5rem;
+    opacity: 0.2;
+    flex-shrink: 0;
+}
+
+.bed-stat-card.total .stat-icon { color: #3498db; }
+.bed-stat-card.available .stat-icon { color: var(--secondary-color); }
+.bed-stat-card.occupied .stat-icon { color: var(--danger-color); }
+.bed-stat-card.cleaning .stat-icon { color: var(--warning-color); }
+.bed-stat-card.reserved .stat-icon { color: var(--info-color); }
+
+.bed-stat-card .stat-info {
+    flex-grow: 1;
+}
+
+.bed-stat-card .stat-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.25rem;
+}
+
+.bed-stat-card .stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    line-height: 1;
+}
+
+.bed-stat-card .stat-percent {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+}
+
+/* Bed Quick Filters */
+.bed-quick-filters {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.bed-filter-btn {
+    padding: 0.75rem 1.5rem;
+    border: 2px solid var(--border-color);
+    background-color: var(--background-panel);
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-family: 'Poppins', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-dark);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+}
+
+.bed-filter-btn:hover {
+    border-color: var(--primary-color);
+    background-color: rgba(52, 152, 219, 0.05);
+    transform: translateY(-2px);
+}
+
+.bed-filter-btn.active {
+    background: linear-gradient(135deg, var(--primary-color), var(--info-color));
+    color: white;
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+}
+
+.bed-filter-btn i {
+    font-size: 1rem;
+}
+
 .bed-grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1.5rem; }
 .bed-card { 
     background-color: var(--background-panel);
@@ -453,12 +564,64 @@ input:checked + .theme-slider:before { transform: translateX(20px); }
     display: flex;
     flex-direction: column;
     position: relative; /* For dropdown positioning */
+    opacity: 1;
 }
-.bed-card:hover { transform: translateY(-5px); box-shadow: var(--shadow-md); }
-.bed-card.status-available { border-left-color: var(--secondary-color); }
-.bed-card.status-occupied { border-left-color: var(--danger-color); }
-.bed-card.status-cleaning { border-left-color: var(--warning-color); }
-.bed-card.status-reserved { border-left-color: var(--info-color); }
+.bed-card:hover { 
+    transform: translateY(-5px); 
+    box-shadow: var(--shadow-md); 
+}
+.bed-card.status-available { 
+    border-left-color: var(--secondary-color); 
+    background: linear-gradient(135deg, rgba(39, 174, 96, 0.05), transparent);
+}
+.bed-card.status-occupied { 
+    border-left-color: var(--danger-color); 
+    background: linear-gradient(135deg, rgba(231, 76, 60, 0.05), transparent);
+}
+.bed-card.status-cleaning { 
+    border-left-color: var(--warning-color); 
+    background: linear-gradient(135deg, rgba(241, 196, 15, 0.05), transparent);
+}
+.bed-card.status-reserved { 
+    border-left-color: var(--info-color); 
+    background: linear-gradient(135deg, rgba(52, 152, 219, 0.05), transparent);
+}
+
+/* Filter animation */
+.bed-card.filtered-out {
+    display: none;
+}
+
+/* Status badge */
+.bed-status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.bed-status-badge.available {
+    background-color: rgba(39, 174, 96, 0.1);
+    color: var(--secondary-color);
+}
+
+.bed-status-badge.occupied {
+    background-color: rgba(231, 76, 60, 0.1);
+    color: var(--danger-color);
+}
+
+.bed-status-badge.cleaning {
+    background-color: rgba(241, 196, 15, 0.1);
+    color: var(--warning-color);
+}
+
+.bed-status-badge.reserved {
+    background-color: rgba(52, 152, 219, 0.1);
+    color: var(--info-color);
+}
 
 .bed-card-checkbox {
     position: absolute;
@@ -1937,4 +2100,44 @@ body.dark-theme .send-btn:disabled {
     .webcam-modal-content { max-width: 95%; }
     .webcam-container { aspect-ratio: 3/4; max-width: 100%; }
     .webcam-modal-body { padding: 1rem; }
+    
+    /* Bed Management Mobile Responsive */
+    .bed-stats-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .bed-stat-card {
+        padding: 1rem;
+    }
+    
+    .bed-stat-card .stat-icon {
+        font-size: 2rem;
+    }
+    
+    .bed-stat-card .stat-value {
+        font-size: 1.5rem;
+    }
+    
+    .bed-quick-filters {
+        gap: 0.5rem;
+    }
+    
+    .bed-filter-btn {
+        flex: 1;
+        min-width: 0;
+        padding: 0.6rem 1rem;
+        font-size: 0.85rem;
+        justify-content: center;
+    }
+    
+    .bed-grid-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .bed-card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
 }

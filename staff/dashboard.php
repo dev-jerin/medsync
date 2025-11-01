@@ -347,16 +347,80 @@ require_once 'api.php';
                     <div class="page-header">
                         <h3><i class="fas fa-bed-pulse"></i> Bed Management Overview</h3>
                         <div class="header-actions">
-                            <button class="btn btn-secondary" id="bulk-update-beds-btn" style="display: none;"><i class="fas fa-check-double"></i> Mark as Available</button>
+                            <button class="btn btn-secondary" id="refresh-beds-btn"><i class="fas fa-sync-alt"></i> Refresh</button>
+                            <button class="btn btn-secondary" id="toggle-bed-auto-refresh" class="active"><i class="fas fa-play"></i> Auto-refresh ON</button>
                             <button class="btn btn-primary" id="add-new-bed-btn"><i class="fas fa-plus"></i> Add New Bed / Room</button>
                         </div>
                     </div>
+                    
+                    <!-- Bed Statistics Dashboard -->
+                    <div class="bed-stats-grid" id="bed-stats-container">
+                        <div class="bed-stat-card total">
+                            <div class="stat-icon"><i class="fas fa-bed"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-label">Total Beds/Rooms</div>
+                                <div class="stat-value" id="bed-stat-total">0</div>
+                            </div>
+                        </div>
+                        <div class="bed-stat-card available">
+                            <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-label">Available</div>
+                                <div class="stat-value" id="bed-stat-available">0</div>
+                                <div class="stat-percent" id="bed-stat-available-percent">0%</div>
+                            </div>
+                        </div>
+                        <div class="bed-stat-card occupied">
+                            <div class="stat-icon"><i class="fas fa-user-injured"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-label">Occupied</div>
+                                <div class="stat-value" id="bed-stat-occupied">0</div>
+                                <div class="stat-percent" id="bed-stat-occupied-percent">0%</div>
+                            </div>
+                        </div>
+                        <div class="bed-stat-card cleaning">
+                            <div class="stat-icon"><i class="fas fa-broom"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-label">Cleaning</div>
+                                <div class="stat-value" id="bed-stat-cleaning">0</div>
+                                <div class="stat-percent" id="bed-stat-cleaning-percent">0%</div>
+                            </div>
+                        </div>
+                        <div class="bed-stat-card reserved">
+                            <div class="stat-icon"><i class="fas fa-bookmark"></i></div>
+                            <div class="stat-info">
+                                <div class="stat-label">Reserved</div>
+                                <div class="stat-value" id="bed-stat-reserved">0</div>
+                                <div class="stat-percent" id="bed-stat-reserved-percent">0%</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Quick Filters -->
+                    <div class="bed-quick-filters" id="bed-quick-filters">
+                        <button class="bed-filter-btn active" data-bed-filter="all">
+                            <i class="fas fa-th"></i> All
+                        </button>
+                        <button class="bed-filter-btn" data-bed-filter="available">
+                            <i class="fas fa-check-circle"></i> Available
+                        </button>
+                        <button class="bed-filter-btn" data-bed-filter="occupied">
+                            <i class="fas fa-user-injured"></i> Occupied
+                        </button>
+                        <button class="bed-filter-btn" data-bed-filter="cleaning">
+                            <i class="fas fa-broom"></i> Cleaning
+                        </button>
+                        <button class="bed-filter-btn" data-bed-filter="reserved">
+                            <i class="fas fa-bookmark"></i> Reserved
+                        </button>
+                    </div>
+                    
                     <div class="filters">
                         <input type="text" id="bed-search-filter" placeholder="Search by Patient or Bed No..." style="flex-grow: 2;">
                         <select id="bed-location-filter">
                             <option value="all">All Wards & Rooms</option>
                         </select>
-                        <select id="bed-status-filter">
+                        <select id="bed-status-filter" style="display: none;">
                             <option value="all">All Statuses</option>
                             <option value="available">Available</option>
                             <option value="occupied">Occupied</option>
@@ -364,12 +428,7 @@ require_once 'api.php';
                             <option value="reserved">Reserved</option>
                         </select>
                     </div>
-                    <div class="bed-legend">
-                        <div class="legend-item"><span class="legend-color available"></span> Available</div>
-                        <div class="legend-item"><span class="legend-color occupied"></span> Occupied</div>
-                        <div class="legend-item"><span class="legend-color cleaning"></span> Cleaning</div>
-                        <div class="legend-item"><span class="legend-color reserved"></span> Reserved</div>
-                    </div>
+                    
                     <div class="bed-grid-container" id="bed-grid-container">
                         </div>
                 </div>

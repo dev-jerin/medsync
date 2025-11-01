@@ -1657,6 +1657,9 @@ document.addEventListener("DOMContentLoaded", function() {
     let bedManagementInitialized = false;
     let bedManagementData = {};
     let bedSearchDebounce;
+    let bedAutoRefreshInterval;
+    let bedAutoRefreshEnabled = true;
+    let currentBedFilter = 'all';
 
     async function initializeBedManagement() {
         if (bedManagementInitialized) {
@@ -1668,9 +1671,47 @@ document.addEventListener("DOMContentLoaded", function() {
 
         await fetchAndRenderBedData();
 
+        // Refresh button
+        document.getElementById('refresh-beds-btn').addEventListener('click', () => {
+            fetchAndRenderBedData();
+        });
+
+        // Auto-refresh toggle
+        document.getElementById('toggle-bed-auto-refresh').addEventListener('click', (e) => {
+            bedAutoRefreshEnabled = !bedAutoRefreshEnabled;
+            e.target.classList.toggle('active', bedAutoRefreshEnabled);
+            e.target.innerHTML = bedAutoRefreshEnabled 
+                ? '<i class="fas fa-play"></i> Auto-refresh ON' 
+                : '<i class="fas fa-pause"></i> Auto-refresh OFF';
+            
+            if (bedAutoRefreshEnabled) {
+                bedAutoRefreshInterval = setInterval(() => fetchAndRenderBedData(true), 30000);
+            } else {
+                clearInterval(bedAutoRefreshInterval);
+            }
+        });
+
+        // Start auto-refresh
+        if (bedAutoRefreshEnabled) {
+            bedAutoRefreshInterval = setInterval(() => fetchAndRenderBedData(true), 30000);
+        }
+
+        // Quick filter buttons
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.bed-filter-btn')) {
+                const filterBtn = e.target.closest('.bed-filter-btn');
+                const filter = filterBtn.dataset.bedFilter;
+                
+                document.querySelectorAll('.bed-filter-btn').forEach(btn => btn.classList.remove('active'));
+                filterBtn.classList.add('active');
+                
+                currentBedFilter = filter;
+                applyBedFilter(filter);
+            }
+        });
+
         document.getElementById('add-new-bed-btn').addEventListener('click', () => openBedModal('add'));
         document.getElementById('bed-location-filter').addEventListener('change', filterBedGrid);
-        document.getElementById('bed-status-filter').addEventListener('change', filterBedGrid);
         document.getElementById('bed-search-filter').addEventListener('input', () => {
              clearTimeout(bedSearchDebounce);
              bedSearchDebounce = setTimeout(filterBedGrid, 300);
@@ -1709,51 +1750,22 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
 
-        const bulkUpdateButton = document.getElementById('bulk-update-beds-btn');
-        bedGridContainer.addEventListener('change', (e) => {
-            if (e.target.classList.contains('bed-selection-checkbox')) {
-                const selectedChecks = bedGridContainer.querySelectorAll('.bed-selection-checkbox:checked');
-                bulkUpdateButton.style.display = selectedChecks.length > 0 ? 'inline-flex' : 'none';
-            }
-        });
-
-        bulkUpdateButton.addEventListener('click', async () => {
-            const selectedChecks = bedGridContainer.querySelectorAll('.bed-selection-checkbox:checked');
-            const bedIdsToUpdate = Array.from(selectedChecks).map(cb => cb.dataset.id);
-            if (bedIdsToUpdate.length === 0) return;
-
-            const confirmed = await showConfirmation('Confirm Update', `Mark ${bedIdsToUpdate.length} bed(s)/room(s) as 'Available'?`);
-            if (confirmed) {
-                const formData = new FormData();
-                formData.append('action', 'bulkUpdateBedStatus');
-                formData.append('ids', JSON.stringify(bedIdsToUpdate));
-                formData.append('status', 'available');
-                formData.append('csrf_token', csrfToken);
-                try {
-                    const response = await fetch('api.php', { method: 'POST', body: formData });
-                    const result = await response.json();
-                    if (!result.success) throw new Error(result.message);
-                    alert(result.message);
-                    bulkUpdateButton.style.display = 'none';
-                    await fetchAndRenderBedData();
-                } catch (error) {
-                    alert('Error: ' + error.message);
-                }
-            }
-        });
-
         bedManagementInitialized = true;
     }
 
-    async function fetchAndRenderBedData() {
+    async function fetchAndRenderBedData(silent = false) {
         const gridContainer = document.getElementById('bed-grid-container');
-        gridContainer.innerHTML = '<p class="no-items-message">Loading bed data...</p>';
+        if (!silent) {
+            gridContainer.innerHTML = '<p class="no-items-message">Loading bed data...</p>';
+        }
         try {
             const response = await fetch('api.php?fetch=bed_management_data');
             const result = await response.json();
             if (!result.success) throw new Error(result.message);
             bedManagementData = result.data;
             renderBedManagementPage(bedManagementData);
+            updateBedStatistics(bedManagementData);
+            applyBedFilter(currentBedFilter);
         } catch (error) {
             console.error("Fetch error:", error);
             gridContainer.innerHTML = `<p class="no-items-message" style="color:var(--danger-color)">Failed to load bed data.</p>`;
@@ -1792,12 +1804,20 @@ document.addEventListener("DOMContentLoaded", function() {
             ? `<div class="bed-card-checkbox"><input type="checkbox" class="bed-selection-checkbox" data-id="${entity.id}"></div>`
             : '';
 
+        // Status badge
+        const statusText = entity.status.charAt(0).toUpperCase() + entity.status.slice(1);
+        const statusBadge = `<span class="bed-status-badge ${entity.status}">${statusText}</span>`;
+
         let patientInfo = '';
         if (entity.status === 'occupied' && entity.patient_name) {
-            let tooltip = `Patient: ${entity.patient_name} (${entity.patient_display_id})`;
-            if(entity.doctor_name) tooltip += `\nDoctor: ${entity.doctor_name}`;
-            patientInfo = `<div class="patient-info" title="${tooltip}">
-                <i class="fas fa-user-circle"></i> ${entity.patient_name}
+            let doctorDisplay = entity.doctor_name ? `<br><small style="color: var(--text-muted);"><i class="fas fa-user-md"></i> Dr. ${entity.doctor_name}</small>` : '';
+            patientInfo = `<div class="patient-info" style="border-top: 1px solid var(--border-color); padding-top: 0.75rem; margin-top: 0.75rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
+                    <i class="fas fa-user-circle" style="color: var(--primary-color);"></i> 
+                    ${entity.patient_name}
+                </div>
+                <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">${entity.patient_display_id}</small>
+                ${doctorDisplay}
             </div>`;
         }
 
@@ -1819,7 +1839,10 @@ document.addEventListener("DOMContentLoaded", function() {
                 
                 ${cleaningCheckbox}
                 <div class="bed-card-header">
-                    <div class="bed-id">${number}</div>
+                    <div class="bed-id">
+                        <div style="font-size: 1.2rem; font-weight: 700;">${number}</div>
+                        ${statusBadge}
+                    </div>
                     <div class="bed-actions">
                         ${entity.status !== 'occupied' ? '<button class="action-btn-icon status-change-btn" title="Change Status"><i class="fas fa-exchange-alt"></i></button>' : ''}
                         ${statusChangeDropdown}
@@ -1827,7 +1850,9 @@ document.addEventListener("DOMContentLoaded", function() {
                         <button class="action-btn-icon edit-bed-btn" title="Edit Details"><i class="fas fa-pencil-alt"></i></button>
                     </div>
                 </div>
-                <div class="bed-details">${locationName}</div>
+                <div class="bed-details" style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem;">
+                    <i class="fas fa-map-marker-alt"></i> ${locationName}
+                </div>
                 ${patientInfo}
             </div>
         `;
@@ -1835,20 +1860,21 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function filterBedGrid() {
         const locationFilter = document.getElementById('bed-location-filter').value;
-        const statusFilter = document.getElementById('bed-status-filter').value;
         const searchQuery = document.getElementById('bed-search-filter').value.toLowerCase();
         const cards = document.querySelectorAll('#bed-grid-container .bed-card');
         let visibleCount = 0;
         
         cards.forEach(card => {
             const showLocation = (locationFilter === 'all') || (card.dataset.location === locationFilter);
-            const showStatus = (statusFilter === 'all') || (card.dataset.status === statusFilter);
+            const showFilter = (currentBedFilter === 'all') || (card.dataset.status === currentBedFilter);
             const showSearch = (searchQuery === '') || (card.dataset.searchTerms.toLowerCase().includes(searchQuery));
             
-            if (showLocation && showStatus && showSearch) {
+            if (showLocation && showFilter && showSearch) {
+                card.classList.remove('filtered-out');
                 card.style.display = 'flex';
                 visibleCount++;
             } else {
+                card.classList.add('filtered-out');
                 card.style.display = 'none';
             }
         });
@@ -1859,6 +1885,63 @@ document.addEventListener("DOMContentLoaded", function() {
         if (visibleCount === 0) {
             gridContainer.insertAdjacentHTML('beforeend', '<p class="no-items-message">No beds match the current filters.</p>');
         }
+    }
+
+    function applyBedFilter(filter) {
+        const cards = document.querySelectorAll('#bed-grid-container .bed-card');
+        
+        cards.forEach(card => {
+            if (filter === 'all') {
+                card.classList.remove('filtered-out');
+            } else {
+                if (card.dataset.status === filter) {
+                    card.classList.remove('filtered-out');
+                } else {
+                    card.classList.add('filtered-out');
+                }
+            }
+        });
+        
+        filterBedGrid(); // Also apply search and location filters
+    }
+
+    function updateBedStatistics(data) {
+        let total = 0;
+        let available = 0;
+        let occupied = 0;
+        let cleaning = 0;
+        let reserved = 0;
+        
+        data.beds.forEach(bed => {
+            total++;
+            if (bed.status === 'available') available++;
+            else if (bed.status === 'occupied') occupied++;
+            else if (bed.status === 'cleaning') cleaning++;
+            else if (bed.status === 'reserved') reserved++;
+        });
+        
+        data.rooms.forEach(room => {
+            total++;
+            if (room.status === 'available') available++;
+            else if (room.status === 'occupied') occupied++;
+            else if (room.status === 'cleaning') cleaning++;
+            else if (room.status === 'reserved') reserved++;
+        });
+        
+        const availablePercent = total > 0 ? ((available / total) * 100).toFixed(1) : 0;
+        const occupiedPercent = total > 0 ? ((occupied / total) * 100).toFixed(1) : 0;
+        const cleaningPercent = total > 0 ? ((cleaning / total) * 100).toFixed(1) : 0;
+        const reservedPercent = total > 0 ? ((reserved / total) * 100).toFixed(1) : 0;
+        
+        document.getElementById('bed-stat-total').textContent = total;
+        document.getElementById('bed-stat-available').textContent = available;
+        document.getElementById('bed-stat-available-percent').textContent = availablePercent + '%';
+        document.getElementById('bed-stat-occupied').textContent = occupied;
+        document.getElementById('bed-stat-occupied-percent').textContent = occupiedPercent + '%';
+        document.getElementById('bed-stat-cleaning').textContent = cleaning;
+        document.getElementById('bed-stat-cleaning-percent').textContent = cleaningPercent + '%';
+        document.getElementById('bed-stat-reserved').textContent = reserved;
+        document.getElementById('bed-stat-reserved-percent').textContent = reservedPercent + '%';
     }
 
 
