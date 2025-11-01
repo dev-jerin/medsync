@@ -1038,16 +1038,52 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
             $stmt_user->bind_param("sssssi", $name, $email, $phone, $gender, $dob, $current_user_id);
             $stmt_user->execute();
             
-            // Update doctors table (Use INSERT...ON DUPLICATE KEY UPDATE to handle both new and existing doctors)
-            $stmt_doctor = $conn->prepare("
-                INSERT INTO doctors (user_id, specialty_id, department_id, qualifications) 
-                VALUES (?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE 
-                    specialty_id = VALUES(specialty_id), 
-                    department_id = VALUES(department_id), 
-                    qualifications = VALUES(qualifications)
-            ");
-            $stmt_doctor->bind_param("iiis", $current_user_id, $specialty_id, $department_id, $qualifications);
+            // Update doctors table - handle NULL values properly
+            if ($specialty_id === null && $department_id === null) {
+                // Both are NULL
+                $stmt_doctor = $conn->prepare("
+                    INSERT INTO doctors (user_id, specialty_id, department_id, qualifications) 
+                    VALUES (?, NULL, NULL, ?)
+                    ON DUPLICATE KEY UPDATE 
+                        specialty_id = NULL, 
+                        department_id = NULL, 
+                        qualifications = VALUES(qualifications)
+                ");
+                $stmt_doctor->bind_param("is", $current_user_id, $qualifications);
+            } else if ($specialty_id === null) {
+                // Only specialty_id is NULL
+                $stmt_doctor = $conn->prepare("
+                    INSERT INTO doctors (user_id, specialty_id, department_id, qualifications) 
+                    VALUES (?, NULL, ?, ?)
+                    ON DUPLICATE KEY UPDATE 
+                        specialty_id = NULL, 
+                        department_id = VALUES(department_id), 
+                        qualifications = VALUES(qualifications)
+                ");
+                $stmt_doctor->bind_param("iis", $current_user_id, $department_id, $qualifications);
+            } else if ($department_id === null) {
+                // Only department_id is NULL
+                $stmt_doctor = $conn->prepare("
+                    INSERT INTO doctors (user_id, specialty_id, department_id, qualifications) 
+                    VALUES (?, ?, NULL, ?)
+                    ON DUPLICATE KEY UPDATE 
+                        specialty_id = VALUES(specialty_id), 
+                        department_id = NULL, 
+                        qualifications = VALUES(qualifications)
+                ");
+                $stmt_doctor->bind_param("iis", $current_user_id, $specialty_id, $qualifications);
+            } else {
+                // Both have values
+                $stmt_doctor = $conn->prepare("
+                    INSERT INTO doctors (user_id, specialty_id, department_id, qualifications) 
+                    VALUES (?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE 
+                        specialty_id = VALUES(specialty_id), 
+                        department_id = VALUES(department_id), 
+                        qualifications = VALUES(qualifications)
+                ");
+                $stmt_doctor->bind_param("iiis", $current_user_id, $specialty_id, $department_id, $qualifications);
+            }
             $stmt_doctor->execute();
             
             $log_details = "Updated profile details. Name: {$name}, Email: {$email}, Phone: {$phone}, Qualifications: {$qualifications}.";
@@ -1057,11 +1093,15 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
             echo json_encode(['success' => true, 'message' => 'Profile updated successfully!']);
         } catch (mysqli_sql_exception $exception) {
             $conn->rollback();
+            // Log the actual error for debugging
+            error_log("Profile update error: " . $exception->getMessage());
+            error_log("Error code: " . $conn->errno);
+            
             // Check for duplicate email error
             if ($conn->errno === 1062) {
                  echo json_encode(['success' => false, 'message' => 'Error: This email address is already in use by another account.']);
             } else {
-                 echo json_encode(['success' => false, 'message' => 'A database error occurred. Please try again.']);
+                 echo json_encode(['success' => false, 'message' => 'A database error occurred: ' . $exception->getMessage()]);
             }
         } finally {
             if (isset($stmt_user)) $stmt_user->close();
