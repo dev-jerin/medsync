@@ -2,7 +2,6 @@
 
 // 1. Include the configuration file to set up the database connection and session.
 require_once 'config.php';
-require_once '_private/chatbot_config.php';
 
 // 2. Check if a user is already logged in (This logic is preserved from your original file).
 if (isset($_SESSION['user_id'])) {
@@ -372,8 +371,8 @@ $conn->close();
     </footer>
 
     <!-- Chatbot Integration -->
-    <script> window.chtlConfig = { chatbotId: "4776578598" } </script>
-    <script async data-id="<?php echo CHATBOT_ID; ?> " id="chtl-script" type="text/javascript" src="https://chatling.ai/js/embed.js"></script>
+    <script> window.chtlConfig = { chatbotId: "<?php echo htmlspecialchars($_ENV['CHATBOT_ID'] ?? '4776578598'); ?>" } </script>
+    <script async data-id="<?php echo htmlspecialchars($_ENV['CHATBOT_ID'] ?? '4776578598'); ?>" id="chtl-script" type="text/javascript" src="https://chatling.ai/js/embed.js"></script>
 
     <script src="main/script.js"></script>
 </body>

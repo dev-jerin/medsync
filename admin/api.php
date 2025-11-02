@@ -1,4 +1,5 @@
 <?php
+
 // --- CONFIG & SESSION START ---
 require_once '../config.php'; //loads database connection
 require_once '../vendor/autoload.php'; //vendor files for phpmailer and dompdf
@@ -8,6 +9,7 @@ require_once '../mail/templates.php'; //email templates
 // ---classes from the Dompdf library---
 use Dompdf\Dompdf;
 use Dompdf\Options;
+
 
 
 // --- LOG ACTIVITY STORING ---

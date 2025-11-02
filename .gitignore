@@ -9,5 +9,8 @@ STUDY.txt
 _private
 composer.lock
 
+# Environment variables
+.env
+
 # Testing directory - should not be in production
 tests/

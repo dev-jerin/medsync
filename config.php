@@ -1,10 +1,22 @@
 <?php
 
+// Define a constant to indicate config.php has been loaded
+define('CONFIG_LOADED', true);
+
+// Load environment variables
+require_once __DIR__ . '/vendor/autoload.php';
+
+use Dotenv\Dotenv;
+
+$dotenv = Dotenv::createImmutable(__DIR__);
+$dotenv->load();
+
 // --- Database Configuration ---
-$dbhost = 'localhost'; 
-$dbuser = 'root';      
-$dbpass = '';         
-$db = 'medsync';       
+// Use $_ENV instead of getenv() for better compatibility with empty values
+$dbhost = $_ENV['DB_HOST'] ?? 'localhost'; 
+$dbuser = $_ENV['DB_USER'] ?? 'root';      
+$dbpass = $_ENV['DB_PASS'] ?? '';         
+$db = $_ENV['DB_NAME'] ?? 'medsync';       
 
 // --- Establish Database Connection using mysqli ---
 $conn = new mysqli($dbhost, $dbuser, $dbpass, $db);
@@ -45,8 +57,25 @@ function getDbConnection() {
 
 // --- Session and Security Initialization ---
 
-// Start the session if it's not already started.
+// Configure session security settings BEFORE starting the session
 if (session_status() == PHP_SESSION_NONE) {
+    // Set session cookie parameters for enhanced security
+    ini_set('session.cookie_httponly', '1');  // Prevent JavaScript access to session cookie (XSS protection)
+    ini_set('session.use_strict_mode', '1');  // Prevent session fixation attacks
+    ini_set('session.cookie_secure', '0');    // Set to '1' in production with HTTPS
+    ini_set('session.cookie_samesite', 'Strict'); // CSRF protection
+    ini_set('session.use_only_cookies', '1'); // Don't accept session IDs from URLs
+    
+    // Set session cookie parameters
+    session_set_cookie_params([
+        'lifetime' => 0,           // Session cookie expires when browser closes
+        'path' => '/',
+        'domain' => '',
+        'secure' => false,         // Set to true in production with HTTPS
+        'httponly' => true,        // Prevent JavaScript access
+        'samesite' => 'Strict'     // CSRF protection
+    ]);
+    
     session_start();
 }
 
@@ -92,6 +121,10 @@ function customErrorHandler($severity, $message, $file, $line) {
 // Register our custom function as the default error handler for the application.
 set_error_handler("customErrorHandler");
 
-// Include reCAPTCHA configuration
-require_once __DIR__ . '/_private/recaptcha_config.php';
+// Define reCAPTCHA constants from environment variables
+define('RECAPTCHA_SITE_KEY', $_ENV['RECAPTCHA_SITE_KEY'] ?? '');
+define('RECAPTCHA_SECRET_KEY', $_ENV['RECAPTCHA_SECRET_KEY'] ?? '');
+
+// Define Chatbot ID from environment variables
+define('CHATBOT_ID', $_ENV['CHATBOT_ID'] ?? '');
 ?>

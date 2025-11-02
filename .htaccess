@@ -67,3 +67,60 @@ php_value error_log log.txt
 <Files "log.txt">
     Require all denied
 </Files>
+
+# ----------------------------------------------------------------------
+# Section 6: Protect Environment Variables
+# ----------------------------------------------------------------------
+# Deny access to .env files
+<FilesMatch "^\.env">
+    Require all denied
+</FilesMatch>
+
+# Deny access to sensitive configuration files
+<FilesMatch "^(composer\.(json|lock)|\.git.*|\.env.*|firebase_credentials\.json)$">
+    Require all denied
+</FilesMatch>
+
+# ----------------------------------------------------------------------
+# Section 7: Block Direct Access to Sensitive Files
+# ----------------------------------------------------------------------
+
+# Block config files from being accessed directly
+<FilesMatch "^(config\.php|firebase_config\.php|chatbot_config\.php|recaptcha_config\.php)$">
+    Require all denied
+</FilesMatch>
+
+# Block database SQL files
+<FilesMatch "\.(sql|db|sqlite|sqlite3)$">
+    Require all denied
+</FilesMatch>
+
+# Block backup and temporary files
+<FilesMatch "\.(bak|backup|tmp|temp|old|log|swp)$">
+    Require all denied
+</FilesMatch>
+
+# Block version control and project files
+<FilesMatch "^(\.git|\.gitignore|\.gitattributes|README\.md|CONTRIBUTING\.md|CODE_OF_CONDUCT\.md|LICENSE|lic-header\.txt)$">
+    Require all denied
+</FilesMatch>
+
+# Block Composer and package manager files
+<FilesMatch "^(composer\.json|composer\.lock|package\.json|package-lock\.json)$">
+    Require all denied
+</FilesMatch>
+
+# ----------------------------------------------------------------------
+# Section 8: Protect Specific Directories
+# ----------------------------------------------------------------------
+
+# Block access to vendor directory (Composer packages)
+RedirectMatch 403 ^/medsync/vendor/.*$
+
+# Block access to _private directory (already has its own .htaccess)
+RedirectMatch 403 ^/medsync/_private/.*$
+
+
+
+# Block access to docs directory (optional - uncomment if needed)
+# RedirectMatch 403 ^/medsync/docs/.*$

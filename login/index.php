@@ -1,7 +1,7 @@
 <?php
 //database connection
 require_once '../config.php';
-require_once '../_private/firebase_config.php';
+require_once '../auth/firebase_helper.php';
 
 // If a user is already logged in, redirect them to their dashboard
 if (isset($_SESSION['user_id'])) {

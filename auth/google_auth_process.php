@@ -51,7 +51,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST" || !isset($_POST['id_token'])) {
 $idTokenString = $_POST['id_token'];
 
 // 3. FIREBASE SETUP & TOKEN VERIFICATION
-$serviceAccountPath = __DIR__ . '/../_private/firebase_credentials.json';
+$serviceAccountPath = __DIR__ . '/../' . ($_ENV['FIREBASE_CREDENTIALS_PATH'] ?? '_private/firebase_credentials.json');
 
 if (!file_exists($serviceAccountPath)) {
     $_SESSION['login_error'] = 'Server configuration error: Firebase service account not found.';
@@ -63,6 +63,11 @@ try {
     $factory = (new Factory)->withServiceAccount($serviceAccountPath);
     $auth = $factory->createAuth();
     $verifiedIdToken = $auth->verifyIdToken($idTokenString);
+    
+    // Extract UID from token - verifyIdToken returns Lcobucci\JWT\Token\Plain (lcobucci/jwt 4.x)
+    // The claims() method returns Lcobucci\JWT\Token\DataSet
+    /** @var \Lcobucci\JWT\Token\Plain $verifiedIdToken */
+    $uid = $verifiedIdToken->claims()->get('sub');
 } catch (Throwable $e) {
     error_log("Firebase Auth Error: " . $e->getMessage());
     $_SESSION['login_error'] = 'Authentication failed. Please try again.';
@@ -71,8 +76,14 @@ try {
 }
 
 // 4. EXTRACT USER DATA & CONNECT TO DATABASE
-$uid = $verifiedIdToken->claims()->get('sub');
-$firebaseUser = $auth->getUser($uid);
+try {
+    $firebaseUser = $auth->getUser($uid);
+} catch (Throwable $e) {
+    error_log("Firebase Get User Error: " . $e->getMessage());
+    $_SESSION['login_error'] = 'Unable to retrieve user data. Please try again.';
+    header('Location: ../login/index.php');
+    exit();
+}
 $email = $firebaseUser->email;
 $name = $firebaseUser->displayName ?? 'New User';
 $profilePictureUrl = $firebaseUser->photoUrl;
