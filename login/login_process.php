@@ -21,6 +21,8 @@ if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST
     exit();
 }
 
+// --- RECAPTCHA TEMPORARILY DISABLED - Uncomment to re-enable ---
+/*
 // --- reCAPTCHA Validation ---
 if (!isset($_POST['g-recaptcha-response']) || empty($_POST['g-recaptcha-response'])) {
     $_SESSION['login_error'] = "Please complete the reCAPTCHA.";
@@ -60,7 +62,7 @@ if ($result_json['success'] !== true) {
     header("Location: index.php");
     exit();
 }
-
+*/
 
 // --- Form Data Retrieval ---
 $login_identifier = trim($_POST['username']); // Can be username, email, or user_id

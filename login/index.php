@@ -71,7 +71,8 @@ $username_value = isset($form_data['username']) ? htmlspecialchars($form_data['u
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
     </style>
-    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    <!-- RECAPTCHA TEMPORARILY DISABLED - Uncomment to re-enable -->
+    <!-- <script src="https://www.google.com/recaptcha/api.js" async defer></script> -->
 </head>
 <body>
 
@@ -137,9 +138,10 @@ $username_value = isset($form_data['username']) ? htmlspecialchars($form_data['u
                             <i class="fas fa-eye-slash password-toggle-icon" id="togglePassword"></i>
                         </div>
 
-                        <div class="form-group">
+                        <!-- RECAPTCHA TEMPORARILY DISABLED - Uncomment to re-enable -->
+                        <!-- <div class="form-group">
                             <center><div class="g-recaptcha" data-sitekey="<?php echo RECAPTCHA_SITE_KEY; ?>"></div></center>
-                        </div>
+                        </div> -->
 
                         <div class="forgot-password-link">
                             <a href="../forgot_password">Forgot Password?</a>
