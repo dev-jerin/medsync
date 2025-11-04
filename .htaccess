@@ -123,44 +123,4 @@ RedirectMatch 403 ^/medsync/_private/.*$
 # Block access to docs directory (optional - uncomment if needed)
 # RedirectMatch 403 ^/medsync/docs/.*$
 
-# ----------------------------------------------------------------------
-# Section 9: Protect Upload Directories
-# ----------------------------------------------------------------------
 
-# Protect lab_reports directory - Prevent PHP execution and allow only document files
-<Directory "${DOCUMENT_ROOT}/medsync/uploads/lab_reports">
-    # Disable PHP execution
-    php_flag engine off
-    
-    # Deny access to PHP files
-    <FilesMatch "\.(php|phtml|php3|php4|php5|phps|pht|phar)$">
-        Require all denied
-    </FilesMatch>
-    
-    # Disable directory browsing
-    Options -Indexes
-    
-    # Allow only specific document file types
-    <FilesMatch "\.(pdf|jpg|jpeg|png|gif|webp|doc|docx)$">
-        Require all granted
-    </FilesMatch>
-</Directory>
-
-# Protect profile_pictures directory - Prevent PHP execution and allow only image files
-<Directory "${DOCUMENT_ROOT}/medsync/uploads/profile_pictures">
-    # Disable PHP execution
-    php_flag engine off
-    
-    # Deny access to PHP files
-    <FilesMatch "\.(php|phtml|php3|php4|php5|phps|pht|phar)$">
-        Require all denied
-    </FilesMatch>
-    
-    # Disable directory browsing
-    Options -Indexes
-    
-    # Allow only specific image file types
-    <FilesMatch "\.(jpg|jpeg|png|gif|webp|svg)$">
-        Require all granted
-    </FilesMatch>
-</Directory>
