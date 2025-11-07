@@ -646,7 +646,6 @@ body.dark-mode .notification-item.unread {
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     padding: 1rem;
-    white-space: pre-wrap;       /* CSS property to wrap text in <pre> */
     word-wrap: break-word;     /* Break long words */
     font-family: inherit;
     font-size: 0.95rem;
