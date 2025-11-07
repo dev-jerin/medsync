@@ -57,6 +57,10 @@ CREATE TABLE `users` (
   `profile_picture` VARCHAR(255) NULL DEFAULT 'default.png',
   `phone` varchar(25) NULL DEFAULT NULL,
   `date_of_birth` date DEFAULT NULL,
+  `notify_appointments` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Email notifications for appointment updates',
+  `notify_billing` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Email notifications for billing and payments',
+  `notify_labs` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Email notifications for lab results',
+  `notify_prescriptions` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Email notifications for prescriptions',
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `session_token` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
@@ -549,7 +553,7 @@ CREATE TABLE `patient_encounters` (
 --
 -- Initialize an admin user (Change password after first login) - change it with real data
 --
-INSERT INTO `users` (`display_user_id`,`username`,`email`,`password`,`role_id`,`name`,`phone`,`is_active`) VALUES ('A0001','admin','admin@email.com','$2y$10$st0OkWHJKIYaSe7DxNNp2.X506p38taUUBSUT0y/pd2gfCGPDI/qO',4,'Admin','+910000000000',1);
+INSERT INTO `users` (`display_user_id`,`username`,`email`,`password`,`role_id`,`name`,`phone`,`notify_appointments`,`notify_billing`,`notify_labs`,`notify_prescriptions`,`is_active`) VALUES ('A0001','admin','admin@email.com','$2y$10$st0OkWHJKIYaSe7DxNNp2.X506p38taUUBSUT0y/pd2gfCGPDI/qO',4,'Admin','+910000000000',1,1,1,1,1);
 
 UPDATE `role_counters` SET `last_id` = 1 WHERE `role_prefix` = 'A';
 
