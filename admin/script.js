@@ -1381,6 +1381,67 @@ const toggleRoleFields = () => {
         }
     });
 
+    // --- DATABASE BACKUP ---
+    document.getElementById('backup-database-btn')?.addEventListener('click', async () => {
+        const confirmed = await showConfirmation(
+            'Create Database Backup', 
+            'This will download a complete backup of your database. Do you want to proceed?'
+        );
+        
+        if (confirmed) {
+            const backupBtn = document.getElementById('backup-database-btn');
+            const backupStatus = document.getElementById('backup-status');
+            
+            try {
+                // Disable button and show loading status
+                backupBtn.disabled = true;
+                backupStatus.style.display = 'inline-block';
+                
+                // Create a form to submit the backup request
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = 'api.php';
+                form.style.display = 'none';
+                
+                // Add CSRF token
+                const csrfInput = document.createElement('input');
+                csrfInput.type = 'hidden';
+                csrfInput.name = 'csrf_token';
+                csrfInput.value = csrfToken;
+                form.appendChild(csrfInput);
+                
+                // Add action
+                const actionInput = document.createElement('input');
+                actionInput.type = 'hidden';
+                actionInput.name = 'action';
+                actionInput.value = 'backup_database';
+                form.appendChild(actionInput);
+                
+                // Append to body and submit
+                document.body.appendChild(form);
+                form.submit();
+                
+                // Show success message after a brief delay
+                setTimeout(() => {
+                    backupBtn.disabled = false;
+                    backupStatus.style.display = 'none';
+                    showNotification('Database backup downloaded successfully!', 'success');
+                }, 2000);
+                
+                // Clean up form
+                setTimeout(() => {
+                    document.body.removeChild(form);
+                }, 3000);
+                
+            } catch (error) {
+                backupBtn.disabled = false;
+                backupStatus.style.display = 'none';
+                showNotification('Failed to create database backup. Please try again.', 'error');
+                console.error('Backup error:', error);
+            }
+        }
+    });
+
     // --- INVENTORY MANAGEMENT (MEDICINE) ---
     const openMedicineModal = setupModal({
         modalId: 'medicine-modal',

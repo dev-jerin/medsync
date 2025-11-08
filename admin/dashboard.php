@@ -810,6 +810,28 @@ $conn->close();
                 <h3>System Settings</h3>
                 <p>Configure system-wide settings here. Changes will take effect immediately.</p>
 
+                <!-- Database Backup Section -->
+                <div style="margin-top: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    <h4 style="margin-top: 0; display: flex; align-items: center; gap: 0.5rem; color: white;">
+                        <i class="fas fa-database"></i> Database Backup
+                    </h4>
+                    <p style="margin-bottom: 1.5rem; opacity: 0.9; font-size: 0.95rem;">
+                        Create a complete backup of your database. This will download a SQL file containing all tables and data.
+                    </p>
+                    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                        <button type="button" id="backup-database-btn" class="btn" style="background: white; color: #667eea; font-weight: 600; border: none; padding: 0.75rem 1.5rem;">
+                            <i class="fas fa-download"></i> Download Database Backup
+                        </button>
+                        <span id="backup-status" style="display: none; font-size: 0.9rem;">
+                            <i class="fas fa-spinner fa-spin"></i> Creating backup...
+                        </span>
+                    </div>
+                    <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(255,255,255,0.1); border-radius: 4px; font-size: 0.85rem;">
+                        <i class="fas fa-info-circle"></i> 
+                        <strong>Note:</strong> This backup includes all tables, users, appointments, inventory, and settings. Store it securely.
+                    </div>
+                </div>
+
                 <div style="margin-top: 1.5rem; padding: 1rem; background-color: var(--bg-grey); border-radius: 8px; border: 1px solid var(--border-light);">
                     <p style="margin: 0; font-weight: 500;">
                         <strong>Current System Email:</strong> 

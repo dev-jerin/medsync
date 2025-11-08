@@ -120,7 +120,7 @@ RedirectMatch 403 ^/medsync/vendor/.*$
 # Block access to _private directory (already has its own .htaccess)
 RedirectMatch 403 ^/medsync/_private/.*$
 
-
-
 # Block access to docs directory (optional - uncomment if needed)
 # RedirectMatch 403 ^/medsync/docs/.*$
+
+

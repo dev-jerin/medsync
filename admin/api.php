@@ -1206,35 +1206,22 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                 case 'dismiss_all_notifications':
                     $admin_user_id = $_SESSION['user_id'];
 
-
-                    $sql_get_ids = "SELECT n.id 
-                                    FROM notifications n
-                                    LEFT JOIN notification_dismissals nd ON n.id = nd.notification_id AND nd.user_id = ?
-                                    WHERE (n.recipient_user_id = ? OR n.recipient_role = 'admin' OR n.recipient_role = 'all')
-                                    AND nd.user_id IS NULL";
-                    $stmt_get_ids = $conn->prepare($sql_get_ids);
-                    $stmt_get_ids->bind_param("ii", $admin_user_id, $admin_user_id);
-                    $stmt_get_ids->execute();
-                    $result = $stmt_get_ids->get_result();
-                    $notification_ids = [];
-                    while ($row = $result->fetch_assoc()) {
-                        $notification_ids[] = $row['id'];
+                    // Mark all notifications for this user as read
+                    $sql = "UPDATE notifications 
+                            SET is_read = 1 
+                            WHERE (recipient_user_id = ? OR recipient_role = 'admin' OR recipient_role = 'all') 
+                            AND is_read = 0";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("i", $admin_user_id);
+                    
+                    if ($stmt->execute()) {
+                        $affected_rows = $stmt->affected_rows;
+                        log_activity($conn, $admin_user_id_for_log, 'dismiss_notifications', null, "Marked {$affected_rows} notifications as read.");
+                        $response = ['success' => true, 'message' => 'All notifications marked as read.'];
+                    } else {
+                        $response = ['success' => false, 'message' => 'Failed to mark notifications as read.'];
                     }
-                    $stmt_get_ids->close();
-
-                    if (!empty($notification_ids)) {
-                        
-                        $sql_dismiss = "INSERT INTO notification_dismissals (user_id, notification_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE user_id=user_id";
-                        $stmt_dismiss = $conn->prepare($sql_dismiss);
-                        foreach ($notification_ids as $notif_id) {
-                            $stmt_dismiss->bind_param("ii", $admin_user_id, $notif_id);
-                            $stmt_dismiss->execute();
-                        }
-                        $stmt_dismiss->close();
-                    }
-
-                    log_activity($conn, $admin_user_id_for_log, 'dismiss_notifications', null, "Dismissed all unread notifications.");
-                    $response = ['success' => true, 'message' => 'Notifications dismissed.'];
+                    $stmt->close();
                     break;
                 
                 case 'download_pdf':
@@ -1246,6 +1233,65 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
             
                     generatePdfReport($conn, $_POST['report_type'], $_POST['start_date'], $_POST['end_date']);
                     exit();
+
+                case 'backup_database':
+                    try {
+                        // Log the backup activity
+                        log_activity($conn, $admin_user_id_for_log, 'database_backup', null, 'Initiated manual database backup.');
+                        
+                        // Get database credentials from environment
+                        $dbhost = $_ENV['DB_HOST'] ?? 'localhost';
+                        $dbuser = $_ENV['DB_USER'] ?? 'root';
+                        $dbpass = $_ENV['DB_PASS'] ?? '';
+                        $db = $_ENV['DB_NAME'] ?? 'medsync';
+                        
+                        // Create backup filename with timestamp
+                        $backup_filename = 'medsync_backup_' . date('Y-m-d_H-i-s') . '.sql';
+                        $backup_path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $backup_filename;
+                        
+                        // Execute mysqldump command
+                        $command = sprintf(
+                            'mysqldump --user=%s --password=%s --host=%s %s > %s 2>&1',
+                            escapeshellarg($dbuser),
+                            escapeshellarg($dbpass),
+                            escapeshellarg($dbhost),
+                            escapeshellarg($db),
+                            escapeshellarg($backup_path)
+                        );
+                        
+                        exec($command, $output, $return_var);
+                        
+                        // Check if backup was successful
+                        if ($return_var !== 0 || !file_exists($backup_path) || filesize($backup_path) === 0) {
+                            // Fallback to PHP-based backup if mysqldump fails
+                            $backup_content = generatePhpBackup($conn);
+                            file_put_contents($backup_path, $backup_content);
+                        }
+                        
+                        if (file_exists($backup_path) && filesize($backup_path) > 0) {
+                            // Log successful backup
+                            $file_size = filesize($backup_path);
+                            log_activity($conn, $admin_user_id_for_log, 'database_backup', null, "Database backup completed successfully. File size: " . formatBytes($file_size));
+                            
+                            // Set headers for file download
+                            header('Content-Type: application/sql');
+                            header('Content-Disposition: attachment; filename="' . $backup_filename . '"');
+                            header('Content-Length: ' . $file_size);
+                            header('Cache-Control: no-cache, must-revalidate');
+                            header('Pragma: public');
+                            
+                            // Output file and clean up
+                            readfile($backup_path);
+                            unlink($backup_path);
+                            exit();
+                        } else {
+                            throw new Exception('Failed to create database backup. Please check server permissions.');
+                        }
+                    } catch (Exception $e) {
+                        log_activity($conn, $admin_user_id_for_log, 'database_backup_error', null, 'Database backup failed: ' . $e->getMessage());
+                        throw new Exception('Database backup failed: ' . $e->getMessage());
+                    }
+                    // No break needed as exit() is called above
 
                 case 'blockIp':
                 if (empty($_POST['ip_address'])) {
@@ -2200,5 +2246,70 @@ function generatePdfReport($conn, $reportType, $startDate, $endDate) {
     $dompdf->setPaper('A4', 'portrait');
     $dompdf->render();
     $dompdf->stream(strtolower(str_replace(' ', '_', $reportType)) . '_report.pdf', ["Attachment" => 1]);
+}
+
+/**
+ * Generate database backup using PHP (fallback method)
+ * @param mysqli $conn Database connection
+ * @return string SQL backup content
+ */
+function generatePhpBackup($conn) {
+    $backup = "-- MedSync Database Backup\n";
+    $backup .= "-- Generated on: " . date('Y-m-d H:i:s') . "\n";
+    $backup .= "-- Database: " . $conn->query("SELECT DATABASE()")->fetch_row()[0] . "\n\n";
+    $backup .= "SET SQL_MODE = \"NO_AUTO_VALUE_ON_ZERO\";\n";
+    $backup .= "SET time_zone = \"+00:00\";\n\n";
+    
+    // Get all tables
+    $tables = [];
+    $result = $conn->query("SHOW TABLES");
+    while ($row = $result->fetch_array()) {
+        $tables[] = $row[0];
+    }
+    
+    foreach ($tables as $table) {
+        // Drop table if exists
+        $backup .= "\n-- Table structure for table `$table`\n";
+        $backup .= "DROP TABLE IF EXISTS `$table`;\n";
+        
+        // Get create table statement
+        $create_table = $conn->query("SHOW CREATE TABLE `$table`")->fetch_row();
+        $backup .= $create_table[1] . ";\n\n";
+        
+        // Get table data
+        $result = $conn->query("SELECT * FROM `$table`");
+        if ($result->num_rows > 0) {
+            $backup .= "-- Dumping data for table `$table`\n";
+            
+            while ($row = $result->fetch_assoc()) {
+                $values = [];
+                foreach ($row as $value) {
+                    if ($value === null) {
+                        $values[] = 'NULL';
+                    } else {
+                        $values[] = "'" . $conn->real_escape_string($value) . "'";
+                    }
+                }
+                $backup .= "INSERT INTO `$table` VALUES (" . implode(", ", $values) . ");\n";
+            }
+            $backup .= "\n";
+        }
+    }
+    
+    return $backup;
+}
+
+/**
+ * Format bytes to human-readable size
+ * @param int $bytes File size in bytes
+ * @return string Formatted size
+ */
+function formatBytes($bytes) {
+    $units = ['B', 'KB', 'MB', 'GB'];
+    $bytes = max($bytes, 0);
+    $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+    $pow = min($pow, count($units) - 1);
+    $bytes /= pow(1024, $pow);
+    return round($bytes, 2) . ' ' . $units[$pow];
 }
 ?>
