@@ -684,3 +684,6 @@ INSERT INTO `accommodations` (`type`, `number`, `ward_id`, `status`, `patient_id
 -- Maternity Ward (ward_id: 7, assuming this ward exists)
 ('room', 'MW-R401', 7, 'available', NULL, NULL, NULL, NULL, 6000.00),
 ('room', 'MW-R402', 7, 'available', NULL, NULL, NULL, NULL, 6000.00);
+
+-- Add new columns to the users table for notification preferences
+-- We set DEFAULT 1 (true) to match the 'checked' status in your original HTML

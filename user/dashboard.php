@@ -549,22 +549,22 @@ require_once 'api.php';
 
                     <div class="content-panel" style="margin-top: 2rem;">
                         <h2 class="panel-title-with-icon"><i class="fas fa-envelope"></i> Notification Preferences</h2>
-                        <form id="notification-prefs-form">
+                        <form id="notification-prefs-form" class="profile-form">
                             <p class="text-secondary">Manage the email notifications you receive from MedSync.</p>
                             <div class="checkbox-group">
-                                <input type="checkbox" id="notify-appointments" name="notify_appointments" checked>
+                                <input type="checkbox" id="notify-appointments" name="notify_appointments" <?php echo ($user_details['notify_appointments'] ?? 1) ? 'checked' : ''; ?>>
                                 <label for="notify-appointments">Appointment Confirmations & Reminders</label>
                             </div>
                             <div class="checkbox-group">
-                                <input type="checkbox" id="notify-billing" name="notify_billing" checked>
+                                <input type="checkbox" id="notify-billing" name="notify_billing" <?php echo ($user_details['notify_billing'] ?? 1) ? 'checked' : ''; ?>>
                                 <label for="notify-billing">New Bills & Payment Confirmations</label>
                             </div>
                             <div class="checkbox-group">
-                                <input type="checkbox" id="notify-labs" name="notify_labs">
+                                <input type="checkbox" id="notify-labs" name="notify_labs" <?php echo ($user_details['notify_labs'] ?? 1) ? 'checked' : ''; ?>>
                                 <label for="notify-labs">Lab Result Availability</label>
                             </div>
                             <div class="checkbox-group">
-                                <input type="checkbox" id="notify-prescriptions" name="notify_prescriptions" checked>
+                                <input type="checkbox" id="notify-prescriptions" name="notify_prescriptions" <?php echo ($user_details['notify_prescriptions'] ?? 1) ? 'checked' : ''; ?>>
                                 <label for="notify-prescriptions">Prescription Updates</label>
                             </div>
                             <button type="submit" class="btn-primary" style="margin-top: 1.5rem;"><i class="fas fa-save"></i> Save Preferences</button>
@@ -686,7 +686,8 @@ require_once 'api.php';
                 </div>
                 <hr class="section-divider">
                 <h4>Test Result Details</h4>
-                <pre id="modal-lab-result-details"></pre> </div>
+                <div id="modal-lab-result-details"></div>
+            </div>
             <div class="modal-footer" id="modal-lab-download-section">
                 <a href="#" id="modal-lab-download-btn" class="btn-primary" download><i class="fas fa-download"></i> Download Report</a>
             </div>

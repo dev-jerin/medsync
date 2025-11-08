@@ -25,6 +25,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const notificationFilter = document.getElementById('notification-filter');
     const markAllReadBtn = document.getElementById('mark-all-read-btn');
     const notificationBadge = document.querySelector('.notification-badge');
+    
+    // Billing Page Elements
+    const billingPage = document.getElementById('billing-page');
+    const billingTableBody = document.getElementById('billing-table-body');
+    const billingEmptyState = document.getElementById('billing-empty-state');
+    const applyBillingFiltersBtn = document.getElementById('billing-apply-filters');
+    const billDetailsModal = document.getElementById('bill-details-modal');
+    const billCloseModalBtn = document.getElementById('modal-close-btn');
 
     // --- Page Navigation Logic ---
     let tokenInterval; // To hold the interval ID for the token page
@@ -543,7 +551,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (notificationPrefsForm) {
         notificationPrefsForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            alert('Saving Notification Preferences... (Backend logic needed)');
+            // Use the existing handleFormSubmit function with the new action
+            handleFormSubmit(notificationPrefsForm, 'update_notification_prefs');
         });
     }
     
@@ -1029,7 +1038,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="summary-card-actions">
                 <button class="btn-secondary btn-sm toggle-details-btn"><i class="fas fa-eye"></i> View Details</button>
-                <a href="api/download_prescription.php?id=${prescription.id}" class="btn-primary btn-sm" target="_blank"><i class="fas fa-file-pdf"></i> Download PDF</a>
+                <a href="api.php?action=download_prescription&id=${prescription.id}" class="btn-primary btn-sm" target="_blank"><i class="fas fa-file-pdf"></i> Download PDF</a>
             </div>
             <div class="summary-details">
                 <hr class="section-divider">
@@ -1068,12 +1077,29 @@ document.addEventListener('DOMContentLoaded', () => {
             const dateFilter = document.getElementById('prescription-filter-date').value;
             const statusFilter = document.getElementById('prescription-filter-status').value;
             
-            // This API endpoint doesn't exist yet, this part is for demonstration
-            // const apiUrl = `api/get_prescriptions.php?date=${dateFilter}&status=${statusFilter}`;
-            // const response = await fetch(apiUrl);
+            const params = new URLSearchParams({
+                action: 'get_prescriptions',
+                date: dateFilter,
+                status: statusFilter
+            });
             
-            // Mocking the response for now
-            prescriptionsEmptyState.style.display = 'block';
+            const apiUrl = `api.php?${params.toString()}`;
+            const response = await fetch(apiUrl);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP Error: ${response.status}`);
+            }
+            
+            const result = await response.json();
+
+            if (result.success && result.data && result.data.length > 0) {
+                result.data.forEach(prescription => {
+                    const card = createPrescriptionCard(prescription); // This function already exists!
+                    prescriptionsList.appendChild(card);
+                });
+            } else {
+                prescriptionsEmptyState.style.display = 'block';
+            }
             
         } catch (error) {
             console.error("Error fetching prescriptions:", error);
@@ -1090,23 +1116,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===========================================
     // ===      BILLS & PAYMENTS PAGE LOGIC      ===
     // ===========================================
-    const billingPage = document.getElementById('billing-page');
-    const billingTableBody = document.getElementById('billing-table-body');
-    const billingEmptyState = document.getElementById('billing-empty-state');
-    const applyBillingFiltersBtn = document.getElementById('billing-apply-filters');
-    const billDetailsModal = document.getElementById('bill-details-modal');
-    const billCloseModalBtn = document.getElementById('modal-close-btn');
 
     const fetchAndRenderBillingData = async () => {
         if (!billingPage) return;
-
+    
         billingTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">Loading billing history...</td></tr>`;
         billingEmptyState.style.display = 'none';
-
+    
         try {
             const statusFilter = document.getElementById('billing-filter-status').value;
             const dateFilter = document.getElementById('billing-filter-date').value;
-
+    
             const params = new URLSearchParams({ action: 'get_billing_data' });
             if (statusFilter !== 'all') params.append('status', statusFilter);
             if (dateFilter) params.append('date', dateFilter);
@@ -1114,16 +1134,38 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`api.php?${params.toString()}`);
             if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
             const result = await response.json();
-
-
+    
             if (!result.success) throw new Error(result.message);
             
             const { summary, history } = result.data;
-
-            document.getElementById('outstanding-balance').textContent = `₹${parseFloat(summary.outstanding_balance).toFixed(2)}`;
-            document.getElementById('last-payment-amount').textContent = `₹${parseFloat(summary.last_payment_amount).toFixed(2)}`;
-            document.getElementById('last-payment-date').textContent = summary.last_payment_date;
-
+    
+            // --- START OF FIX ---
+    
+            // Update outstanding balance (this one is fine)
+            const outstandingEl = document.getElementById('outstanding-balance');
+            if (outstandingEl) {
+                outstandingEl.textContent = `₹${parseFloat(summary.outstanding_balance).toFixed(2)}`;
+            }
+    
+            // Update last payment
+            // We must update the inner span FIRST, then the parent h3's text node
+            const lastPaymentDateEl = document.getElementById('last-payment-date');
+            if (lastPaymentDateEl) {
+                lastPaymentDateEl.textContent = summary.last_payment_date;
+            }
+    
+            const lastPaymentAmountEl = document.getElementById('last-payment-amount');
+            // Check if the firstChild is a text node (nodeType === 3)
+            if (lastPaymentAmountEl && lastPaymentAmountEl.firstChild && lastPaymentAmountEl.firstChild.nodeType === 3) {
+                // This targets the text node "₹0.00 on " and preserves the <span>
+                lastPaymentAmountEl.firstChild.textContent = `₹${parseFloat(summary.last_payment_amount).toFixed(2)} on `;
+            } else if (lastPaymentAmountEl) {
+                // Fallback in case the HTML structure is ever different
+                lastPaymentAmountEl.innerHTML = `₹${parseFloat(summary.last_payment_amount).toFixed(2)} on <span id="last-payment-date">${summary.last_payment_date}</span>`;
+            }
+            
+            // --- END OF FIX ---
+    
             if (history.length > 0) {
                 billingEmptyState.style.display = 'none';
                 billingTableBody.innerHTML = history.map(bill => {
@@ -1135,8 +1177,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const actionsHtml = statusClass === 'due'
                         ? `<button class="btn-primary btn-sm view-bill-details-btn" data-bill-id="${bill.id}">Pay Now</button>`
                         : `<button class="btn-secondary btn-sm view-bill-details-btn" data-bill-id="${bill.id}">View Details</button>
-                           <a href="api.php?action=download_receipt&id=${bill.id}" class="action-link" style="margin-left: 10px;"><i class="fas fa-download"></i> Receipt</a>`;
-
+                           <a href="api.php?action=download_receipt&id=${bill.id}" class="action-link" style="margin-left: 10px;" target="_blank"><i class="fas fa-download"></i> Receipt</a>`;
+    
                     return `
                         <tr>
                             <td data-label="Date">${billDate}</td>
@@ -1152,10 +1194,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 billingTableBody.innerHTML = '';
                 billingEmptyState.style.display = 'block';
             }
-
+    
         } catch (error) {
             console.error("Error fetching billing data:", error);
-            billingTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--status-red);">Could not load billing history. Please try again.</td></tr>`;
+            // This is the line from the previous fix, which will now show the *real* error
+            const specificError = error.message.replace('Error:', '').trim(); 
+            billingTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--status-red);"><strong>Error:</strong> ${specificError}</td></tr>`;
         }
     };
 
@@ -1163,12 +1207,69 @@ document.addEventListener('DOMContentLoaded', () => {
         applyBillingFiltersBtn.addEventListener('click', fetchAndRenderBillingData);
     }
     
+    // ===========================================
+    // === THIS IS THE NEW, UPDATED SECTION    ===
+    // ===========================================
+    
+    // --- This is the new function to fetch data and show the modal ---
+    const showBillDetailsModal = async (billId) => {
+        if (!billDetailsModal) return;
+
+        try {
+            const response = await fetch(`api.php?action=get_bill_details&bill_id=${billId}`);
+            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+            
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+
+            const data = result.data;
+
+            // Populate modal fields
+            document.getElementById('modal-bill-id').textContent = `TXN${data.id}`;
+            document.getElementById('modal-patient-name').textContent = data.patient_name;
+            document.getElementById('modal-bill-date').textContent = new Date(data.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+            // Set status
+            const statusEl = document.getElementById('modal-bill-status');
+            const displayStatus = data.status === 'pending' ? 'due' : data.status;
+            statusEl.className = `status ${displayStatus.toLowerCase()}`;
+            statusEl.textContent = displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1);
+
+            // Populate itemized charges (using the single description)
+            const itemizedBody = document.getElementById('modal-itemized-charges');
+            itemizedBody.innerHTML = `
+                <tr>
+                    <td>${data.description}</td>
+                    <td>₹${parseFloat(data.amount).toFixed(2)}</td>
+                </tr>
+            `;
+
+            // Populate total
+            document.getElementById('modal-total-amount').textContent = `₹${parseFloat(data.amount).toFixed(2)}`;
+
+            // Show/Hide payment section
+            const paymentSection = document.getElementById('modal-payment-section');
+            if (data.status === 'paid') {
+                paymentSection.style.display = 'none';
+            } else {
+                paymentSection.style.display = 'block';
+            }
+
+            // Show the modal
+            billDetailsModal.classList.add('show');
+
+        } catch (error) {
+            console.error("Error fetching bill details:", error);
+            alert(`Could not load bill details: ${error.message}`);
+        }
+    };
+
     if (billingPage) {
         billingPage.addEventListener('click', (e) => {
             const targetButton = e.target.closest('.view-bill-details-btn');
             if (targetButton) {
-                // Future logic for showing bill details modal can go here
-                alert('Viewing bill details for Bill ID: ' + targetButton.dataset.billId);
+                // --- This is the updated logic ---
+                showBillDetailsModal(targetButton.dataset.billId);
             }
         });
     }
@@ -1186,6 +1287,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const labEmptyState = document.getElementById('lab-results-empty-state');
     const labLoadingState = document.getElementById('lab-results-loading-state');
     const labApplyFiltersBtn = document.getElementById('lab-apply-filters');
+
+    // --- START OF FIX: MOVED MODAL LISTENERS ---
+    // These are now global, guaranteeing the close button will work.
+    if (closeLabModalBtn) closeLabModalBtn.addEventListener('click', () => labModal.classList.remove('show'));
+    if (labModal) labModal.addEventListener('click', (e) => { if (e.target === labModal) labModal.classList.remove('show') });
+    // --- END OF FIX ---
 
     const renderLabResults = (results) => {
         labTableBody.innerHTML = '';
@@ -1253,16 +1360,86 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    //
+    // **** THIS IS THE UPDATED FUNCTION ****
+    //
     const showLabDetailsModal = (resultId) => {
         const results = JSON.parse(labsPage.dataset.results || '[]');
         const data = results.find(r => r.id === parseInt(resultId));
         if (!data || !labModal) return;
 
+        // --- Set simple text fields ---
         document.getElementById('modal-lab-test-name').textContent = data.test_name;
         document.getElementById('modal-lab-date').textContent = new Date(data.test_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
         document.getElementById('modal-lab-doctor').textContent = `Dr. ${data.doctor_name || 'N/A'}`;
-        document.getElementById('modal-lab-result-details').textContent = data.result_details || 'Details are not available.';
         
+        // --- START OF THE FIX ---
+        const detailsContainer = document.getElementById('modal-lab-result-details');
+        detailsContainer.innerHTML = ''; // Clear previous content
+
+        try {
+            // 1. Parse the JSON string from data.result_details
+            const resultData = JSON.parse(data.result_details);
+            
+            // 2. Build the HTML table for 'findings'
+            if (resultData.findings && resultData.findings.length > 0) {
+                // Use the existing 'data-table compact' style from your CSS
+                let tableHtml = `
+                    <table class="data-table compact">
+                        <thead>
+                            <tr>
+                                <th>Test Description</th>
+                                <th>Results</th>
+                                <th>Units</th>
+                                <th>Biological Reference Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                // Loop through each finding and create a table row
+                resultData.findings.forEach(finding => {
+                    const parameter = finding.parameter || 'N/A';
+                    const result = finding.result || 'N/A';
+                    // Your JSON doesn't have 'units', so we'll leave it blank
+                    const units = finding.units || ''; 
+                    const range = finding.range || 'N/A';
+
+                    tableHtml += `
+                        <tr>
+                            <td>${parameter}</td>
+                            <td><strong>${result}</strong></td>
+                            <td>${units}</td>
+                            <td>${range}</td>
+                        </tr>
+                    `;
+                });
+
+                tableHtml += `</tbody></table>`;
+                detailsContainer.innerHTML += tableHtml;
+            }
+
+            // 3. Add the 'summary' from the JSON
+            if (resultData.summary) {
+                detailsContainer.innerHTML += `
+                    <h5 style="margin-top: 1.5rem; margin-bottom: 0.5rem; font-weight: 600;">Summary</h5>
+                    <p>${resultData.summary}</p>
+                `;
+            }
+            
+            // If after all this, the container is still empty
+            if (detailsContainer.innerHTML === '') {
+                 detailsContainer.textContent = 'Result details are not available in a structured format.';
+            }
+
+        } catch (error) {
+            // If it's not valid JSON, display the raw text as a fallback
+            console.error("Failed to parse lab result details:", error);
+            detailsContainer.textContent = data.result_details || 'Details are not available.';
+        }
+        // --- END OF THE FIX ---
+
+        // --- Handle Download Button (existing logic) ---
         const downloadSection = document.getElementById('modal-lab-download-section');
         const downloadBtn = document.getElementById('modal-lab-download-btn');
         if (data.status === 'completed') {
@@ -1271,6 +1448,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             downloadSection.style.display = 'none';
         }
+        
         labModal.classList.add('show');
     };
 
@@ -1282,8 +1460,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         labApplyFiltersBtn.addEventListener('click', fetchAndRenderLabResults);
-        if (closeLabModalBtn) closeLabModalBtn.addEventListener('click', () => labModal.classList.remove('show'));
-        if (labModal) labModal.addEventListener('click', (e) => { if (e.target === labModal) labModal.classList.remove('show') });
+        
+        // --- FIX ---
+        // The modal close listeners have been moved out of this block
+        // to be global.
     }
     
     // ===========================================
@@ -1404,7 +1584,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     
     // ===========================================
-    // ===      NEW: DASHBOARD PAGE LOGIC        ===
+    // ===       NEW: DASHBOARD PAGE LOGIC       ===
     // ===========================================
     const fetchAndRenderDashboardData = async () => {
         const appointmentsList = document.getElementById('dashboard-appointments-list');
