@@ -57,6 +57,10 @@ CREATE TABLE `users` (
   `profile_picture` VARCHAR(255) NULL DEFAULT 'default.png',
   `phone` varchar(25) NULL DEFAULT NULL,
   `date_of_birth` date DEFAULT NULL,
+  `notify_appointments` tinyint(1) NOT NULL DEFAULT 1,
+  `notify_billing` tinyint(1) NOT NULL DEFAULT 1,
+  `notify_labs` tinyint(1) NOT NULL DEFAULT 1,
+  `notify_prescriptions` tinyint(1) NOT NULL DEFAULT 1,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `session_token` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
@@ -683,10 +687,3 @@ INSERT INTO `accommodations` (`type`, `number`, `ward_id`, `status`, `patient_id
 
 -- Add new columns to the users table for notification preferences
 -- We set DEFAULT 1 (true) to match the 'checked' status in your original HTML
-
--- newly added by user1
-ALTER TABLE `users`
-  ADD COLUMN `notify_appointments` TINYINT(1) NOT NULL DEFAULT 1 AFTER `date_of_birth`,
-  ADD COLUMN `notify_billing` TINYINT(1) NOT NULL DEFAULT 1 AFTER `notify_appointments`,
-  ADD COLUMN `notify_labs` TINYINT(1) NOT NULL DEFAULT 1 AFTER `notify_billing`,
-  ADD COLUMN `notify_prescriptions` TINYINT(1) NOT NULL DEFAULT 1 AFTER `notify_labs`;

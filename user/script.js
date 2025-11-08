@@ -1177,7 +1177,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const actionsHtml = statusClass === 'due'
                         ? `<button class="btn-primary btn-sm view-bill-details-btn" data-bill-id="${bill.id}">Pay Now</button>`
                         : `<button class="btn-secondary btn-sm view-bill-details-btn" data-bill-id="${bill.id}">View Details</button>
-                           <a href="api.php?action=download_receipt&id=${bill.id}" class="action-link" style="margin-left: 10px;"><i class="fas fa-download"></i> Receipt</a>`;
+                           <a href="api.php?action=download_receipt&id=${bill.id}" class="action-link" style="margin-left: 10px;" target="_blank"><i class="fas fa-download"></i> Receipt</a>`;
     
                     return `
                         <tr>
@@ -1207,12 +1207,69 @@ document.addEventListener('DOMContentLoaded', () => {
         applyBillingFiltersBtn.addEventListener('click', fetchAndRenderBillingData);
     }
     
+    // ===========================================
+    // === THIS IS THE NEW, UPDATED SECTION    ===
+    // ===========================================
+    
+    // --- This is the new function to fetch data and show the modal ---
+    const showBillDetailsModal = async (billId) => {
+        if (!billDetailsModal) return;
+
+        try {
+            const response = await fetch(`api.php?action=get_bill_details&bill_id=${billId}`);
+            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+            
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+
+            const data = result.data;
+
+            // Populate modal fields
+            document.getElementById('modal-bill-id').textContent = `TXN${data.id}`;
+            document.getElementById('modal-patient-name').textContent = data.patient_name;
+            document.getElementById('modal-bill-date').textContent = new Date(data.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+            // Set status
+            const statusEl = document.getElementById('modal-bill-status');
+            const displayStatus = data.status === 'pending' ? 'due' : data.status;
+            statusEl.className = `status ${displayStatus.toLowerCase()}`;
+            statusEl.textContent = displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1);
+
+            // Populate itemized charges (using the single description)
+            const itemizedBody = document.getElementById('modal-itemized-charges');
+            itemizedBody.innerHTML = `
+                <tr>
+                    <td>${data.description}</td>
+                    <td>₹${parseFloat(data.amount).toFixed(2)}</td>
+                </tr>
+            `;
+
+            // Populate total
+            document.getElementById('modal-total-amount').textContent = `₹${parseFloat(data.amount).toFixed(2)}`;
+
+            // Show/Hide payment section
+            const paymentSection = document.getElementById('modal-payment-section');
+            if (data.status === 'paid') {
+                paymentSection.style.display = 'none';
+            } else {
+                paymentSection.style.display = 'block';
+            }
+
+            // Show the modal
+            billDetailsModal.classList.add('show');
+
+        } catch (error) {
+            console.error("Error fetching bill details:", error);
+            alert(`Could not load bill details: ${error.message}`);
+        }
+    };
+
     if (billingPage) {
         billingPage.addEventListener('click', (e) => {
             const targetButton = e.target.closest('.view-bill-details-btn');
             if (targetButton) {
-                // Future logic for showing bill details modal can go here
-                alert('Viewing bill details for Bill ID: ' + targetButton.dataset.billId);
+                // --- This is the updated logic ---
+                showBillDetailsModal(targetButton.dataset.billId);
             }
         });
     }

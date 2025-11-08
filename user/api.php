@@ -23,6 +23,108 @@ function log_user_activity($conn, $user_id, $action, $details = null) {
     }
 }
 
+function getReceiptHtml($receipt_data) {
+    // Prepare variables for cleaner HTML
+    $patient_name = htmlspecialchars($receipt_data['patient_name'] ?? 'N/A');
+    $display_user_id = htmlspecialchars($receipt_data['display_user_id'] ?? 'N/A');
+    $receipt_id = htmlspecialchars($receipt_data['id']);
+    $payment_date = htmlspecialchars(date('F j, Y, g:i A', strtotime($receipt_data['paid_at'])));
+    $payment_mode = htmlspecialchars(ucfirst($receipt_data['payment_mode'])); // Capitalize first letter
+    $description = htmlspecialchars($receipt_data['description']);
+    $amount = htmlspecialchars(number_format($receipt_data['amount'], 2));
+
+    // Use HEREDOC for the template
+    return <<<HTML
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Payment Receipt</title>
+        <style>
+            /* Using DejaVu Sans as it supports more characters, including '₹' */
+            body { font-family: DejaVu Sans, sans-serif; font-size: 12px; color: #333; }
+            .header { text-align: center; margin-bottom: 20px; }
+            .header h1 { margin: 0; }
+            .header p { margin: 5px 0; }
+            
+            .info-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            .info-table td { padding: 8px; border: 1px solid #ddd; }
+            .info-table td:first-child { background-color: #f2f2f2; font-weight: bold; width: 150px; }
+            
+            h2 { border-bottom: 2px solid #4a90e2; padding-bottom: 5px; margin-top: 25px; color: #4a90e2; }
+            
+            .charges-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            .charges-table th, .charges-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+            .charges-table th { background-color: #f2f2f2; }
+            .total-row td { font-weight: bold; font-size: 1.1em; text-align: right; }
+            .status-paid { color: #28a745; font-weight: bold; font-size: 1.2em; }
+
+            .footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 10px; color: #777; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>Calysta Health Institute</h1>
+            <p>Kerala, India</p>
+            <h1>Payment Receipt</h1>
+        </div>
+
+        <h2>Receipt Details</h2>
+        <table class="info-table">
+            <tr>
+                <td>Patient Name</td>
+                <td>{$patient_name}</td>
+            </tr>
+            <tr>
+                <td>Patient ID</td>
+                <td>{$display_user_id}</td>
+            </tr>
+             <tr>
+                <td>Receipt ID</td>
+                <td>TXN{$receipt_id}</td>
+            </tr>
+            <tr>
+                <td>Payment Date</td>
+                <td>{$payment_date}</td>
+            </tr>
+             <tr>
+                <td>Payment Mode</td>
+                <td>{$payment_mode}</td>
+            </tr>
+        </table>
+
+        <h2>Charges</h2>
+        <table class="charges-table">
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th>Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>{$description}</td>
+                    <td>₹{$amount}</td>
+                </tr>
+                <tr class="total-row">
+                    <td>Total Paid</td>
+                    <td>₹{$amount}</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <p style="text-align: center; margin-top: 20px;">
+            Status: <span class="status-paid">PAID</span>
+        </p>
+
+        <div class="footer">
+            This is a computer-generated document. Thank you for your payment.
+        </div>
+    </body>
+    </html>
+    HTML;
+}
+
 // --- Security & Session Management ---
 if (!isset($_SESSION['user_id']) || !isset($_SESSION['role']) || $_SESSION['role'] !== 'user') {
     if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
@@ -229,6 +331,48 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
         }
     }
 
+    // ==========================================================
+    // === NEW: Special Case for Receipt PDF Download ===
+    // ==========================================================
+    if (isset($_GET['action']) && $_GET['action'] == 'download_receipt' && isset($_GET['id'])) {
+        $receipt_id = (int)$_GET['id'];
+    
+        // 1. Fetch transaction data, ensuring it belongs to the user and is 'paid'
+        $stmt = $conn->prepare("
+            SELECT 
+                t.id, t.created_at, t.description, t.amount, t.status, t.paid_at, t.payment_mode,
+                p.name as patient_name,
+                p.display_user_id
+            FROM transactions t
+            JOIN users p ON t.user_id = p.id
+            WHERE t.id = ? AND p.id = ? AND t.status = 'paid'
+        ");
+        $stmt->bind_param("ii", $receipt_id, $user_id);
+        $stmt->execute();
+        $receipt_data = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    
+        if ($receipt_data) {
+            log_user_activity($conn, $user_id, 'downloaded_receipt', "Downloaded receipt ID: {$receipt_id}.");
+    
+            // 3. Get HTML from our new function and render PDF
+            $html = getReceiptHtml($receipt_data); // <-- THIS IS THE CHANGE
+
+            $options = new Options();
+            $options->set('isHtml5ParserEnabled', true);
+            $dompdf = new Dompdf($options);
+            $dompdf->loadHtml($html);
+            $dompdf->setPaper('A4', 'portrait');
+            $dompdf->render();
+            $filename = "Receipt_TXN" . $receipt_data['id'] . "_" . $receipt_data['patient_name'] . ".pdf";
+            $dompdf->stream($filename, array("Attachment" => 1)); // 1 = force download
+            exit();
+
+        } else {
+            die('Receipt not found, is not paid, or you do not have permission to access it.');
+        }
+    }
+
 
     header('Content-Type: application/json');
     $response = ['success' => false, 'message' => 'An unknown error occurred.'];
@@ -294,6 +438,32 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     $stmt_history->close();
 
                     $response = ['success' => true, 'data' => ['summary' => $summary, 'history' => $history]];
+                    break;
+                
+                case 'get_bill_details':
+                    if (!isset($_GET['bill_id'])) {
+                        throw new Exception("Bill ID is required.");
+                    }
+                    $bill_id = (int)$_GET['bill_id'];
+
+                    $stmt = $conn->prepare("
+                        SELECT 
+                            t.id, t.created_at, t.description, t.amount, t.status, t.paid_at,
+                            u.name as patient_name
+                        FROM transactions t
+                        JOIN users u ON t.user_id = u.id
+                        WHERE t.id = ? AND t.user_id = ?
+                    ");
+                    $stmt->bind_param("ii", $bill_id, $user_id);
+                    $stmt->execute();
+                    $bill_details = $stmt->get_result()->fetch_assoc();
+                    $stmt->close();
+
+                    if ($bill_details) {
+                        $response = ['success' => true, 'data' => $bill_details];
+                    } else {
+                        throw new Exception("Bill not found or access denied.");
+                    }
                     break;
                 
                 case 'get_discharge_summaries':
