@@ -1988,7 +1988,7 @@ function generateDischargeSummaryPdf($data) {
             <table class="patient-details-table">
                 <tr>
                     <td style="width:50%;"><strong>Patient Name:</strong> ' . htmlspecialchars($data['patient_name']) . '</td>
-                    <td style.width:50%;"><strong>Patient ID:</strong> ' . htmlspecialchars($data['patient_display_id']) . '</td>
+                    <td style="width:50%;"><strong>Patient ID:</strong> ' . htmlspecialchars($data['patient_display_id']) . '</td>
                 </tr>
                 <tr>
                     <td><strong>Age / Gender:</strong> ' . $age . ' / ' . htmlspecialchars($data['gender']) . '</td>
