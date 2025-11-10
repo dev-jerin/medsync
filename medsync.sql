@@ -286,7 +286,7 @@ CREATE TABLE `transactions` (
   `amount` decimal(10,2) NOT NULL,
   `type` enum('payment','refund') NOT NULL DEFAULT 'payment',
   `status` enum('pending','paid') NOT NULL DEFAULT 'pending',
-  `payment_mode` enum('unpaid','cash','card','online') NOT NULL DEFAULT 'unpaid',
+    `payment_mode` enum('unpaid','cash','card','online', 'upi') NOT NULL DEFAULT 'unpaid',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `paid_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
@@ -685,11 +685,3 @@ INSERT INTO `accommodations` (`type`, `number`, `ward_id`, `status`, `patient_id
 -- Maternity Ward (ward_id: 7, assuming this ward exists)
 ('room', 'MW-R401', 7, 'available', NULL, NULL, NULL, NULL, 6000.00),
 ('room', 'MW-R402', 7, 'available', NULL, NULL, NULL, NULL, 6000.00);
-
-
-ALTER TABLE `discharge_clearance`
-ADD COLUMN `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `admission_id`;
-
-
-ALTER TABLE transactions
-MODIFY COLUMN payment_mode ENUM('unpaid','cash','card','online', 'upi') NOT NULL DEFAULT 'unpaid';
