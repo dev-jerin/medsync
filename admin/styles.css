@@ -26,13 +26,13 @@
 body.dark-mode {
     --primary-color: #3B82F6;
     --primary-color-dark: #2563EB;
-    --text-dark: #F9FAFB;
-    --text-light: #1F2937;
-    --text-muted: #9CA3AF;
-    --bg-light: #1F2937;
-    --bg-grey: #111827;
-    --bg-main: #0F172A;
-    --border-light: #374151;
+    --text-dark: #f8f9fa;
+    --text-light: #161a1d;
+    --text-muted: #a0a0a0;
+    --bg-light: #212529;
+    --bg-grey: #2c3136;
+    --bg-main: #161a1d;
+    --border-light: #3e444a;
 }
 
 /* --- BASE STYLES --- */
