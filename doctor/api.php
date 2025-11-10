@@ -1916,7 +1916,7 @@ function generatePrescriptionPdf($data) {
                 <p><strong>Notes:</strong><br>' . nl2br(htmlspecialchars($data['notes'] ?: 'No specific notes provided.')) . '</p>
             </div>
         </div>
-        <div classs="rx-signature">
+        <div class="rx-signature">
             Digitally Signed
         </div>
     </body>
