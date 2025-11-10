@@ -692,3 +692,7 @@ AFTER token_status;
 
 ALTER TABLE `discharge_clearance`
 ADD COLUMN `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `admission_id`;
+
+
+ALTER TABLE transactions
+MODIFY COLUMN payment_mode ENUM('unpaid','cash','card','online', 'upi') NOT NULL DEFAULT 'unpaid';
