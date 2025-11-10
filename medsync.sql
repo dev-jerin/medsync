@@ -263,6 +263,7 @@ CREATE TABLE `appointments` (
   `slot_end_time` time DEFAULT NULL,
   `token_number` int(11) DEFAULT NULL,
   `token_status` enum('waiting','in_consultation','completed','skipped') NOT NULL DEFAULT 'waiting',
+  `consultation_start_time` DATETIME NULL DEFAULT NULL,
   `status` enum('scheduled','completed','cancelled') NOT NULL DEFAULT 'scheduled',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
@@ -685,10 +686,4 @@ INSERT INTO `accommodations` (`type`, `number`, `ward_id`, `status`, `patient_id
 ('room', 'MW-R401', 7, 'available', NULL, NULL, NULL, NULL, 6000.00),
 ('room', 'MW-R402', 7, 'available', NULL, NULL, NULL, NULL, 6000.00);
 
----new stuff
-ALTER TABLE appointments
-ADD COLUMN consultation_start_time DATETIME NULL DEFAULT NULL
-AFTER token_status;
 
-ALTER TABLE `discharge_clearance`
-ADD COLUMN `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `admission_id`;
