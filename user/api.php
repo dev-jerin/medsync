@@ -528,9 +528,21 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     $stmt_act->close();
 
                     // Fetch live token for today, if any
+                    // ===== THIS IS THE FIRST FIX =====
                     $stmt_token = $conn->prepare("
                         SELECT a.token_number AS yours, u.name AS doctorName,
-                            (SELECT COALESCE(MAX(token_number), 0) FROM appointments WHERE doctor_id = a.doctor_id AND DATE(appointment_date) = CURDATE() AND token_status IN ('in_consultation', 'skipped', 'completed')) AS current
+                            (
+                                SELECT COALESCE(
+                                    (SELECT token_number 
+                                     FROM appointments 
+                                     WHERE doctor_id = a.doctor_id AND DATE(appointment_date) = CURDATE() AND token_status = 'in_consultation' 
+                                     LIMIT 1),
+                                    (SELECT MAX(token_number) 
+                                     FROM appointments 
+                                     WHERE doctor_id = a.doctor_id AND DATE(appointment_date) = CURDATE() AND token_status IN ('completed', 'skipped')),
+                                    0
+                                )
+                            ) AS current
                         FROM appointments a JOIN users u ON a.doctor_id = u.id
                         WHERE a.user_id = ? AND DATE(a.appointment_date) = CURDATE() AND a.status = 'scheduled' LIMIT 1
                     ");
@@ -700,10 +712,20 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     }
 
                     $tokens = [];
-                    $current_token_sql = "SELECT COALESCE(MAX(token_number), 0) as current_token 
-                                          FROM appointments 
-                                          WHERE doctor_id = ? AND DATE(appointment_date) = CURDATE() 
-                                          AND token_status IN ('in_consultation', 'completed', 'skipped')";
+                    
+                    // ===== THIS IS THE SECOND FIX (SQL) =====
+                    $current_token_sql = "
+                        SELECT COALESCE(
+                            (SELECT token_number 
+                             FROM appointments 
+                             WHERE doctor_id = ? AND DATE(appointment_date) = CURDATE() AND token_status = 'in_consultation' 
+                             LIMIT 1),
+                            (SELECT MAX(token_number) 
+                             FROM appointments 
+                             WHERE doctor_id = ? AND DATE(appointment_date) = CURDATE() AND token_status IN ('completed', 'skipped')),
+                            0
+                        ) as current_token
+                    ";
                     
                     $total_patients_sql = "SELECT COUNT(id) as total_patients 
                                            FROM appointments 
@@ -715,10 +737,33 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     // In api.php, inside the get_live_tokens case...
 
                     foreach ($todays_appointments as $appointment) {
-                        $current_token_stmt->bind_param("i", $appointment['doctor_id']);
+                        
+                        // ===== THIS IS THE SECOND FIX (BIND_PARAM) =====
+                        $current_token_stmt->bind_param("ii", $appointment['doctor_id'], $appointment['doctor_id']);
                         $current_token_stmt->execute();
                         $current_token_result = $current_token_stmt->get_result()->fetch_assoc();
                         $current_serving_token = $current_token_result['current_token'];
+
+                        // --- NEW: Fetch consultation start time ---
+                        $consultation_time = null;
+                        if ($current_token_result['current_token'] > 0) {
+                            $stmt_time = $conn->prepare("
+                                SELECT consultation_start_time 
+                                FROM appointments 
+                                WHERE doctor_id = ? 
+                                  AND DATE(appointment_date) = CURDATE() 
+                                  AND token_number = ? 
+                                  AND token_status = 'in_consultation'
+                            ");
+                            $stmt_time->bind_param("ii", $appointment['doctor_id'], $current_token_result['current_token']);
+                            $stmt_time->execute();
+                            $time_res = $stmt_time->get_result()->fetch_assoc();
+                            if ($time_res) {
+                                $consultation_time = $time_res['consultation_start_time'];
+                            }
+                            $stmt_time->close();
+                        }
+                        // --- END: Fetch consultation start time ---
 
                         $total_patients_stmt->bind_param("i", $appointment['doctor_id']);
                         $total_patients_stmt->execute();
@@ -746,7 +791,8 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
 
                         $tokens[] = [
                             'your_token' => $appointment['token_number'],
-                            'current_token' => $current_serving_token,
+                            'current_token' => $current_token_result['current_token'],
+                            'consultation_start_time' => $consultation_time, // --- NEW: Add to response ---
                             'doctor_name' => $appointment['doctor_name'],
                             'specialty' => $appointment['specialty'],
                             'token_status' => $appointment['token_status'],
@@ -805,6 +851,27 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     break;
                 
                 // ==========================================================
+                // === ADDED CASE TO FETCH LOGIN ACTIVITY ===
+                // ==========================================================
+                case 'get_login_activity':
+                    $stmt = $conn->prepare("
+                        SELECT ip_address, login_time 
+                        FROM ip_tracking 
+                        WHERE user_id = ? 
+                        ORDER BY login_time DESC 
+                        LIMIT 5
+                    ");
+                    $stmt->bind_param("i", $user_id);
+                    $stmt->execute();
+                    $activity = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+                    
+                    $response = ['success' => true, 'data' => $activity];
+                    break;
+                // ==========================================================
+
+
+                // ==========================================================
                 // === NEWLY ADDED CASE TO FETCH SPECIALTIES ===
                 // ==========================================================
                 case 'get_specialties':
@@ -824,7 +891,8 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                                 d.user_id as id,
                                 u.name,
                                 sp.name AS specialty,
-                                u.profile_picture
+                                u.profile_picture,
+                                d.slots 
                             FROM doctors d
                             JOIN users u ON d.user_id = u.id
                             LEFT JOIN specialities sp ON d.specialty_id = sp.id
@@ -859,6 +927,7 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     break;
                 
                 case 'get_doctor_slots':
+                    // This endpoint is no longer used by the new booking flow but kept for potential future use.
                     $doctor_id = (int)($_GET['doctor_id'] ?? 0);
                     $date = $_GET['date'] ?? '';
 
@@ -906,6 +975,7 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     break;
                 
                 case 'get_available_tokens':
+                    // This endpoint is no longer used by the new booking flow.
                     $doctor_id = (int)($_GET['doctor_id'] ?? 0);
                     $date = $_GET['date'] ?? '';
                     
@@ -1115,55 +1185,119 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     }
                     break;
                 
+                // ==========================================================
+                // ===          *** NEW BOOKING LOGIC STARTS HERE *** ===
+                // ==========================================================
                 case 'book_appointment':
                     $doctor_id = (int)($_POST['doctorId'] ?? 0);
                     $date = $_POST['date'] ?? '';
-                    $token = (int)($_POST['token'] ?? 0);
-                
-                    // Validate that the essential details are present
-                    if (empty($doctor_id) || empty($date) || empty($token)) {
-                        throw new Exception("Doctor, date, and token are required.");
+                    
+                    if (empty($doctor_id) || empty($date)) {
+                        throw new Exception("Doctor and date are required.");
                     }
                     
-                    // --- START: EXPANDED BOOKING VALIDATION ---
-                    // Check for ANY existing appointment (scheduled or cancelled) for this user, doctor, and day.
-                    $stmt_user_check = $conn->prepare("
-                        SELECT status FROM appointments 
-                        WHERE user_id = ? AND doctor_id = ? AND DATE(appointment_date) = ?
-                        LIMIT 1
-                    ");
-                    $stmt_user_check->bind_param("iis", $user_id, $doctor_id, $date);
-                    $stmt_user_check->execute();
-                    $existing_appointment = $stmt_user_check->get_result()->fetch_assoc();
-                    $stmt_user_check->close();
+                    // --- 1. GET DOCTOR'S SCHEDULE & CURRENT TIME ---
+                    $stmt_slots = $conn->prepare("SELECT slots FROM doctors WHERE user_id = ?");
+                    $stmt_slots->bind_param("i", $doctor_id);
+                    $stmt_slots->execute();
+                    $slots_result = $stmt_slots->get_result()->fetch_assoc();
+                    $stmt_slots->close();
 
-                    if ($existing_appointment) {
-                        if ($existing_appointment['status'] == 'scheduled') {
-                            // User already has an active booking.
-                            throw new Exception("You already have an appointment scheduled with this doctor on this day.");
-                        } elseif ($existing_appointment['status'] == 'cancelled') {
-                            // User had a booking and cancelled it. Block re-booking.
-                            throw new Exception("You have already cancelled an appointment with this doctor for this day. Please contact the staff to re-book.");
-                        }
-                        // Note: This will also block re-booking if status is 'completed' or 'skipped', which is good.
+                    if (!$slots_result || empty($slots_result['slots'])) {
+                        throw new Exception("Could not find schedule information for this doctor.");
                     }
-                    // --- END: EXPANDED BOOKING VALIDATION ---
                     
-                    // Set a fixed time for the appointment datetime
-                    $appointment_datetime = date('Y-m-d H:i:s', strtotime("$date 09:00:00"));
-                
-                    // Check if the token is already booked for that doctor on that date
-                    $stmt_check = $conn->prepare("SELECT id FROM appointments WHERE doctor_id = ? AND DATE(appointment_date) = ? AND token_number = ? AND status = 'scheduled'");
-                    $stmt_check->bind_param("isi", $doctor_id, $date, $token);
-                    $stmt_check->execute();
-                    if ($stmt_check->get_result()->num_rows > 0) {
-                        throw new Exception("This token has just been booked by someone else. Please select another token.");
+                    $slots_data = json_decode($slots_result['slots'], true);
+                    if (!isset($slots_data['general_availability']) || !isset($slots_data['days_available'])) {
+                         throw new Exception("Doctor's availability is not configured correctly.");
                     }
-                    $stmt_check->close();
+
+                    // Set Timezone
+                    date_default_timezone_set('Asia/Kolkata');
+
+                    // Get shift start/end times from "8:00 AM - 5:00 PM"
+                    list($start_time_str, $end_time_str) = array_map('trim', explode(' - ', $slots_data['general_availability']));
+
+                    // Create DateTime objects for comparison
+                    $shift_start_datetime = new DateTime("$date $start_time_str");
+                    $shift_end_datetime = new DateTime("$date $end_time_str");
+                    $now = new DateTime("now");
+                    $is_today = ($now->format('Y-m-d') === $date);
+                    $slot_duration_minutes = 10; // 10 minutes per patient
+
+                    // --- 2. REQUIREMENT #3: CHECK TOKEN LIMIT (Max 50) ---
+                    $stmt_token = $conn->prepare("SELECT MAX(token_number) as last_token FROM appointments WHERE doctor_id = ? AND DATE(appointment_date) = ? AND status = 'scheduled'");
+                    $stmt_token->bind_param("is", $doctor_id, $date);
+                    $stmt_token->execute();
+                    $last_token_result = $stmt_token->get_result()->fetch_assoc();
+                    $new_token = ($last_token_result['last_token'] ?? 0) + 1;
+                    $stmt_token->close();
+
+                    if ($new_token > 50) {
+                        throw new Exception("Booking for today is over. The maximum of 50 tokens for this doctor has been reached.");
+                    }
+
+                    // --- 3. REQUIREMENT #2: CHECK BOOKING CUTOFF (2 hours before shift end) ---
+                    $booking_cutoff_datetime = (clone $shift_end_datetime)->modify('-2 hours');
+
+                    if ($is_today && $now >= $booking_cutoff_datetime) {
+                        throw new Exception("Online booking for today is closed (ends 2 hours before shift). Please come to the hospital directly to get a token.");
+                    }
+
+                    // --- 4. CALCULATE APPOINTMENT TIME (Req #1 & #4) ---
+                    $final_appointment_datetime_obj = null;
+
+                    // Find the latest appointment time *actually* booked for this doctor today.
+                    $stmt_last_time = $conn->prepare("SELECT MAX(appointment_date) as last_app_time FROM appointments WHERE doctor_id = ? AND DATE(appointment_date) = ? AND status = 'scheduled'");
+                    $stmt_last_time->bind_param("is", $doctor_id, $date);
+                    $stmt_last_time->execute();
+                    $last_time_result = $stmt_last_time->get_result()->fetch_assoc();
+                    $stmt_last_time->close();
+
+                    if ($last_time_result && $last_time_result['last_app_time']) {
+                        // **Case A: Patient 2 through 50**
+                        // A previous appointment exists. We stack on top of it.
+                        $last_app_time_obj = new DateTime($last_time_result['last_app_time']);
+                        $calculated_next_slot = (clone $last_app_time_obj)->modify("+$slot_duration_minutes minutes");
+
+                        if ($is_today && $calculated_next_slot < $now) {
+                            // **Req #1 Fix:** The next sequential slot (e.g., 8:20 AM) is in the past (it's 1:54 PM).
+                            // We create a "gap" and book the new appointment relative to the current time.
+                            $final_appointment_datetime_obj = (clone $now)->modify('+10 minutes'); // 10 min buffer for next patient
+                        } else {
+                            // The next sequential slot is in the future. Book it.
+                            $final_appointment_datetime_obj = $calculated_next_slot;
+                        }
+
+                    } else {
+                        // **Case B: Patient 1 (Token #1)**
+                        // This is the very first booking for the day.
+
+                        if ($is_today && $now > $shift_start_datetime) {
+                            // **Req #4 Fix:** First patient, but the shift has already started.
+                            // Book them for NOW + 20 minutes.
+                            $final_appointment_datetime_obj = (clone $now)->modify('+20 minutes');
+                        } else {
+                            // **Regular First Patient:**
+                            // Booking for tomorrow, or for today *before* the shift starts.
+                            // Their time is the doctor's shift start time.
+                            $final_appointment_datetime_obj = $shift_start_datetime;
+                        }
+                    }
+
+                    // --- 5. FINAL VALIDATION & DATABASE INSERT ---
+                    
+                    // Final check: Is the calculated appointment time *after* the shift ends?
+                    if ($final_appointment_datetime_obj >= $shift_end_datetime) {
+                         throw new Exception("Booking for today is over. The doctor's schedule is full.");
+                    }
+
+                    // Format for database
+                    $appointment_datetime = $final_appointment_datetime_obj->format('Y-m-d H:i:s');
                 
-                    // Insert the new appointment with the fixed time
+                    // Insert the new appointment
                     $stmt_insert = $conn->prepare("INSERT INTO appointments (user_id, doctor_id, appointment_date, token_number, status) VALUES (?, ?, ?, ?, 'scheduled')");
-                    $stmt_insert->bind_param("iisi", $user_id, $doctor_id, $appointment_datetime, $token);
+                    $stmt_insert->bind_param("iisi", $user_id, $doctor_id, $appointment_datetime, $new_token);
                 
                     if ($stmt_insert->execute()) {
                         $stmt_doctor = $conn->prepare("SELECT name FROM users WHERE id = ?");
@@ -1171,15 +1305,21 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                         $stmt_doctor->execute();
                         $doctor_name = $stmt_doctor->get_result()->fetch_assoc()['name'];
                         $stmt_doctor->close();
-                        log_user_activity($conn, $user_id, 'booked_appointment', "Booked an appointment with Dr. {$doctor_name} for {$date}.");
+                        log_user_activity($conn, $user_id, 'booked_appointment', "Booked an appointment with Dr. {$doctor_name} for {$date} (Token #{$new_token}).");
                         
-                        $response = ['success' => true, 'message' => 'Appointment booked successfully!'];
+                        $response = ['success' => true, 'message' => "Appointment booked successfully! Your token number is #{$new_token} for " . $final_appointment_datetime_obj->format('g:i A') . "."];
                     } else {
                         throw new Exception("Failed to book the appointment. Please try again.");
                     }
                     $stmt_insert->close();
                     break;
+                // ==========================================================
+                // ===          *** NEW BOOKING LOGIC ENDS HERE *** ===
+                // ==========================================================
                     
+                // ==========================================================
+                // ===          UPDATED CANCELLATION LOGIC                ===
+                // ==========================================================
                 case 'cancel_appointment':
                     $appointment_id = (int)($_POST['appointment_id'] ?? 0);
                 
@@ -1187,49 +1327,94 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                         throw new Exception("Appointment ID is required.");
                     }
                 
-                    $stmt = $conn->prepare("UPDATE appointments SET status = 'cancelled' WHERE id = ? AND user_id = ? AND status = 'scheduled'");
-                    $stmt->bind_param("ii", $appointment_id, $user_id);
-                    
-                    if ($stmt->execute()) {
-                        if ($stmt->affected_rows > 0) {
-                            log_user_activity($conn, $user_id, 'cancelled_appointment', "Cancelled appointment ID: {$appointment_id}.");
-                            $response = ['success' => true, 'message' => 'Appointment cancelled successfully.'];
-                        } else {
-                            throw new Exception("Could not cancel this appointment. It may have already started or does not exist.");
-                        }
-                    } else {
-                        throw new Exception("Failed to cancel the appointment.");
-                    }
-                    $stmt->close();
-                    break;
+                    // 1. Start a database transaction
+                    $conn->begin_transaction();
                 
-                // ==========================================================
-                // === NEW: CASE TO UPDATE NOTIFICATION PREFERENCES ===
-                // ==========================================================
-                case 'update_notification_prefs':
-                    // Use isset() to get 0 or 1, default to 0 if not present
-                    $notify_appointments = isset($_POST['notify_appointments']) ? 1 : 0;
-                    $notify_billing = isset($_POST['notify_billing']) ? 1 : 0;
-                    $notify_labs = isset($_POST['notify_labs']) ? 1 : 0;
-                    $notify_prescriptions = isset($_POST['notify_prescriptions']) ? 1 : 0;
-                    
-                    $stmt = $conn->prepare("
-                        UPDATE users SET 
-                            notify_appointments = ?, 
-                            notify_billing = ?, 
-                            notify_labs = ?, 
-                            notify_prescriptions = ?
-                        WHERE id = ?
-                    ");
-                    $stmt->bind_param("iiiii", $notify_appointments, $notify_billing, $notify_labs, $notify_prescriptions, $user_id);
-                    
-                    if ($stmt->execute()) {
-                        $response = ['success' => true, 'message' => 'Notification preferences updated.'];
-                    } else {
-                        throw new Exception('Failed to update preferences.');
+                    try {
+                        // 2. Get the details of the appointment to be cancelled
+                        $stmt_get = $conn->prepare("
+                            SELECT doctor_id, appointment_date, token_number 
+                            FROM appointments 
+                            WHERE id = ? AND user_id = ? AND status = 'scheduled'
+                        ");
+                        $stmt_get->bind_param("ii", $appointment_id, $user_id);
+                        $stmt_get->execute();
+                        $cancelled_app = $stmt_get->get_result()->fetch_assoc();
+                        $stmt_get->close();
+                
+                        if (!$cancelled_app) {
+                            // No appointment found, roll back and throw error
+                            $conn->rollback();
+                            throw new Exception("Could not cancel this appointment. It may have already started, been cancelled, or does not exist.");
+                        }
+                
+                        $doctor_id = $cancelled_app['doctor_id'];
+                        $cancelled_token = $cancelled_app['token_number'];
+                        // Get just the date part (Y-m-d) for comparison
+                        $appointment_day = date('Y-m-d', strtotime($cancelled_app['appointment_date']));
+                
+                        // 3. Mark the appointment as 'cancelled'
+                        $stmt_cancel = $conn->prepare("UPDATE appointments SET status = 'cancelled' WHERE id = ?");
+                        $stmt_cancel->bind_param("i", $appointment_id);
+                        if (!$stmt_cancel->execute()) {
+                            throw new Exception("Failed to cancel the appointment.");
+                        }
+                        $stmt_cancel->close();
+                
+                        // 4. Find all subsequent 'scheduled' appointments for that doctor on that day
+                        $stmt_find_next = $conn->prepare("
+                            SELECT id 
+                            FROM appointments 
+                            WHERE doctor_id = ? 
+                              AND DATE(appointment_date) = ? 
+                              AND token_number > ? 
+                              AND status = 'scheduled'
+                            ORDER BY token_number ASC
+                        ");
+                        $stmt_find_next->bind_param("isi", $doctor_id, $appointment_day, $cancelled_token);
+                        $stmt_find_next->execute();
+                        $apps_to_shift = $stmt_find_next->get_result()->fetch_all(MYSQLI_ASSOC);
+                        $stmt_find_next->close();
+                
+                        // 5. Loop through them and update their token and time
+                        
+                        // We get this value from your 'book_appointment' logic
+                        $slot_duration_minutes = 10; 
+                
+                        if (count($apps_to_shift) > 0) {
+                            $stmt_update_shift = $conn->prepare("
+                                UPDATE appointments 
+                                SET 
+                                    token_number = token_number - 1,
+                                    appointment_date = DATE_SUB(appointment_date, INTERVAL ? MINUTE)
+                                WHERE id = ?
+                            ");
+                            
+                            foreach ($apps_to_shift as $app) {
+                                $stmt_update_shift->bind_param("ii", $slot_duration_minutes, $app['id']);
+                                if (!$stmt_update_shift->execute()) {
+                                    // If any update fails, throw an exception to trigger rollback
+                                    throw new Exception("Failed to update subsequent appointments.");
+                                }
+                            }
+                            $stmt_update_shift->close();
+                        }
+                
+                        // 6. If everything is successful, log, commit, and send response
+                        log_user_activity($conn, $user_id, 'cancelled_appointment', "Cancelled appointment ID: {$appointment_id} (Token #{$cancelled_token}).");
+                        $conn->commit();
+                        $response = ['success' => true, 'message' => 'Appointment cancelled successfully. Subsequent tokens have been updated.'];
+                
+                    } catch (Exception $e) {
+                        // 7. If any error occurred, roll back the entire transaction
+                        $conn->rollback(); 
+                        // Re-throw the exception to be caught by the *outer* try/catch block
+                        throw $e; 
                     }
-                    $stmt->close();
                     break;
+                // ==========================================================
+                // ===        END OF UPDATED CANCELLATION LOGIC           ===
+                // ==========================================================
             }
         }
 

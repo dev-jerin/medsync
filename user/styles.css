@@ -815,6 +815,7 @@ body.dark-mode .form-control-sm::placeholder {
 #doctor-list .doctor-card {
     display: flex;
     align-items: center;
+    justify-content: space-between; /* <-- This ensures right/left alignment */
     gap: 1rem;
     padding: 1rem;
     border: 1px solid var(--border-color);
@@ -832,12 +833,88 @@ body.dark-mode #doctor-list .doctor-card:hover,
 body.dark-mode #doctor-list .doctor-card.selected {
     background-color: rgba(74, 144, 226, 0.1);
 }
+
+/* New class to group img and name/specialty */
+.doctor-info-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
 #doctor-list .doctor-card img {
     width: 50px;
     height: 50px;
     border-radius: 50%;
     object-fit: cover;
+    flex-shrink: 0; /* Prevent image from shrinking */
 }
+
+.doctor-info-basic {
+    flex-grow: 1;
+}
+
+/* --- New styles for availability info --- */
+.availability-info {
+    flex-shrink: 0; /* Prevent this section from shrinking */
+    text-align: right;
+    padding-left: 1rem;
+}
+
+.availability-info.not-available small {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.availability-time {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: block;
+    margin-bottom: 0.5rem;
+    white-space: nowrap; /* Prevent time from wrapping */
+}
+.availability-time i {
+    color: var(--primary-color);
+    margin-right: 5px;
+}
+
+.availability-days {
+    display: flex;
+    gap: 5px;
+    justify-content: flex-end;
+}
+
+.day-dot {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    font-size: 0.8rem;
+    font-weight: 600;
+    background-color: var(--border-color);
+    color: var(--text-secondary);
+    opacity: 0.6;
+    cursor: default;
+    user-select: none;
+}
+
+body.dark-mode .day-dot {
+    background-color: #333;
+    color: #777;
+}
+body.dark-mode .day-dot.active {
+    background-color: var(--secondary-color); /* A bright mint: #50e3c2 */
+    color: #000;                       /* Black text for high contrast */
+    opacity: 1;
+}
+.day-dot.active {
+    background-color: var(--status-green);
+    color: #fff;
+    opacity: 1;
+}
+
 
 /* Time Slot Styles */
 #slots-container {

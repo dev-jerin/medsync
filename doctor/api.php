@@ -269,7 +269,7 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
     }
     
     if ($action == 'get_doctor_details') {
-        $stmt = $conn->prepare("SELECT specialty_id, department_id, qualifications FROM doctors WHERE user_id = ?");
+        $stmt = $conn->prepare("SELECT specialty_id, department_id, qualifications, office_floor, office_room_number FROM doctors WHERE user_id = ?");
         $stmt->bind_param("i", $current_user_id);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -574,7 +574,7 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
 
 
     // ==========================================================
-    // --- TOKEN STATUS UPDATE ACTION ---
+    // --- TOKEN STATUS UPDATE ACTION (MODIFIED) ---
     // ==========================================================
     if ($action == 'update_token_status' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $appointment_id = (int)($_POST['appointment_id'] ?? 0);
@@ -588,14 +588,37 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         }
         
         try {
-            $stmt = $conn->prepare("UPDATE appointments SET token_status = ? WHERE id = ? AND doctor_id = ?");
+            // --- MODIFIED LOGIC ---
+            $sql = "UPDATE appointments SET token_status = ?";
+            
+            // Only set the consultation_start_time when the status is changing to 'in_consultation'
+            if ($new_status == 'in_consultation') {
+                // Also set it to NULL if status is changing *away* from in_consultation?
+                // No, let's keep it simple. Only set it when it becomes 'in_consultation'
+                // We'll also update the main appointment status to 'completed' if the token status is 'completed'
+                $sql .= ", consultation_start_time = NOW()";
+            }
+            
+            $sql .= " WHERE id = ? AND doctor_id = ?";
+            // --- END MODIFIED LOGIC ---
+            
+            $stmt = $conn->prepare($sql); // Use the new dynamic SQL
             $stmt->bind_param("sii", $new_status, $appointment_id, $current_user_id);
             
             if ($stmt->execute() && $stmt->affected_rows > 0) {
                 log_activity($conn, $current_user_id, 'Token Status Updated', null, "Appointment ID: {$appointment_id} to {$new_status}");
                 echo json_encode(['success' => true, 'message' => 'Token status updated successfully']);
             } else {
-                echo json_encode(['success' => false, 'message' => 'No changes made or appointment not found']);
+                // If no rows were affected, it might be a re-click. Check if status is already set.
+                $check_stmt = $conn->prepare("SELECT id FROM appointments WHERE id = ? AND token_status = ?");
+                $check_stmt->bind_param("is", $appointment_id, $new_status);
+                $check_stmt->execute();
+                if ($check_stmt->get_result()->num_rows > 0) {
+                     echo json_encode(['success' => true, 'message' => 'Token status is already set.']);
+                } else {
+                     echo json_encode(['success' => false, 'message' => 'No changes made or appointment not found']);
+                }
+                $check_stmt->close();
             }
             $stmt->close();
         } catch (Exception $e) {
@@ -1044,6 +1067,8 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         $specialty_id = !empty($_POST['specialty_id']) ? (int)$_POST['specialty_id'] : null;
         $department_id = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
         $qualifications = trim($_POST['qualifications'] ?? '');
+        $office_floor = trim($_POST['office_floor'] ?? '');
+        $office_room_number = trim($_POST['office_room_number'] ?? '');
     
         // 2. Server-Side Validation
         if (empty($name) || empty($email) || empty($phone)) {
@@ -1069,7 +1094,8 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
         // Fetch old user data for comparison (before update)
         $stmt_old = $conn->prepare("
             SELECT u.name, u.email, u.phone, u.date_of_birth, u.gender, u.username,
-                   d.qualifications, s.name as specialty_name, dep.name as department_name
+                   d.qualifications, s.name as specialty_name, dep.name as department_name,
+                   d.office_floor, d.office_room_number
             FROM users u
             LEFT JOIN doctors d ON u.id = d.user_id
             LEFT JOIN specialities s ON d.specialty_id = s.id
@@ -1107,52 +1133,19 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
             $stmt_user->bind_param("sssssi", $name, $email, $phone, $gender, $dob, $current_user_id);
             $stmt_user->execute();
             
-            // Update doctors table - handle NULL values properly
-            if ($specialty_id === null && $department_id === null) {
-                // Both are NULL
-                $stmt_doctor = $conn->prepare("
-                    INSERT INTO doctors (user_id, specialty_id, department_id, qualifications) 
-                    VALUES (?, NULL, NULL, ?)
-                    ON DUPLICATE KEY UPDATE 
-                        specialty_id = NULL, 
-                        department_id = NULL, 
-                        qualifications = VALUES(qualifications)
-                ");
-                $stmt_doctor->bind_param("is", $current_user_id, $qualifications);
-            } else if ($specialty_id === null) {
-                // Only specialty_id is NULL
-                $stmt_doctor = $conn->prepare("
-                    INSERT INTO doctors (user_id, specialty_id, department_id, qualifications) 
-                    VALUES (?, NULL, ?, ?)
-                    ON DUPLICATE KEY UPDATE 
-                        specialty_id = NULL, 
-                        department_id = VALUES(department_id), 
-                        qualifications = VALUES(qualifications)
-                ");
-                $stmt_doctor->bind_param("iis", $current_user_id, $department_id, $qualifications);
-            } else if ($department_id === null) {
-                // Only department_id is NULL
-                $stmt_doctor = $conn->prepare("
-                    INSERT INTO doctors (user_id, specialty_id, department_id, qualifications) 
-                    VALUES (?, ?, NULL, ?)
-                    ON DUPLICATE KEY UPDATE 
-                        specialty_id = VALUES(specialty_id), 
-                        department_id = NULL, 
-                        qualifications = VALUES(qualifications)
-                ");
-                $stmt_doctor->bind_param("iis", $current_user_id, $specialty_id, $qualifications);
-            } else {
-                // Both have values
-                $stmt_doctor = $conn->prepare("
-                    INSERT INTO doctors (user_id, specialty_id, department_id, qualifications) 
-                    VALUES (?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE 
-                        specialty_id = VALUES(specialty_id), 
-                        department_id = VALUES(department_id), 
-                        qualifications = VALUES(qualifications)
-                ");
-                $stmt_doctor->bind_param("iiis", $current_user_id, $specialty_id, $department_id, $qualifications);
-            }
+            // Update doctors table - handle NULL values properly and add office info
+            $sql_doctor = "
+                INSERT INTO doctors (user_id, specialty_id, department_id, qualifications, office_floor, office_room_number) 
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE 
+                    specialty_id = VALUES(specialty_id), 
+                    department_id = VALUES(department_id), 
+                    qualifications = VALUES(qualifications),
+                    office_floor = VALUES(office_floor),
+                    office_room_number = VALUES(office_room_number)
+            ";
+            $stmt_doctor = $conn->prepare($sql_doctor);
+            $stmt_doctor->bind_param("iiisss", $current_user_id, $specialty_id, $department_id, $qualifications, $office_floor, $office_room_number);
             $stmt_doctor->execute();
             
             $log_details = "Updated profile details. Name: {$name}, Email: {$email}, Phone: {$phone}, Qualifications: {$qualifications}.";
@@ -1185,6 +1178,12 @@ if (isset($_REQUEST['action']) || strpos($_SERVER['CONTENT_TYPE'] ?? '', 'applic
             }
             if (($old_user_data['department_name'] ?? '') !== ($new_department_name ?? '')) {
                 $email_changes['Department'] = ['old' => ($old_user_data['department_name'] ?: 'Not set'), 'new' => ($new_department_name ?: 'Not set')];
+            }
+            if (($old_user_data['office_floor'] ?? '') !== ($office_floor ?? '')) {
+                $email_changes['Office Floor'] = ['old' => ($old_user_data['office_floor'] ?: 'Not set'), 'new' => ($office_floor ?: 'Not set')];
+            }
+            if (($old_user_data['office_room_number'] ?? '') !== ($office_room_number ?? '')) {
+                $email_changes['Office Room'] = ['old' => ($old_user_data['office_room_number'] ?: 'Not set'), 'new' => ($office_room_number ?: 'Not set')];
             }
             
             // Send email notification if there are changes
