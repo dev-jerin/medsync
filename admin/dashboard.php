@@ -97,7 +97,7 @@ $conn->close();
     <link rel="stylesheet" href="styles.css">
 </head>
 
-<body class="light-mode">
+<body class="dark-mode">
     <input type="hidden" id="current-user-id" value="<?php echo htmlspecialchars($_SESSION['user_id']); ?>">
     <div class="dashboard-layout">
         <aside class="sidebar" id="sidebar">
