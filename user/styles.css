@@ -1515,3 +1515,45 @@ body.dark-mode #slots-container .slot.disabled {
     color: white;
     font-weight: 600;
 }
+
+/* ============================================== */
+/* ===         FEEDBACK MODAL STYLES          === */
+/* ============================================== */
+
+.star-rating {
+    display: flex;
+    gap: 8px;
+    font-size: 1.8rem; /* Larger, easier-to-click stars */
+    cursor: pointer;
+}
+
+.star-rating .fa-star {
+    color: var(--border-color);
+    transition: color 0.2s, transform 0.1s;
+}
+
+.star-rating .fa-star:hover {
+    transform: scale(1.1);
+}
+
+.star-rating .fa-star.selected {
+    color: #f39c12; /* Yellow/Gold for selected stars */
+}
+
+/* Make textareas in modals match other form controls */
+.modal-body textarea.form-control-sm {
+    padding: 0.85rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+    font-family: var(--font-family);
+    font-size: 1rem;
+    resize: vertical; /* Allow vertical resize */
+}
+
+.modal-body textarea.form-control-sm:focus {
+    border-color: var(--primary-color);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2);
+}   

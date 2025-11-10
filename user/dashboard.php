@@ -34,6 +34,7 @@ require_once 'api.php';
                 <a href="#" class="nav-link" data-page="labs"><i class="fas fa-vials"></i><span>Lab Results</span></a>
                 <a href="#" class="nav-link" data-page="billing"><i class="fas fa-file-invoice-dollar"></i><span>Bills & Payments</span></a>
                 <a href="#" class="nav-link" data-page="summaries"><i class="fas fa-file-alt"></i><span>Discharge Summaries</span></a>
+                <a href="#" class="nav-link" data-page="feedback"><i class="fas fa-comments"></i><span>Feedback</span></a>
                 <a href="#" class="nav-link" data-page="notifications"><i class="fas fa-bell"></i><span>Notifications</span></a>
                 <a href="#" class="nav-link" data-page="profile"><i class="fas fa-user-cog"></i><span>Profile</span></a>
             </nav>
@@ -426,6 +427,26 @@ require_once 'api.php';
                         </div>
                     </div>
                 </section>
+
+                <section id="feedback-page" class="page">
+                    <div class="content-panel">
+                        <h2 class="panel-title-with-icon"><i class="fas fa-comments"></i> Patient Feedback</h2>
+                        <p class="text-secondary">Provide feedback for your completed appointments. Your insights help us improve our services.</p>
+
+                        <div id="feedback-appointment-list" class="summaries-list">
+                            </div>
+
+                        <div id="feedback-loading-state" style="display: none; text-align: center; padding: 2rem;">
+                            <p>Loading your completed appointments...</p>
+                        </div>
+
+                        <div id="feedback-empty-state" class="empty-state" style="display: none;">
+                            <i class="fas fa-calendar-check"></i>
+                            <h3>No Completed Appointments</h3>
+                            <p>You do not have any completed appointments to review yet. Your past appointments will appear here.</p>
+                        </div>
+                    </div>
+                </section>
                 
                 <section id="notifications-page" class="page">
                     <div class="content-panel">
@@ -620,7 +641,7 @@ require_once 'api.php';
     </div>
     
     <div id="bill-details-modal" class="modal-overlay">
-        <div class="modal-content">
+        <div class="modal-content" data-bill-id="">
             <div class="modal-header">
                 <h3>Bill Details (<span id="modal-bill-id"></span>)</h3>
                 <button id="modal-close-btn" class="modal-close">&times;</button>
@@ -650,8 +671,8 @@ require_once 'api.php';
             <div class="modal-footer" id="modal-payment-section">
                 <p>Select a payment method to settle the bill.</p>
                 <div class="payment-options">
-                    <button class="btn-primary"><i class="fas fa-credit-card"></i> Pay with Card</button>
-                    <button class="btn-secondary"><i class="fas fa-qrcode"></i> Pay with UPI</button>
+                    <button class="btn-primary" id="pay-with-card-btn"><i class="fas fa-credit-card"></i> Pay with Card</button>
+                    <button class="btn-secondary" id="pay-with-upi-btn"><i class="fas fa-qrcode"></i> Pay with UPI</button>
                 </div>
             </div>
         </div>
@@ -676,6 +697,55 @@ require_once 'api.php';
             <div class="modal-footer" id="modal-lab-download-section">
                 <a href="#" id="modal-lab-download-btn" class="btn-primary" download><i class="fas fa-download"></i> Download Report</a>
             </div>
+        </div>
+    </div>
+
+    <div id="feedback-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="feedback-modal-title">Provide Feedback</h3>
+                <button id="feedback-modal-close" class="modal-close">&times;</button>
+            </div>
+            <form id="feedback-form">
+                <div class="modal-body">
+                    <p>You are providing feedback for your appointment with <strong id="feedback-doctor-name">Dr. ...</strong> on <strong id="feedback-appointment-date">...</strong>.</p>
+                    
+                    <input type="hidden" id="feedback-appointment-id" name="appointment_id">
+                    
+                    <div class="form-group">
+                        <label>Overall Rating</label>
+                        <div class="star-rating" data-rating-input="overall-rating">
+                            <i class="far fa-star" data-value="1"></i>
+                            <i class="far fa-star" data-value="2"></i>
+                            <i class="far fa-star" data-value="3"></i>
+                            <i class="far fa-star" data-value="4"></i>
+                            <i class="far fa-star" data-value="5"></i>
+                        </div>
+                        <input type="hidden" name="overall_rating" id="overall-rating" value="0">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Doctor's Rating</label>
+                        <div class="star-rating" data-rating-input="doctor-rating">
+                            <i class="far fa-star" data-value="1"></i>
+                            <i class="far fa-star" data-value="2"></i>
+                            <i class="far fa-star" data-value="3"></i>
+                            <i class="far fa-star" data-value="4"></i>
+                            <i class="far fa-star" data-value="5"></i>
+                        </div>
+                        <input type="hidden" name="doctor_rating" id="doctor-rating" value="0">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="feedback-comments">Comments</label>
+                        <textarea id="feedback-comments" name="comments" rows="5" class="form-control-sm" style="width: 100%;" placeholder="Tell us about your experience..."></textarea>
+                    </div>
+
+                </div>
+                <div class="modal-footer" style="display: flex; justify-content: flex-end;">
+                    <button type="submit" id="submit-feedback-btn" class="btn-primary"><i class="fas fa-paper-plane"></i> Submit Feedback</button>
+                </div>
+            </form>
         </div>
     </div>
 
