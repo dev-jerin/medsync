@@ -972,9 +972,120 @@ $conn->close();
             <div id="feedback-panel" class="content-panel">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
                     <h2>Patient Feedback & Ratings</h2>
+                    <div>
+                        <form id="feedback-filter-form" method="get" style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+                            <input type="text" name="search" value="<?php echo isset($_GET['search']) ? htmlspecialchars($_GET['search']) : ''; ?>" placeholder="Search by patient, comment, appointment..." style="padding: 0.5rem; border-radius: 6px; border: 1px solid #ccc;">
+                            <select name="type" style="padding: 0.5rem; border-radius: 6px;">
+                                <option value="">All Types</option>
+                                <option value="Suggestion" <?php if(isset($_GET['type']) && $_GET['type']=='Suggestion') echo 'selected'; ?>>Suggestion</option>
+                                <option value="Complaint" <?php if(isset($_GET['type']) && $_GET['type']=='Complaint') echo 'selected'; ?>>Complaint</option>
+                                <option value="Praise" <?php if(isset($_GET['type']) && $_GET['type']=='Praise') echo 'selected'; ?>>Praise</option>
+                            </select>
+                            <select name="anonymous" style="padding: 0.5rem; border-radius: 6px;">
+                                <option value="">All</option>
+                                <option value="1" <?php if(isset($_GET['anonymous']) && $_GET['anonymous']=='1') echo 'selected'; ?>>Anonymous</option>
+                                <option value="0" <?php if(isset($_GET['anonymous']) && $_GET['anonymous']=='0') echo 'selected'; ?>>Identified</option>
+                            </select>
+                            <input type="date" name="date_from" value="<?php echo isset($_GET['date_from']) ? htmlspecialchars($_GET['date_from']) : ''; ?>" style="padding: 0.5rem; border-radius: 6px;">
+                            <input type="date" name="date_to" value="<?php echo isset($_GET['date_to']) ? htmlspecialchars($_GET['date_to']) : ''; ?>" style="padding: 0.5rem; border-radius: 6px;">
+                            <button type="submit" class="btn btn-primary" style="padding: 0.5rem 1rem;">Apply</button>
+                        </form>
                     </div>
+                </div>
+                <div id="feedback-analytics" style="margin-bottom: 2rem;">
+                    <?php
+                    $conn = getDbConnection();
+                    // Analytics: average ratings, count by type
+                    $avg_stmt = $conn->query("SELECT AVG(overall_rating) as avg_overall, AVG(doctor_rating) as avg_doctor, AVG(nursing_rating) as avg_nursing, AVG(staff_rating) as avg_staff, AVG(cleanliness_rating) as avg_clean FROM feedback");
+                    $avg = $avg_stmt->fetch_assoc();
+                    $count_stmt = $conn->query("SELECT feedback_type, COUNT(*) as cnt FROM feedback GROUP BY feedback_type");
+                    $type_counts = [];
+                    while ($row = $count_stmt->fetch_assoc()) { $type_counts[$row['feedback_type']] = $row['cnt']; }
+                    ?>
+                    <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
+                        <div><strong>Avg. Overall:</strong> <?php echo round($avg['avg_overall'],2); ?>/5</div>
+                        <div><strong>Avg. Doctor:</strong> <?php echo round($avg['avg_doctor'],2); ?>/5</div>
+                        <div><strong>Avg. Nursing:</strong> <?php echo round($avg['avg_nursing'],2); ?>/5</div>
+                        <div><strong>Avg. Staff:</strong> <?php echo round($avg['avg_staff'],2); ?>/5</div>
+                        <div><strong>Avg. Cleanliness:</strong> <?php echo round($avg['avg_clean'],2); ?>/5</div>
+                        <?php foreach (["Suggestion","Complaint","Praise"] as $ftype): ?>
+                            <div><strong><?php echo $ftype; ?>s:</strong> <?php echo isset($type_counts[$ftype]) ? $type_counts[$ftype] : 0; ?></div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
                 <div id="feedback-container">
-                    </div>
+                    <?php
+                    // Filtering logic
+                    $where = [];
+                    $params = [];
+                    if (!empty($_GET['search'])) {
+                        $where[] = "(comments LIKE ? OR patient_id IN (SELECT id FROM users WHERE name LIKE ?))";
+                        $params[] = "%".$_GET['search']."%";
+                        $params[] = "%".$_GET['search']."%";
+                    }
+                    if (!empty($_GET['type'])) {
+                        $where[] = "feedback_type = ?";
+                        $params[] = $_GET['type'];
+                    }
+                    if (isset($_GET['anonymous']) && $_GET['anonymous'] !== "") {
+                        $where[] = "is_anonymous = ?";
+                        $params[] = $_GET['anonymous'];
+                    }
+                    if (!empty($_GET['date_from'])) {
+                        $where[] = "created_at >= ?";
+                        $params[] = $_GET['date_from'];
+                    }
+                    if (!empty($_GET['date_to'])) {
+                        $where[] = "created_at <= ?";
+                        $params[] = $_GET['date_to'];
+                    }
+                    $page = isset($_GET['page']) ? max(1,intval($_GET['page'])) : 1;
+                    $limit = 10;
+                    $offset = ($page-1)*$limit;
+                    $where_sql = $where ? ("WHERE ".implode(" AND ", $where)) : "";
+                    $sql = "SELECT * FROM feedback $where_sql ORDER BY created_at DESC LIMIT $limit OFFSET $offset";
+                    $stmt = $conn->prepare($sql);
+                    if ($params) $stmt->bind_param(str_repeat('s',count($params)), ...$params);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    if ($result->num_rows === 0) {
+                        echo "<div style='padding:2rem;text-align:center;color:#888;'>No feedback found.</div>";
+                    } else {
+                        echo "<table class='data-table' style='width:100%;margin-bottom:2rem;'>";
+                        echo "<thead><tr><th>Patient</th><th>Type</th><th>Ratings</th><th>Comments</th><th>Date</th><th>Anonymous</th><th>Appointment</th><th>Admission</th></tr></thead><tbody>";
+                        while ($row = $result->fetch_assoc()) {
+                            $patient = $conn->query("SELECT name FROM users WHERE id=".intval($row['patient_id']))->fetch_assoc();
+                            echo "<tr>";
+                            echo "<td>".htmlspecialchars($patient ? $patient['name'] : 'Unknown')."</td>";
+                            echo "<td>".htmlspecialchars($row['feedback_type'])."</td>";
+                            echo "<td>Overall: ".$row['overall_rating'].", Doctor: ".$row['doctor_rating'].", Nursing: ".$row['nursing_rating'].", Staff: ".$row['staff_rating'].", Cleanliness: ".$row['cleanliness_rating']."</td>";
+                            echo "<td>".htmlspecialchars($row['comments'])."</td>";
+                            echo "<td>".date('Y-m-d',strtotime($row['created_at']))."</td>";
+                            echo "<td>".($row['is_anonymous'] ? 'Yes' : 'No')."</td>";
+                            echo "<td>".($row['appointment_id'] ? $row['appointment_id'] : '-')."</td>";
+                            echo "<td>".($row['admission_id'] ? $row['admission_id'] : '-')."</td>";
+                            echo "</tr>";
+                        }
+                        echo "</tbody></table>";
+                        // Pagination
+                        $count_sql = "SELECT COUNT(*) as cnt FROM feedback $where_sql";
+                        $count_stmt = $conn->prepare($count_sql);
+                        if ($params) $count_stmt->bind_param(str_repeat('s',count($params)), ...$params);
+                        $count_stmt->execute();
+                        $total = $count_stmt->get_result()->fetch_assoc()['cnt'];
+                        $pages = ceil($total/$limit);
+                        echo "<div style='text-align:center;'>";
+                        for ($i=1;$i<=$pages;$i++) {
+                            $active = $i==$page ? "style='font-weight:bold;text-decoration:underline;'" : "";
+                            $url = $_SERVER['PHP_SELF'].'?'.http_build_query(array_merge($_GET,['page'=>$i]));
+                            echo "<a href='$url' $active style='margin:0 0.5rem;'>$i</a>";
+                        }
+                        echo "</div>";
+                    }
+                    $stmt->close();
+                    $conn->close();
+                    ?>
+                </div>
             </div>
 
             <div id="ip-management-panel" class="content-panel">
