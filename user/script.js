@@ -52,6 +52,8 @@ document.addEventListener('DOMContentLoaded', () => {
             headerTitle.textContent = 'Bills & Payments';
         } else if (pageId === 'appointments') {
             headerTitle.textContent = 'Appointments';
+        } else if (pageId === 'feedback') { // <-- ADDED THIS
+            headerTitle.textContent = 'Feedback';
         }
     };
 
@@ -99,6 +101,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (pageId === 'profile') {
             // Fetch login history when profile page is viewed
             fetchAndRenderLoginActivity();
+        } else if (pageId === 'feedback') { // <-- ADDED THIS
+            fetchAndRenderFeedback();
         }
     };
     
@@ -554,7 +558,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (notificationPrefsForm) {
         notificationPrefsForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            // Use the existing handleFormSubmit function with the new action
             handleFormSubmit(notificationPrefsForm, 'update_notification_prefs');
         });
     }
@@ -587,23 +590,20 @@ document.addEventListener('DOMContentLoaded', () => {
         currentStep = step;
 
         bookingBackBtn.style.display = (step > 1) ? 'inline-flex' : 'none';
-        bookingNextBtn.style.display = (step < 3) ? 'inline-flex' : 'none'; // Changed from 4 to 3
-        bookingConfirmBtn.style.display = (step === 3) ? 'inline-flex' : 'none'; // Changed from 4 to 3
+        bookingNextBtn.style.display = (step < 3) ? 'inline-flex' : 'none';
+        bookingConfirmBtn.style.display = (step === 3) ? 'inline-flex' : 'none';
         
         if (step === 2) {
             document.getElementById('selected-doctor-name').textContent = bookingData.doctorName;
             const today = new Date();
             
-            // Get the days from the data we saved
             const availableDays = bookingData.doctorSlots?.days_available || [];
             
-            // Pass the days to the calendar
             renderCalendar(today.getFullYear(), today.getMonth(), availableDays);
 
-        } else if (step === 3) { // This is the new step 3 (formerly step 4)
+        } else if (step === 3) {
             document.getElementById('confirm-doctor').textContent = bookingData.doctorName;
             document.getElementById('confirm-date').textContent = bookingData.date;
-            // The token span is removed from HTML, so no need to update it.
         }
         updateNextButtonState();
     };
@@ -613,7 +613,6 @@ document.addEventListener('DOMContentLoaded', () => {
         switch(currentStep) {
             case 1: enabled = !!bookingData.doctorId; break;
             case 2: enabled = !!bookingData.date; break;
-            // No case 3, as 'Next' button is hidden on step 3
         }
         bookingNextBtn.disabled = !enabled;
     };
@@ -637,10 +636,8 @@ document.addEventListener('DOMContentLoaded', () => {
         bookNewBtn.addEventListener('click', () => {
             bookingData = {}; 
             goToStep(1);
-            // --- MODIFICATION HERE ---
-            // Call both functions to populate the modal
-            fetchAndPopulateSpecialties(); // This will fill the specialty dropdown
-            fetchAndRenderDoctors();       // This will load the initial doctor list
+            fetchAndPopulateSpecialties();
+            fetchAndRenderDoctors();
             bookingModal.classList.add('show');
         });
     }
@@ -664,7 +661,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 formData.append('action', 'book_appointment');
                 formData.append('doctorId', bookingData.doctorId);
                 formData.append('date', bookingData.date);
-                // We no longer send 'token'
     
                 const response = await fetch('api.php', {
                     method: 'POST',
@@ -756,14 +752,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-
-    // ==========================================================
-    // === ADD THIS NEW FUNCTION TO POPULATE THE FILTER       ===
-    // ==========================================================
     const fetchAndPopulateSpecialties = async () => {
         const specialtySelect = document.getElementById('doctor-search-specialty');
         
-        // Prevent re-populating if it already has options
         if (specialtySelect.options.length > 1) {
             return;
         }
@@ -785,9 +776,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // ==========================================================
-    // === THIS IS THE NEW HELPER FUNCTION TO ADD             ===
-    // ==========================================================
     const createAvailabilityHtml = (slotsJson) => {
         if (!slotsJson) {
             return '<div class="availability-info not-available"><small>Availability not specified</small></div>';
@@ -796,7 +784,6 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const slots = JSON.parse(slotsJson);
             
-            // Check for the expected structure
             if (!slots.general_availability || !slots.days_available) {
                  return '<div class="availability-info not-available"><small>Availability not specified</small></div>';
             }
@@ -830,9 +817,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // ==========================================================
-    // === THIS IS THE MODIFIED fetchAndRenderDoctors FUNCTION ===
-    // ==========================================================
     const fetchAndRenderDoctors = async () => {
         const doctorListContainer = document.getElementById('doctor-list');
         const nameSearch = document.getElementById('doctor-search-name').value;
@@ -842,7 +826,6 @@ document.addEventListener('DOMContentLoaded', () => {
         doctorListContainer.innerHTML = '<p>Loading doctors...</p>';
         
         try {
-            // Build URL with search parameters
             const params = new URLSearchParams({
                 action: 'get_doctors',
                 name_search: nameSearch,
@@ -855,7 +838,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
             if (result.data.length > 0) {
                 doctorListContainer.innerHTML = result.data.map(doc => {
-                    const availabilityHtml = createAvailabilityHtml(doc.slots); // Call helper
+                    const availabilityHtml = createAvailabilityHtml(doc.slots);
                     return `
                         <div class="doctor-card" data-doctor-id="${doc.id}" data-doctor-name="${doc.name}" data-doctor-slots='${doc.slots || '{}'}'>
                             <div class="doctor-info-left">
@@ -878,18 +861,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // Event listener for the doctor list container (handles clicks on cards)
     const doctorListContainer = document.getElementById('doctor-list');
     if (doctorListContainer) {
         doctorListContainer.addEventListener('click', (e) => {
             const card = e.target.closest('.doctor-card');
             if (!card) return;
             
-            // Handle selection styling
             doctorListContainer.querySelectorAll('.doctor-card').forEach(c => c.classList.remove('selected'));
             card.classList.add('selected');
 
-            // Store data and update UI
             bookingData.doctorId = card.dataset.doctorId;
             bookingData.doctorName = card.dataset.doctorName;
             bookingData.doctorSlots = JSON.parse(card.dataset.doctorSlots);
@@ -897,7 +877,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Event listeners for the search inputs
     const doctorSearchInput = document.getElementById('doctor-search-name');
     const specialtyFilterInput = document.getElementById('doctor-search-specialty');
 
@@ -915,7 +894,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const firstDay = new Date(year, month, 1).getDay();
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         const today = new Date();
-        today.setHours(0, 0, 0, 0); // Normalize today's date
+        today.setHours(0, 0, 0, 0);
 
         let html = `
             <div class="calendar">
@@ -935,29 +914,28 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         for (let i = 0; i < firstDay; i++) {
-            html += `<div></div>`; // Blank days
+            html += `<div></div>`;
         }
 
         for (let day = 1; day <= daysInMonth; day++) {
             const currentDate = new Date(year, month, day);
             const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             
-            // LOGIC TO CHECK AVAILABILITY
             const dayName = currentDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
             const isAvailable = availableDays.includes(dayName);
             
             let classes = 'calendar-day';
             
             if (currentDate < today) {
-                classes += ' inactive'; // Disable past dates
+                classes += ' inactive';
             } else if (isAvailable) {
-                classes += ' active'; // It's a future date AND the doctor works
+                classes += ' active';
             } else {
-                classes += ' inactive'; // It's a future date but doctor is OFF
+                classes += ' inactive';
             }
 
             if (dateString === bookingData.date) {
-                classes += ' selected'; // Highlight selected date
+                classes += ' selected';
             }
             html += `<div class="${classes}" data-date="${dateString}">${day}</div>`;
         }
@@ -965,7 +943,6 @@ document.addEventListener('DOMContentLoaded', () => {
         html += `</div></div>`;
         datepicker.innerHTML = html;
 
-        // Add event listeners for the new buttons
         document.getElementById('prev-month-btn').addEventListener('click', () => {
             const newDate = new Date(year, month - 1, 1);
             renderCalendar(newDate.getFullYear(), newDate.getMonth(), availableDays);
@@ -982,27 +959,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const dateEl = e.target.closest('.calendar-day.active');
 
             if (dateEl) {
-                // Store the selected date
                 bookingData.date = dateEl.dataset.date;
                 
-                // When a new date is picked, delete any old data that is no longer relevant
                 delete bookingData.slot; 
                 delete bookingData.token;
                 
-                // Re-render the calendar to visually highlight the selected date
                 const [year, month] = bookingData.date.split('-').map(Number);
                 const availableDays = bookingData.doctorSlots?.days_available || [];
-                renderCalendar(year, month - 1, availableDays); // month is 0-indexed
+                renderCalendar(year, month - 1, availableDays);
                 
-                // Check if the next button can be enabled
                 updateNextButtonState();
             }
         });
     }
     
-    // THIS FUNCTION IS NOW REMOVED
-    // const fetchAndRenderTokenGrid = async (doctorId, date) => { ... };
-
     document.addEventListener('click', async (e) => {
         if (e.target.classList.contains('cancel-appointment-btn')) {
             const appointmentId = e.target.dataset.id;
@@ -1020,7 +990,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
                     if (result.success) {
                         alert(result.message);
-                        fetchAndRenderAppointments(); // Refresh the list
+                        fetchAndRenderAppointments();
                     } else {
                         throw new Error(result.message);
                     }
@@ -1132,7 +1102,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (result.success && result.data && result.data.length > 0) {
                 result.data.forEach(prescription => {
-                    const card = createPrescriptionCard(prescription); // This function already exists!
+                    const card = createPrescriptionCard(prescription);
                     prescriptionsList.appendChild(card);
                 });
             } else {
@@ -1178,15 +1148,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const { summary, history } = result.data;
 
             document.getElementById('outstanding-balance').textContent = `₹${parseFloat(summary.outstanding_balance).toFixed(2)}`;
-            
-            // ==========================================================
-            // ===          *** THIS IS THE FINAL FIX *** ===
-            // ==========================================================
             document.getElementById('last-payment-amount').innerHTML = `₹${parseFloat(summary.last_payment_amount).toFixed(2)} on <span id="last-payment-date">${summary.last_payment_date}</span>`;
-            // ==========================================================
-            // ===          *** END OF THE FINAL FIX *** ===
-            // ==========================================================
-
 
             if (history.length > 0) {
                 billingEmptyState.style.display = 'none';
@@ -1219,7 +1181,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
         } catch (error) {
             console.error("Error fetching billing data:", error);
-            // This is the line from the previous fix, which will now show the *real* error
             const specificError = error.message.replace('Error:', '').trim(); 
             billingTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--status-red);"><strong>Error:</strong> ${specificError}</td></tr>`;
         }
@@ -1228,10 +1189,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (billingPage && applyBillingFiltersBtn) {
         applyBillingFiltersBtn.addEventListener('click', fetchAndRenderBillingData);
     }
-    
-    // ===========================================
-    // === THIS IS THE NEW, UPDATED SECTION    ===
-    // ===========================================
     
     // --- This is the new function to fetch data and show the modal ---
     const showBillDetailsModal = async (billId) => {
@@ -1248,6 +1205,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Populate modal fields
             document.getElementById('modal-bill-id').textContent = `TXN${data.id}`;
+            // *** ADDED THIS LINE ***
+            billDetailsModal.querySelector('.modal-content').dataset.billId = data.id; 
             document.getElementById('modal-patient-name').textContent = data.patient_name;
             document.getElementById('modal-bill-date').textContent = new Date(data.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -1257,7 +1216,7 @@ document.addEventListener('DOMContentLoaded', () => {
             statusEl.className = `status ${displayStatus.toLowerCase()}`;
             statusEl.textContent = displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1);
 
-            // Populate itemized charges (using the single description)
+            // Populate itemized charges
             const itemizedBody = document.getElementById('modal-itemized-charges');
             itemizedBody.innerHTML = `
                 <tr>
@@ -1290,7 +1249,6 @@ document.addEventListener('DOMContentLoaded', () => {
         billingPage.addEventListener('click', (e) => {
             const targetButton = e.target.closest('.view-bill-details-btn');
             if (targetButton) {
-                // --- This is the updated logic ---
                 showBillDetailsModal(targetButton.dataset.billId);
             }
         });
@@ -1298,6 +1256,66 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (billCloseModalBtn) billCloseModalBtn.addEventListener('click', () => billDetailsModal.classList.remove('show'));
     if (billDetailsModal) billDetailsModal.addEventListener('click', (e) => { if (e.target === billDetailsModal) billDetailsModal.classList.remove('show') });
+    
+    // ===========================================
+    // ===  NEW: PAYMENT PROCESSING LOGIC      ===
+    // ===========================================
+
+    const processPayment = async (billId, paymentMode) => {
+        if (!billId) {
+            alert('Error: Bill ID is missing.');
+            return;
+        }
+
+        // Show loading state on buttons
+        const cardBtn = document.getElementById('pay-with-card-btn');
+        const upiBtn = document.getElementById('pay-with-upi-btn');
+        cardBtn.disabled = true;
+        upiBtn.disabled = true;
+        
+        // Change the button that was clicked to "Processing"
+        const clickedBtn = (paymentMode === 'card') ? cardBtn : upiBtn;
+        clickedBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+
+        try {
+            const formData = new FormData();
+            formData.append('action', 'process_payment');
+            formData.append('bill_id', billId);
+            formData.append('payment_mode', paymentMode);
+
+            const response = await fetch('api.php', { method: 'POST', body: formData });
+            const result = await response.json();
+
+            if (result.success) {
+                alert(result.message);
+                billDetailsModal.classList.remove('show'); // Close modal
+                fetchAndRenderBillingData(); // Refresh the billing list
+            } else {
+                throw new Error(result.message || 'An unknown error occurred.');
+            }
+
+        } catch (error) {
+            console.error('Payment Error:', error);
+            alert(`Payment failed: ${error.message}`);
+        } finally {
+            // Restore buttons
+            cardBtn.disabled = false;
+            upiBtn.disabled = false;
+            cardBtn.innerHTML = '<i class="fas fa-credit-card"></i> Pay with Card';
+            upiBtn.innerHTML = '<i class="fas fa-qrcode"></i> Pay with UPI';
+        }
+    };
+
+    // Add listeners to the new payment buttons
+    document.getElementById('pay-with-card-btn')?.addEventListener('click', () => {
+        const billId = billDetailsModal.querySelector('.modal-content').dataset.billId;
+        processPayment(billId, 'card');
+    });
+
+    document.getElementById('pay-with-upi-btn')?.addEventListener('click', () => {
+        const billId = billDetailsModal.querySelector('.modal-content').dataset.billId;
+        processPayment(billId, 'upi');
+    });
     
     // ===========================================
     // ===        LAB RESULTS PAGE LOGIC       ===
@@ -1310,11 +1328,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const labLoadingState = document.getElementById('lab-results-loading-state');
     const labApplyFiltersBtn = document.getElementById('lab-apply-filters');
 
-    // --- START OF FIX: MOVED MODAL LISTENERS ---
-    // These are now global, guaranteeing the close button will work.
     if (closeLabModalBtn) closeLabModalBtn.addEventListener('click', () => labModal.classList.remove('show'));
     if (labModal) labModal.addEventListener('click', (e) => { if (e.target === labModal) labModal.classList.remove('show') });
-    // --- END OF FIX ---
 
     const renderLabResults = (results) => {
         labTableBody.innerHTML = '';
@@ -1382,30 +1397,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    //
-    // **** THIS IS THE UPDATED FUNCTION ****
-    //
     const showLabDetailsModal = (resultId) => {
         const results = JSON.parse(labsPage.dataset.results || '[]');
         const data = results.find(r => r.id === parseInt(resultId));
         if (!data || !labModal) return;
 
-        // --- Set simple text fields ---
         document.getElementById('modal-lab-test-name').textContent = data.test_name;
         document.getElementById('modal-lab-date').textContent = new Date(data.test_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
         document.getElementById('modal-lab-doctor').textContent = `Dr. ${data.doctor_name || 'N/A'}`;
         
-        // --- START OF THE FIX ---
         const detailsContainer = document.getElementById('modal-lab-result-details');
-        detailsContainer.innerHTML = ''; // Clear previous content
+        detailsContainer.innerHTML = '';
 
         try {
-            // 1. Parse the JSON string from data.result_details
             const resultData = JSON.parse(data.result_details);
             
-            // 2. Build the HTML table for 'findings'
             if (resultData.findings && resultData.findings.length > 0) {
-                // Use the existing 'data-table compact' style from your CSS
                 let tableHtml = `
                     <table class="data-table compact">
                         <thead>
@@ -1419,11 +1426,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         <tbody>
                 `;
 
-                // Loop through each finding and create a table row
                 resultData.findings.forEach(finding => {
                     const parameter = finding.parameter || 'N/A';
                     const result = finding.result || 'N/A';
-                    // Your JSON doesn't have 'units', so we'll leave it blank
                     const units = finding.units || ''; 
                     const range = finding.range || 'N/A';
 
@@ -1441,7 +1446,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 detailsContainer.innerHTML += tableHtml;
             }
 
-            // 3. Add the 'summary' from the JSON
             if (resultData.summary) {
                 detailsContainer.innerHTML += `
                     <h5 style="margin-top: 1.5rem; margin-bottom: 0.5rem; font-weight: 600;">Summary</h5>
@@ -1449,19 +1453,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             }
             
-            // If after all this, the container is still empty
             if (detailsContainer.innerHTML === '') {
                  detailsContainer.textContent = 'Result details are not available in a structured format.';
             }
 
         } catch (error) {
-            // If it's not valid JSON, display the raw text as a fallback
             console.error("Failed to parse lab result details:", error);
             detailsContainer.textContent = data.result_details || 'Details are not available.';
         }
-        // --- END OF THE FIX ---
 
-        // --- Handle Download Button (existing logic) ---
         const downloadSection = document.getElementById('modal-lab-download-section');
         const downloadBtn = document.getElementById('modal-lab-download-btn');
         if (data.status === 'completed') {
@@ -1482,10 +1482,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         labApplyFiltersBtn.addEventListener('click', fetchAndRenderLabResults);
-        
-        // --- FIX ---
-        // The modal close listeners have been moved out of this block
-        // to be global.
     }
     
     // ===========================================
@@ -1497,10 +1493,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const tokenLoadingState = document.getElementById('token-loading-state');
     const tokenEmptyState = document.getElementById('token-empty-state');
 
-    /**
-     * UPDATED createTokenCard Function
-     * Includes 10-minute average wait time and dynamic countdown logic.
-     */
     const createTokenCard = (tokenData) => {
         const card = document.createElement('div');
         card.className = 'live-token-card';
@@ -1508,11 +1500,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const yourToken = parseInt(tokenData.your_token, 10);
         const currentToken = parseInt(tokenData.current_token, 10);
         const totalPatients = parseInt(tokenData.total_patients, 10);
-        const avgTimePerPatient = 10; // 10 minutes per patient
+        const avgTimePerPatient = 10;
 
-        // --- NEW DYNAMIC WAIT TIME LOGIC ---
         let waitMessage = "Calculating...";
-        const tokensAhead = Math.max(0, yourToken - currentToken - 1); // Patients *between* you and current
+        const tokensAhead = Math.max(0, yourToken - currentToken - 1);
         
         let statusMessage = "Please wait for your turn.";
         if (yourToken === currentToken + 1) {
@@ -1524,31 +1515,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (yourToken <= currentToken) {
-            waitMessage = "N/A"; // No wait time if it's your turn or past
+            waitMessage = "N/A";
         } else if (tokenData.consultation_start_time) {
-            // We have a start time! We can do a live calculation.
             const startTime = new Date(tokenData.consultation_start_time);
             const now = new Date();
-            const timeElapsedMins = (now.getTime() - startTime.getTime()) / 60000; // Minutes elapsed on current patient
+            const timeElapsedMins = (now.getTime() - startTime.getTime()) / 60000;
 
             let remainingTimeOnCurrent = avgTimePerPatient - timeElapsedMins;
 
             if (remainingTimeOnCurrent > 0) {
-                // Consultation is on time
                 const totalWait = (tokensAhead * avgTimePerPatient) + remainingTimeOnCurrent;
                 waitMessage = `~${Math.ceil(totalWait)} min`;
             } else {
-                // Consultation is in overtime. 
                 const totalWait = (tokensAhead * avgTimePerPatient);
-                // We show the base wait for people ahead, plus a "Delayed" flag.
                 waitMessage = `~${Math.ceil(totalWait)} min (Delayed)`;
             }
         } else {
-            // No one is in consultation, or we don't have a start time. Use simple average.
             const staticWait = Math.max(0, yourToken - currentToken) * avgTimePerPatient;
             waitMessage = `~${staticWait} min`;
         }
-        // --- END OF NEW LOGIC ---
 
         const progressPercent = totalPatients > 0 ? (currentToken / totalPatients) * 100 : 0;
 
@@ -1698,27 +1683,25 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.activity && data.activity.length > 0) {
                 activityEmpty.style.display = 'none';
                 
-                // Map actions to icons and colors
                 const activityInfoMap = {
                     'booked_appointment': { icon: 'fa-calendar-plus', colorClass: 'appointments', page: 'appointments' },
-                    'cancelled_appointment': { icon: 'fa-calendar-times', colorClass: 'billing', page: 'appointments' }, // using billing color (orange)
-                    'downloaded_summary': { icon: 'fa-file-download', colorClass: 'labs', page: 'summaries' }, // using labs color (blue)
+                    'cancelled_appointment': { icon: 'fa-calendar-times', colorClass: 'billing', page: 'appointments' },
+                    'downloaded_summary': { icon: 'fa-file-download', colorClass: 'labs', page: 'summaries' },
                     'downloaded_lab_report': { icon: 'fa-file-download', colorClass: 'labs', page: 'labs' },
-                    'default': { icon: 'fa-history', colorClass: 'prescriptions', page: 'dashboard' } // Green for default
+                    'default': { icon: 'fa-history', colorClass: 'prescriptions', page: 'dashboard' }
                 };
 
                 data.activity.forEach(act => {
                     const item = document.createElement('div');
                     const activityInfo = activityInfoMap[act.action] || activityInfoMap['default'];
                     
-                    item.className = 'activity-item notification-item'; // Keep styling consistent
+                    item.className = 'activity-item notification-item';
                     item.dataset.page = activityInfo.page;
                     
                     const activityTime = new Date(act.time).toLocaleString('en-US', {
                         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
                     });
                     
-                    // Use the 'details' from the database as the main message
                     item.innerHTML = `
                         <div class="notification-icon ${activityInfo.colorClass}"><i class="fas ${activityInfo.icon}"></i></div>
                         <div class="notification-content">
@@ -1727,7 +1710,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     `;
 
-                    // Make the activity item clickable to navigate to the relevant page
                     item.addEventListener('click', (e) => {
                         e.preventDefault();
                         navigateToPage(activityInfo.page);
@@ -1796,7 +1778,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await response.json();
     
             if (result.success && result.data.length > 0) {
-                tableBody.innerHTML = ''; // Clear loading
+                tableBody.innerHTML = '';
                 result.data.forEach(log => {
                     const row = document.createElement('tr');
                     const logDate = new Date(log.login_time);
@@ -1819,6 +1801,198 @@ document.addEventListener('DOMContentLoaded', () => {
             tableBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: var(--status-red);">Could not load activity.</td></tr>';
         }
     };
+
+    // ===========================================
+    // ===         PATIENT FEEDBACK LOGIC      ===
+    // ===========================================
+    
+    const feedbackPage = document.getElementById('feedback-page');
+    const feedbackModal = document.getElementById('feedback-modal');
+    const feedbackModalClose = document.getElementById('feedback-modal-close');
+    const feedbackForm = document.getElementById('feedback-form');
+    const feedbackListContainer = document.getElementById('feedback-appointment-list');
+    const feedbackLoadingState = document.getElementById('feedback-loading-state');
+    const feedbackEmptyState = document.getElementById('feedback-empty-state');
+
+    const createFeedbackCard = (app) => {
+        const card = document.createElement('div');
+        card.className = 'summary-card'; // Re-use existing styles
+        
+        const appDate = new Date(app.appointment_date).toLocaleDateString('en-US', {
+            year: 'numeric', month: 'long', day: 'numeric'
+        });
+
+        // Store data on the card for the modal
+        card.dataset.appointmentId = app.appointment_id;
+        card.dataset.doctorName = app.doctor_name;
+        card.dataset.appointmentDate = appDate;
+        
+        // Store submitted feedback details if they exist
+        if (app.feedback_id) {
+            card.dataset.comments = app.comments;
+            card.dataset.rating = app.overall_rating;
+        }
+
+        const actionsHtml = (app.feedback_id)
+            ? `<button class="btn-secondary btn-sm view-feedback-btn">
+                   <i class="fas fa-eye"></i> View Feedback
+               </button>`
+            : `<button class="btn-primary btn-sm give-feedback-btn">
+                   <i class="fas fa-edit"></i> Give Feedback
+               </button>`;
+
+        card.innerHTML = `
+            <div class="summary-card-header">
+                <div class="summary-icon"><i class="fas fa-user-md"></i></div>
+                <div class="summary-info">
+                    <h4>Dr. ${app.doctor_name} <small>(${app.specialty || 'General'})</small></h4>
+                    <p>Appointment on: <strong>${appDate}</strong></p>
+                </div>
+            </div>
+            <div class="summary-card-actions">
+                ${actionsHtml}
+            </div>
+        `;
+        return card;
+    };
+
+    const fetchAndRenderFeedback = async () => {
+        if (!feedbackPage) return;
+
+        feedbackLoadingState.style.display = 'block';
+        feedbackEmptyState.style.display = 'none';
+        feedbackListContainer.innerHTML = '';
+
+        try {
+            const response = await fetch('api.php?action=get_feedback_appointments');
+            const result = await response.json();
+
+            if (result.success && result.data.length > 0) {
+                result.data.forEach(app => {
+                    const card = createFeedbackCard(app);
+                    feedbackListContainer.appendChild(card);
+                });
+            } else {
+                feedbackEmptyState.style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Error fetching feedback appointments:', error);
+            feedbackListContainer.innerHTML = '<p class="error-text">Could not load appointments.</p>';
+        } finally {
+            feedbackLoadingState.style.display = 'none';
+        }
+    };
+
+    // --- Star Rating Click Handler ---
+    document.querySelectorAll('.star-rating').forEach(ratingGroup => {
+        const stars = ratingGroup.querySelectorAll('.fa-star');
+        const input = document.getElementById(ratingGroup.dataset.ratingInput);
+        
+        ratingGroup.addEventListener('click', (e) => {
+            const clickedStar = e.target.closest('.fa-star');
+            if (!clickedStar) return;
+
+            const ratingValue = clickedStar.dataset.value;
+            input.value = ratingValue;
+            
+            stars.forEach(star => {
+                if (star.dataset.value <= ratingValue) {
+                    star.classList.add('fas', 'selected');
+                    star.classList.remove('far');
+                } else {
+                    star.classList.add('far');
+                    star.classList.remove('fas', 'selected');
+                }
+            });
+        });
+    });
+    
+    // --- Reset Star Rating ---
+    const resetStarRatings = (form) => {
+        form.querySelectorAll('.star-rating').forEach(ratingGroup => {
+            const input = document.getElementById(ratingGroup.dataset.ratingInput);
+            input.value = "0";
+            ratingGroup.querySelectorAll('.fa-star').forEach(star => {
+                star.classList.add('far');
+                star.classList.remove('fas', 'selected');
+            });
+        });
+    };
+
+    // --- Feedback Modal Open/Close/Submit ---
+    if (feedbackListContainer) {
+        feedbackListContainer.addEventListener('click', (e) => {
+            const card = e.target.closest('.summary-card');
+            if (!card) return;
+
+            if (e.target.closest('.give-feedback-btn')) {
+                // Populate and show modal
+                document.getElementById('feedback-appointment-id').value = card.dataset.appointmentId;
+                document.getElementById('feedback-doctor-name').textContent = card.dataset.doctorName;
+                document.getElementById('feedback-appointment-date').textContent = card.dataset.appointmentDate;
+                
+                feedbackForm.reset();
+                resetStarRatings(feedbackForm);
+                
+                feedbackModal.classList.add('show');
+            }
+            
+            if (e.target.closest('.view-feedback-btn')) {
+                // Just show an alert with existing feedback
+                const rating = card.dataset.rating;
+                const comments = card.dataset.comments;
+                alert(`Your Feedback:\n\nRating: ${rating} Stars\nComments: ${comments || 'N/A'}`);
+            }
+        });
+    }
+    
+    if (feedbackModalClose) {
+        feedbackModalClose.addEventListener('click', () => feedbackModal.classList.remove('show'));
+    }
+    if (feedbackModal) {
+        feedbackModal.addEventListener('click', (e) => {
+            if (e.target === feedbackModal) feedbackModal.classList.remove('show');
+        });
+    }
+
+    if (feedbackForm) {
+        feedbackForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = document.getElementById('submit-feedback-btn');
+            const originalBtnHtml = submitBtn.innerHTML;
+            
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+
+            try {
+                const formData = new FormData(feedbackForm);
+                formData.append('action', 'submit_feedback');
+
+                const response = await fetch('api.php', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(result.message);
+                    feedbackModal.classList.remove('show');
+                    fetchAndRenderFeedback(); // Refresh the list
+                } else {
+                    throw new Error(result.message);
+                }
+
+            } catch (error) {
+                console.error('Feedback submission error:', error);
+                alert(`Error: ${error.message}`);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnHtml;
+            }
+        });
+    }
+
 
     // --- Initial Page Load ---
     const savedTheme = localStorage.getItem('theme');
