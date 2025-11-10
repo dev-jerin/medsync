@@ -96,6 +96,9 @@ document.addEventListener('DOMContentLoaded', () => {
             tokenInterval = setInterval(fetchAndRenderTokens, 30000); // Then update every 30 seconds
             updateTime(); // Call once immediately
             clockInterval = setInterval(updateTime, 1000); // Start the clock
+        } else if (pageId === 'profile') {
+            // Fetch login history when profile page is viewed
+            fetchAndRenderLoginActivity();
         }
     };
     
@@ -574,7 +577,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const stepTitles = [
         "Step 1: Find Your Doctor", "Step 2: Select Date",
-        "Step 3: Pick Your Token", "Step 4: Confirm Details"
+        "Step 3: Confirm Details"
     ];
 
     const goToStep = (step) => {
@@ -584,21 +587,23 @@ document.addEventListener('DOMContentLoaded', () => {
         currentStep = step;
 
         bookingBackBtn.style.display = (step > 1) ? 'inline-flex' : 'none';
-        bookingNextBtn.style.display = (step < 4) ? 'inline-flex' : 'none';
-        bookingConfirmBtn.style.display = (step === 4) ? 'inline-flex' : 'none';
+        bookingNextBtn.style.display = (step < 3) ? 'inline-flex' : 'none'; // Changed from 4 to 3
+        bookingConfirmBtn.style.display = (step === 3) ? 'inline-flex' : 'none'; // Changed from 4 to 3
         
         if (step === 2) {
             document.getElementById('selected-doctor-name').textContent = bookingData.doctorName;
             const today = new Date();
-            renderCalendar(today.getFullYear(), today.getMonth());
-        } else if (step === 3) {
-            document.getElementById('token-doctor-name').textContent = bookingData.doctorName;
-            document.getElementById('token-selected-date').textContent = bookingData.date;
-            fetchAndRenderTokenGrid(bookingData.doctorId, bookingData.date);
-        } else if (step === 4) {
+            
+            // Get the days from the data we saved
+            const availableDays = bookingData.doctorSlots?.days_available || [];
+            
+            // Pass the days to the calendar
+            renderCalendar(today.getFullYear(), today.getMonth(), availableDays);
+
+        } else if (step === 3) { // This is the new step 3 (formerly step 4)
             document.getElementById('confirm-doctor').textContent = bookingData.doctorName;
             document.getElementById('confirm-date').textContent = bookingData.date;
-            document.getElementById('confirm-token').textContent = `#${bookingData.token}`;
+            // The token span is removed from HTML, so no need to update it.
         }
         updateNextButtonState();
     };
@@ -607,8 +612,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let enabled = false;
         switch(currentStep) {
             case 1: enabled = !!bookingData.doctorId; break;
-            case 2: enabled = !!bookingData.date; break; // Only depends on date now
-            case 3: enabled = !!bookingData.token; break;
+            case 2: enabled = !!bookingData.date; break;
+            // No case 3, as 'Next' button is hidden on step 3
         }
         bookingNextBtn.disabled = !enabled;
     };
@@ -642,7 +647,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (bookingCloseBtn) bookingCloseBtn.addEventListener('click', () => bookingModal.classList.remove('show'));
     if (bookingModal) bookingModal.addEventListener('click', (e) => { if(e.target === bookingModal) bookingModal.classList.remove('show') });
     
-    if (bookingNextBtn) bookingNextBtn.addEventListener('click', () => { if (currentStep < 4) goToStep(currentStep + 1); });
+    if (bookingNextBtn) bookingNextBtn.addEventListener('click', () => { if (currentStep < 3) goToStep(currentStep + 1); });
     if (bookingBackBtn) bookingBackBtn.addEventListener('click', () => { if (currentStep > 1) goToStep(currentStep - 1); });
     
     // =======================================================
@@ -659,8 +664,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 formData.append('action', 'book_appointment');
                 formData.append('doctorId', bookingData.doctorId);
                 formData.append('date', bookingData.date);
-                // We no longer send 'slot'
-                formData.append('token', bookingData.token);
+                // We no longer send 'token'
     
                 const response = await fetch('api.php', {
                     method: 'POST',
@@ -781,6 +785,54 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // ==========================================================
+    // === THIS IS THE NEW HELPER FUNCTION TO ADD             ===
+    // ==========================================================
+    const createAvailabilityHtml = (slotsJson) => {
+        if (!slotsJson) {
+            return '<div class="availability-info not-available"><small>Availability not specified</small></div>';
+        }
+
+        try {
+            const slots = JSON.parse(slotsJson);
+            
+            // Check for the expected structure
+            if (!slots.general_availability || !slots.days_available) {
+                 return '<div class="availability-info not-available"><small>Availability not specified</small></div>';
+            }
+
+            const time = slots.general_availability;
+            const availableDays = slots.days_available.map(day => day.toLowerCase());
+            const allDays = [
+                { short: 'S', long: 'sunday' },
+                { short: 'M', long: 'monday' },
+                { short: 'T', long: 'tuesday' },
+                { short: 'W', long: 'wednesday' },
+                { short: 'T', long: 'thursday' },
+                { short: 'F', long: 'friday' },
+                { short: 'S', long: 'saturday' }
+            ];
+
+            const daysHtml = allDays.map(day => {
+                const isActive = availableDays.includes(day.long);
+                return `<span class="day-dot ${isActive ? 'active' : ''}" title="${day.long.charAt(0).toUpperCase() + day.long.slice(1)}">${day.short}</span>`;
+            }).join('');
+
+            return `
+                <div class="availability-info">
+                    <strong class="availability-time"><i class="fas fa-clock"></i> ${time}</strong>
+                    <div class="availability-days">${daysHtml}</div>
+                </div>
+            `;
+        } catch (e) {
+            console.error("Error parsing doctor slots JSON:", e, slotsJson);
+            return '<div class="availability-info not-available"><small>Availability not specified</small></div>';
+        }
+    };
+
+    // ==========================================================
+    // === THIS IS THE MODIFIED fetchAndRenderDoctors FUNCTION ===
+    // ==========================================================
     const fetchAndRenderDoctors = async () => {
         const doctorListContainer = document.getElementById('doctor-list');
         const nameSearch = document.getElementById('doctor-search-name').value;
@@ -802,15 +854,21 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!result.success) throw new Error(result.message);
     
             if (result.data.length > 0) {
-                doctorListContainer.innerHTML = result.data.map(doc => `
-                    <div class="doctor-card" data-doctor-id="${doc.id}" data-doctor-name="${doc.name}">
-                        <img src="../uploads/profile_pictures/${doc.profile_picture || 'default.png'}" alt="${doc.name}">
-                        <div>
-                            <strong>${doc.name}</strong><br>
-                            <small>${doc.specialty}</small>
+                doctorListContainer.innerHTML = result.data.map(doc => {
+                    const availabilityHtml = createAvailabilityHtml(doc.slots); // Call helper
+                    return `
+                        <div class="doctor-card" data-doctor-id="${doc.id}" data-doctor-name="${doc.name}" data-doctor-slots='${doc.slots || '{}'}'>
+                            <div class="doctor-info-left">
+                                <img src="../uploads/profile_pictures/${doc.profile_picture || 'default.png'}" alt="${doc.name}">
+                                <div class="doctor-info-basic">
+                                    <strong>${doc.name}</strong><br>
+                                    <small>${doc.specialty}</small>
+                                </div>
+                            </div>
+                            ${availabilityHtml} 
                         </div>
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
             } else {
                 doctorListContainer.innerHTML = '<p>No doctors found matching your search.</p>';
             }
@@ -834,6 +892,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Store data and update UI
             bookingData.doctorId = card.dataset.doctorId;
             bookingData.doctorName = card.dataset.doctorName;
+            bookingData.doctorSlots = JSON.parse(card.dataset.doctorSlots);
             updateNextButtonState();
         });
     }
@@ -849,7 +908,7 @@ document.addEventListener('DOMContentLoaded', () => {
         specialtyFilterInput.addEventListener('change', fetchAndRenderDoctors);
     }
     
-    const renderCalendar = (year, month) => {
+    const renderCalendar = (year, month, availableDays) => {
         const datepicker = document.getElementById('datepicker');
         const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
         
@@ -883,12 +942,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const currentDate = new Date(year, month, day);
             const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             
+            // LOGIC TO CHECK AVAILABILITY
+            const dayName = currentDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+            const isAvailable = availableDays.includes(dayName);
+            
             let classes = 'calendar-day';
+            
             if (currentDate < today) {
                 classes += ' inactive'; // Disable past dates
+            } else if (isAvailable) {
+                classes += ' active'; // It's a future date AND the doctor works
             } else {
-                classes += ' active';
+                classes += ' inactive'; // It's a future date but doctor is OFF
             }
+
             if (dateString === bookingData.date) {
                 classes += ' selected'; // Highlight selected date
             }
@@ -901,11 +968,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // Add event listeners for the new buttons
         document.getElementById('prev-month-btn').addEventListener('click', () => {
             const newDate = new Date(year, month - 1, 1);
-            renderCalendar(newDate.getFullYear(), newDate.getMonth());
+            renderCalendar(newDate.getFullYear(), newDate.getMonth(), availableDays);
         });
         document.getElementById('next-month-btn').addEventListener('click', () => {
             const newDate = new Date(year, month + 1, 1);
-            renderCalendar(newDate.getFullYear(), newDate.getMonth());
+            renderCalendar(newDate.getFullYear(), newDate.getMonth(), availableDays);
         });
     };
 
@@ -924,7 +991,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Re-render the calendar to visually highlight the selected date
                 const [year, month] = bookingData.date.split('-').map(Number);
-                renderCalendar(year, month - 1); // month is 0-indexed
+                const availableDays = bookingData.doctorSlots?.days_available || [];
+                renderCalendar(year, month - 1, availableDays); // month is 0-indexed
                 
                 // Check if the next button can be enabled
                 updateNextButtonState();
@@ -932,38 +1000,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    const fetchAndRenderTokenGrid = async (doctorId, date) => {
-        const tokenGrid = document.getElementById('token-grid');
-        tokenGrid.innerHTML = '<p>Loading available tokens...</p>';
-        try {
-            const response = await fetch(`api.php?action=get_available_tokens&doctor_id=${doctorId}&date=${date}`);
-            const result = await response.json();
-            if (!result.success) throw new Error(result.message);
-    
-            const { total, booked } = result.data;
-            tokenGrid.innerHTML = '';
-            for (let i = 1; i <= total; i++) {
-                const isBooked = booked.includes(i);
-                const tokenEl = document.createElement('div');
-                tokenEl.className = `token ${isBooked ? 'booked' : 'available'}`;
-                tokenEl.textContent = i;
-                if (!isBooked) tokenEl.dataset.tokenNumber = i;
-                tokenGrid.appendChild(tokenEl);
-            }
-    
-            tokenGrid.addEventListener('click', (e) => {
-                const tokenEl = e.target.closest('.token.available');
-                if (!tokenEl) return;
-                tokenGrid.querySelectorAll('.token').forEach(t => t.classList.remove('selected'));
-                tokenEl.classList.add('selected');
-                bookingData.token = tokenEl.dataset.tokenNumber;
-                updateNextButtonState();
-            });
-        } catch (error) {
-            console.error('Error fetching tokens:', error);
-            tokenGrid.innerHTML = '<p class="error-text">Could not load tokens.</p>';
-        }
-    };
+    // THIS FUNCTION IS NOW REMOVED
+    // const fetchAndRenderTokenGrid = async (doctorId, date) => { ... };
 
     document.addEventListener('click', async (e) => {
         if (e.target.classList.contains('cancel-appointment-btn')) {
@@ -1138,34 +1176,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!result.success) throw new Error(result.message);
             
             const { summary, history } = result.data;
-    
-            // --- START OF FIX ---
-    
-            // Update outstanding balance (this one is fine)
-            const outstandingEl = document.getElementById('outstanding-balance');
-            if (outstandingEl) {
-                outstandingEl.textContent = `₹${parseFloat(summary.outstanding_balance).toFixed(2)}`;
-            }
-    
-            // Update last payment
-            // We must update the inner span FIRST, then the parent h3's text node
-            const lastPaymentDateEl = document.getElementById('last-payment-date');
-            if (lastPaymentDateEl) {
-                lastPaymentDateEl.textContent = summary.last_payment_date;
-            }
-    
-            const lastPaymentAmountEl = document.getElementById('last-payment-amount');
-            // Check if the firstChild is a text node (nodeType === 3)
-            if (lastPaymentAmountEl && lastPaymentAmountEl.firstChild && lastPaymentAmountEl.firstChild.nodeType === 3) {
-                // This targets the text node "₹0.00 on " and preserves the <span>
-                lastPaymentAmountEl.firstChild.textContent = `₹${parseFloat(summary.last_payment_amount).toFixed(2)} on `;
-            } else if (lastPaymentAmountEl) {
-                // Fallback in case the HTML structure is ever different
-                lastPaymentAmountEl.innerHTML = `₹${parseFloat(summary.last_payment_amount).toFixed(2)} on <span id="last-payment-date">${summary.last_payment_date}</span>`;
-            }
+
+            document.getElementById('outstanding-balance').textContent = `₹${parseFloat(summary.outstanding_balance).toFixed(2)}`;
             
-            // --- END OF FIX ---
-    
+            // ==========================================================
+            // ===          *** THIS IS THE FINAL FIX *** ===
+            // ==========================================================
+            document.getElementById('last-payment-amount').innerHTML = `₹${parseFloat(summary.last_payment_amount).toFixed(2)} on <span id="last-payment-date">${summary.last_payment_date}</span>`;
+            // ==========================================================
+            // ===          *** END OF THE FINAL FIX *** ===
+            // ==========================================================
+
+
             if (history.length > 0) {
                 billingEmptyState.style.display = 'none';
                 billingTableBody.innerHTML = history.map(bill => {
@@ -1354,7 +1376,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
         } catch (error) {
             console.error("Error fetching lab results:", error);
-            labTableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--status-red);">Could not load lab results. Please try again.</td></tr>`;
+            labTableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--status-red);">Could not load lab results. Please try again later.</td></tr>`;
         } finally {
             labLoadingState.style.display = 'none';
         }
@@ -1475,6 +1497,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const tokenLoadingState = document.getElementById('token-loading-state');
     const tokenEmptyState = document.getElementById('token-empty-state');
 
+    /**
+     * UPDATED createTokenCard Function
+     * Includes 10-minute average wait time and dynamic countdown logic.
+     */
     const createTokenCard = (tokenData) => {
         const card = document.createElement('div');
         card.className = 'live-token-card';
@@ -1482,26 +1508,54 @@ document.addEventListener('DOMContentLoaded', () => {
         const yourToken = parseInt(tokenData.your_token, 10);
         const currentToken = parseInt(tokenData.current_token, 10);
         const totalPatients = parseInt(tokenData.total_patients, 10);
+        const avgTimePerPatient = 10; // 10 minutes per patient
 
-        const tokensAhead = Math.max(0, yourToken - currentToken - 1);
-        const avgTimePerPatient = 5; 
-        const estimatedWait = tokensAhead * avgTimePerPatient;
-
+        // --- NEW DYNAMIC WAIT TIME LOGIC ---
+        let waitMessage = "Calculating...";
+        const tokensAhead = Math.max(0, yourToken - currentToken - 1); // Patients *between* you and current
+        
         let statusMessage = "Please wait for your turn.";
         if (yourToken === currentToken + 1) {
             statusMessage = "You're next! Please be ready near the doctor's room.";
         } else if (yourToken === currentToken) {
             statusMessage = "It's your turn now! Please proceed to the doctor's room.";
         } else if (yourToken < currentToken) {
-            statusMessage = "Your turn has passed. Please contact reception if you missed it.";
+            statusMessage = "Your turn has passed. Please contact reception.";
         }
+
+        if (yourToken <= currentToken) {
+            waitMessage = "N/A"; // No wait time if it's your turn or past
+        } else if (tokenData.consultation_start_time) {
+            // We have a start time! We can do a live calculation.
+            const startTime = new Date(tokenData.consultation_start_time);
+            const now = new Date();
+            const timeElapsedMins = (now.getTime() - startTime.getTime()) / 60000; // Minutes elapsed on current patient
+
+            let remainingTimeOnCurrent = avgTimePerPatient - timeElapsedMins;
+
+            if (remainingTimeOnCurrent > 0) {
+                // Consultation is on time
+                const totalWait = (tokensAhead * avgTimePerPatient) + remainingTimeOnCurrent;
+                waitMessage = `~${Math.ceil(totalWait)} min`;
+            } else {
+                // Consultation is in overtime. 
+                const totalWait = (tokensAhead * avgTimePerPatient);
+                // We show the base wait for people ahead, plus a "Delayed" flag.
+                waitMessage = `~${Math.ceil(totalWait)} min (Delayed)`;
+            }
+        } else {
+            // No one is in consultation, or we don't have a start time. Use simple average.
+            const staticWait = Math.max(0, yourToken - currentToken) * avgTimePerPatient;
+            waitMessage = `~${staticWait} min`;
+        }
+        // --- END OF NEW LOGIC ---
 
         const progressPercent = totalPatients > 0 ? (currentToken / totalPatients) * 100 : 0;
 
         card.innerHTML = `
             <div class="token-card-header-new">
                 <div class="doctor-details">
-                    <h3>Dr. ${tokenData.doctor_name}</h3>
+                    <h3>${tokenData.doctor_name}</h3>
                     <p>${tokenData.specialty}</p>
                 </div>
                 <div class="location-details">
@@ -1541,8 +1595,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="stat-item">
                     <i class="fas fa-hourglass-half"></i>
-                    <p>~${estimatedWait} min</p>
-                    <small>Est. Your Turn</small>
+                    <p>${waitMessage}</p> <small>Est. Your Turn</small>
                 </div>
             </div>
 
@@ -1553,6 +1606,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         return card;
     };
+
 
     const fetchAndRenderTokens = async () => {
         if (!tokenListPage.classList.contains('active')) return; 
@@ -1691,7 +1745,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tokenEmpty.style.display = 'none';
                 tokenWidget.innerHTML = `
                     <div class="mini-token-card">
-                        <h4>Dr. ${data.token.doctorName}</h4>
+                        <h4>${data.token.doctorName}</h4>
                         <div class="mini-token-body">
                             <div class="mini-token-number">
                                 <p>Serving</p>
@@ -1725,6 +1779,44 @@ document.addEventListener('DOMContentLoaded', () => {
             appointmentsEmpty.innerHTML = '<p>Could not load appointments.</p>';
             activityEmpty.innerHTML = '<p>Could not load activity.</p>';
             tokenEmpty.innerHTML = '<p>Could not load token status.</p>';
+        }
+    };
+
+    // ===========================================
+    // ===   NEW: LOGIN ACTIVITY FETCH/RENDER  ===
+    // ===========================================
+    const fetchAndRenderLoginActivity = async () => {
+        const tableBody = document.getElementById('login-activity-body');
+        if (!tableBody) return;
+    
+        tableBody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Loading activity...</td></tr>';
+    
+        try {
+            const response = await fetch('api.php?action=get_login_activity');
+            const result = await response.json();
+    
+            if (result.success && result.data.length > 0) {
+                tableBody.innerHTML = ''; // Clear loading
+                result.data.forEach(log => {
+                    const row = document.createElement('tr');
+                    const logDate = new Date(log.login_time);
+                    const formattedDate = logDate.toLocaleString('en-US', {
+                        month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true
+                    });
+                    
+                    row.innerHTML = `
+                        <td data-label="Date & Time">${formattedDate}</td>
+                        <td data-label="IP Address">${log.ip_address}</td>
+                        <td data-label="Status"><span class="status completed">Success</span></td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            } else {
+                tableBody.innerHTML = '<tr><td colspan="3" style="text-align: center;">No recent login activity found.</td></tr>';
+            }
+        } catch (error) {
+            console.error('Error fetching login activity:', error);
+            tableBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: var(--status-red);">Could not load activity.</td></tr>';
         }
     };
 

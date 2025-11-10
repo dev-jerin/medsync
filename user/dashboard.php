@@ -538,11 +538,10 @@ require_once 'api.php';
                             <div class="table-responsive">
                                 <table class="data-table compact">
                                     <thead><tr><th>Date & Time</th><th>IP Address</th><th>Status</th></tr></thead>
-                                    <tbody>
-                                        <tr><td data-label="Date & Time">Aug 29, 2025, 10:15 AM</td><td data-label="IP Address">103.48.196.118</td><td data-label="Status"><span class="status completed">Success</span></td></tr>
-                                        <tr><td data-label="Date & Time">Aug 28, 2025, 04:30 PM</td><td data-label="IP Address">202.83.33.22</td><td data-label="Status"><span class="status completed">Success</span></td></tr>
+                                    <tbody id="login-activity-body">
+                                        <tr><td colspan="3" style="text-align: center;">Loading activity...</td></tr>
                                     </tbody>
-                                </table>
+                                    </table>
                             </div>
                         </div>
                     </div>
@@ -603,25 +602,11 @@ require_once 'api.php';
                 </div>
 
                 <div id="booking-step-3" class="booking-step" style="display: none;">
-                     <p>Doctor: <strong id="token-doctor-name"></strong> | Date: <strong id="token-selected-date"></strong></p>
-                     <div class="token-grid-wrapper">
-                        <div class="token-grid-legend">
-                            <span><i class="fas fa-square available"></i> Available</span>
-                            <span><i class="fas fa-square booked"></i> Booked</span>
-                            <span><i class="fas fa-square selected"></i> Your Selection</span>
-                        </div>
-                        <div id="token-grid" class="token-grid">
-                        </div>
-                    </div>
-                </div>
-
-                <div id="booking-step-4" class="booking-step" style="display: none;">
                     <h4>Confirm Your Appointment</h4>
-                    <p>Please review the details below before confirming.</p>
+                    <p>Please review the details below. You will be assigned the next available token number automatically upon confirmation.</p>
                     <ul style="list-style-type: none; padding-left: 0;">
                         <li style="margin-bottom: 0.5rem;"><strong>Doctor:</strong> <span id="confirm-doctor"></span></li>
                         <li style="margin-bottom: 0.5rem;"><strong>Date:</strong> <span id="confirm-date"></span></li>
-                        <li style="margin-bottom: 0.5rem;"><strong>Your Token Number:</strong> <span id="confirm-token" style="font-size: 1.2rem; font-weight: bold; color: var(--primary-color);"></span></li>
                     </ul>
                 </div>
 

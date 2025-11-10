@@ -685,5 +685,10 @@ INSERT INTO `accommodations` (`type`, `number`, `ward_id`, `status`, `patient_id
 ('room', 'MW-R401', 7, 'available', NULL, NULL, NULL, NULL, 6000.00),
 ('room', 'MW-R402', 7, 'available', NULL, NULL, NULL, NULL, 6000.00);
 
--- Add new columns to the users table for notification preferences
--- We set DEFAULT 1 (true) to match the 'checked' status in your original HTML
+---new stuff
+ALTER TABLE appointments
+ADD COLUMN consultation_start_time DATETIME NULL DEFAULT NULL
+AFTER token_status;
+
+ALTER TABLE `discharge_clearance`
+ADD COLUMN `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `admission_id`;
