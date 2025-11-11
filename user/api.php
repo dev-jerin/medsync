@@ -656,7 +656,8 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                         if (strpos(strtolower($notification['message']), 'lab') !== false) $notification['type'] = 'labs';
                         elseif (strpos(strtolower($notification['message']), 'bill') !== false || strpos(strtolower($notification['message']), 'payment') !== false) $notification['type'] = 'billing';
                         elseif (strpos(strtolower($notification['message']), 'prescription') !== false) $notification['type'] = 'prescriptions';
-                        else $notification['type'] = 'appointments';
+                        elseif (strpos(strtolower($notification['message']), 'appointment') !== false) $notification['type'] = 'appointments';
+                        else $notification['type'] = 'general'; // Default to a neutral 'general' type
                     }
                     $response = ['success' => true, 'notifications' => $notifications, 'unread_count' => $unread_count];
                     break;

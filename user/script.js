@@ -171,7 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===       NOTIFICATION PAGE LOGIC       ===
     // ===========================================
 
-    const createNotificationElement = (notification) => {
+const createNotificationElement = (notification) => {
         const item = document.createElement('div');
         item.className = `notification-item ${notification.is_read == 0 ? 'unread' : ''}`;
         item.dataset.id = notification.id;
@@ -181,22 +181,40 @@ document.addEventListener('DOMContentLoaded', () => {
             appointments: 'fa-calendar-check',
             billing: 'fa-file-invoice-dollar',
             labs: 'fa-vials',
-            prescriptions: 'fa-pills'
+            prescriptions: 'fa-pills',
+            general: 'fa-bell' // Add 'general' to the icons list
         };
+        
+        const iconClass = icons[notification.type] || icons['general'];
+
+        // Conditionally show the action arrow
+        const actionButtonHtml = (notification.type !== 'general')
+            ? `<a href="#" class="notification-action" data-page="${notification.type}" title="View Details"><i class="fas fa-arrow-right"></i></a>`
+            : ''; // No arrow for general notifications
 
         item.innerHTML = `
-            <div class="notification-icon ${notification.type}"><i class="fas ${icons[notification.type] || 'fa-bell'}"></i></div>
+            <div class="notification-icon ${notification.type}"><i class="fas ${iconClass}"></i></div>
             <div class="notification-content">
                 <p>${notification.message}</p>
                 <small class="timestamp">${new Date(notification.timestamp).toLocaleString()}</small>
             </div>
-            <a href="#" class="notification-action" data-page="${notification.type}" title="View Details"><i class="fas fa-arrow-right"></i></a>
+            ${actionButtonHtml}
         `;
         
+        // This new listener separates marking as read from navigating
         item.addEventListener('click', (e) => {
             e.preventDefault();
+            
+            // Mark as read when any part of the item is clicked
             markNotificationAsRead(notification.id);
-            navigateToPage(notification.type);
+
+            // Check if the click was specifically on the action arrow
+            const actionButton = e.target.closest('.notification-action');
+            if (actionButton) {
+                // Only navigate if the action button (the arrow) was clicked
+                navigateToPage(notification.type);
+            }
+            // If they clicked anywhere else, it just gets marked as read (handled above).
         });
 
         return item;
