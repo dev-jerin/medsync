@@ -268,12 +268,18 @@ document.addEventListener("DOMContentLoaded", function() {
                                 <td data-label="Patient Name">${appt.patient_name}</td>
                                 <td data-label="Time Slot">${timeSlot}</td>
                                 <td data-label="Status"><span class="status ${appt.status.toLowerCase()}">${appt.status}</span></td>
-                                <td data-label="Action">
+                                    <td data-label="Action">
                                     ${tokenStatus === 'waiting' ? `
                                         <button class="action-btn start-consultation-btn" 
                                                 data-appointment-id="${appt.id}" 
                                                 data-patient-name="${appt.patient_name}">
                                             <i class="fas fa-play-circle"></i> Start
+                                        </button>
+                                        <button class="action-btn danger skip-token-btn" 
+                                                data-appointment-id="${appt.id}" 
+                                                data-patient-name="${appt.patient_name}"
+                                                title="Skip Token">
+                                            <i class="fas fa-forward"></i> Skip
                                         </button>
                                     ` : tokenStatus === 'in_consultation' ? `
                                         <button class="action-btn continue-consultation-btn" 
@@ -546,9 +552,11 @@ document.addEventListener("DOMContentLoaded", function() {
     // --- END: NOTIFICATIONS PAGE LOGIC ---
 
     // --- START: PATIENT ENCOUNTER LOGIC ---
-    document.addEventListener('click', function(e) {
+// --- START: PATIENT ENCOUNTER LOGIC ---
+    document.addEventListener('click', async function(e) { // <-- 1. Make the function 'async'
         const startBtn = e.target.closest('.start-consultation-btn');
         const continueBtn = e.target.closest('.continue-consultation-btn');
+        const skipBtn = e.target.closest('.skip-token-btn'); // <-- 2. Add this line to find the skip button
         
         if (startBtn || continueBtn) {
             const btn = startBtn || continueBtn;
@@ -556,6 +564,40 @@ document.addEventListener("DOMContentLoaded", function() {
             const patientName = btn.dataset.patientName;
             openEncounterModal(appointmentId, patientName);
         }
+
+        // --- 3. ADD THIS ENTIRE 'if (skipBtn)' BLOCK ---
+        if (skipBtn) {
+            const appointmentId = skipBtn.dataset.appointmentId;
+            const patientName = skipBtn.dataset.patientName;
+
+            const confirmed = confirm(`Are you sure you want to SKIP the token for ${patientName}?`);
+            if (confirmed) {
+                try {
+                    const formData = new FormData();
+                    formData.append('action', 'update_token_status');
+                    formData.append('appointment_id', appointmentId);
+                    formData.append('token_status', 'skipped'); // Set the new status
+                    
+                    const response = await fetch('api.php', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        showToast('Token skipped.', 'info', 'Queue Updated'); 
+                        loadDashboardData(); // Refresh the dashboard
+                    } else {
+                        showToast(result.message || 'Failed to skip token.', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error skipping token:', error);
+                    showToast('A network error occurred.', 'error');
+                }
+            }
+        }
+        // --- END OF NEW BLOCK ---
     });
 
     /**

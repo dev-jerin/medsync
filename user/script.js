@@ -1499,7 +1499,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const createTokenCard = (tokenData) => {
         const card = document.createElement('div');
-        card.className = 'live-token-card';
+        card.className = `live-token-card status-${tokenData.token_status.replace('_', '-')}`;
 
         const yourToken = parseInt(tokenData.your_token, 10);
         const currentToken = parseInt(tokenData.current_token, 10);
@@ -1514,6 +1514,8 @@ document.addEventListener('DOMContentLoaded', () => {
             statusMessage = "You're next! Please be ready near the doctor's room.";
         } else if (yourToken === currentToken) {
             statusMessage = "It's your turn now! Please proceed to the doctor's room.";
+        } else if (tokenData.token_status === 'skipped') { // <-- ADD THIS
+            statusMessage = "Your token was skipped. Please contact reception.";
         } else if (yourToken < currentToken) {
             statusMessage = "Your turn has passed. Please contact reception.";
         }

@@ -3314,6 +3314,25 @@ document.addEventListener("DOMContentLoaded", function() {
         const searchResults = document.getElementById('token-doctor-search-results');
         const hiddenInput = document.getElementById('token-doctor-id-hidden');
         const tokenContainer = document.getElementById('token-display-container');
+        tokenContainer.addEventListener('click', async (e) => {
+    const button = e.target.closest('.token-staff-actions .action-btn-icon');
+    if (button) {
+        const card = button.closest('.token-card');
+        const appointmentId = card.dataset.appointmentId;
+        const newStatus = button.dataset.action;
+
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        button.disabled = true;
+
+        await staffUpdateTokenStatus(appointmentId, newStatus);
+
+        // Refresh tokens after action
+        const doctorId = document.getElementById('token-doctor-id-hidden').value;
+        if (doctorId) {
+            fetchAndRenderTokens(doctorId);
+        }
+    }
+});
         const refreshBtn = document.getElementById('refresh-tokens-btn');
         const toggleAutoRefreshBtn = document.getElementById('toggle-auto-refresh');
         const statsContainer = document.getElementById('token-stats-container');
@@ -3524,7 +3543,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 tokenData[slotTitle].forEach(token => {
                     const showPosition = token.token_status === 'waiting';
                     html += `
-                        <div class="token-card status-${token.token_status.replace('_', '-')}" data-status="${token.token_status}">
+                        <div class="token-card status-${token.token_status.replace('_', '-')}" data-status="${token.token_status}" data-appointment-id="${token.id}">
                             <div class="token-number">#${token.token_number || 'N/A'}</div>
                             <div class="token-patient-info">
                                 <div class="patient-name">${token.patient_name}</div>
@@ -3532,10 +3551,19 @@ document.addEventListener("DOMContentLoaded", function() {
                                 <div class="appointment-time">
                                     <i class="fas fa-clock"></i> ${slotTitle}
                                 </div>
-                                ${showPosition ? `<div class="queue-position">Position: ${globalPosition}</div>` : ''}
+                            ${showPosition ? `<div class="queue-position">Position: ${globalPosition}</div>` : ''}
                             </div>
                             <div class="token-status">${token.token_status.replace('_', ' ')}</div>
-                        </div>
+
+                            <div class="token-staff-actions">
+                                ${token.token_status === 'waiting' ? `
+                                    <button class="action-btn-icon" title="Call for Consultation" data-action="in_consultation"><i class="fas fa-play"></i></button>
+                                    <button class="action-btn-icon danger" title="Skip Token" data-action="skipped"><i class="fas fa-forward"></i></button>
+                                ` : token.token_status === 'in_consultation' ? `
+                                    <button class="action-btn-icon" title="Mark Completed" data-action="completed" style="color: var(--secondary-color);"><i class="fas fa-check"></i></button>
+                                ` : ''}
+                            </div>
+                            </div>
                     `;
                     if (token.token_status === 'waiting') globalPosition++;
                 });
@@ -3551,6 +3579,27 @@ document.addEventListener("DOMContentLoaded", function() {
             container.innerHTML = `<p class="no-items-message" style="color: var(--danger-color);"><i class="fas fa-exclamation-triangle"></i><br>Error loading tokens. Please try again.</p>`;
         }
     }
+
+    async function staffUpdateTokenStatus(appointmentId, status) {
+    try {
+        const formData = new FormData();
+        formData.append('action', 'staff_update_token_status');
+        formData.append('appointment_id', appointmentId);
+        formData.append('token_status', status);
+        formData.append('csrf_token', csrfToken); // Assumes csrfToken is available globally
+
+        const response = await fetch('api.php', { method: 'POST', body: formData });
+        const result = await response.json();
+        
+        if (!result.success) {
+            alert('Error: ' + result.message);
+        }
+    } catch (error) {
+        console.error('Failed to update token status:', error);
+        alert('An error occurred. Please try again.');
+    }
+}
+
 });
 
 // --- Global Utility Functions ---

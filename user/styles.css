@@ -158,6 +158,11 @@ body.dark-mode .data-table tbody tr:hover { background-color: rgba(74, 144, 226,
 .form-group input:focus, .form-group select:focus, .form-control-sm:focus { border-color: var(--primary-color); outline: none; box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2); }
 .form-group input:read-only { background-color: var(--border-color); cursor: not-allowed; }
 
+
+.status.skipped { 
+    background-color: var(--status-red); 
+}
+
 /* Quick Actions Grid for Dashboard */
 .quick-actions-grid {
     display: grid;
@@ -1016,6 +1021,17 @@ body.dark-mode #slots-container .slot.disabled {
     padding: 1rem;
     border-radius: var(--border-radius);
     transition: border-color 0.3s;
+}
+
+
+.live-token-card.status-skipped {
+    border-top-color: var(--status-red);
+    opacity: 0.8;
+}
+
+.live-token-card.status-skipped .your-token-display .status-message {
+    color: var(--status-red);
+    font-weight: 600;
 }
 
 

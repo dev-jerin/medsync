@@ -966,6 +966,50 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
             validate_csrf_token();
 
             switch ($_POST['action']) {
+                // Inside staff/api.php, in the POST action switch
+                case 'staff_update_token_status':
+                    if (empty($_POST['appointment_id']) || empty($_POST['token_status'])) {
+                        throw new Exception('Appointment ID and new status are required.');
+                    }
+                    
+                    $appointment_id = (int)$_POST['appointment_id'];
+                    $new_status = $_POST['token_status'];
+                    $allowed_statuses = ['waiting', 'in_consultation', 'completed', 'skipped'];
+
+                    if (!in_array($new_status, $allowed_statuses)) {
+                        throw new Exception('Invalid token status provided.');
+                    }
+
+                    $sql = "UPDATE appointments SET token_status = ?";
+                    $params = [$new_status];
+                    $types = "s";
+                    
+                    // Set consultation start time if action is 'in_consultation'
+                    if ($new_status == 'in_consultation') {
+                        $sql .= ", consultation_start_time = NOW()";
+                    }
+                    // Set appointment to 'completed' if token is 'completed'
+                    if ($new_status == 'completed') {
+                        $sql .= ", status = 'completed'";
+                    }
+
+                    $sql .= " WHERE id = ?";
+                    $params[] = $appointment_id;
+                    $types .= "i";
+
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param($types, ...$params);
+                    
+                    if ($stmt->execute()) {
+                        log_activity($conn, $user_id, 'staff_update_token', null, "Staff updated appointment {$appointment_id} token status to {$new_status}.");
+                        $response = ['success' => true, 'message' => 'Token status updated.'];
+                    } else {
+                        throw new Exception('Failed to update token status.');
+                    }
+                    $stmt->close();
+                    break;
+// ... more cases
+
                 case 'updatePersonalInfo':
                     $conn->begin_transaction();
                     $transaction_active = true;
