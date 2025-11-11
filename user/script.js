@@ -788,6 +788,10 @@ document.addEventListener('DOMContentLoaded', () => {
                  return '<div class="availability-info not-available"><small>Availability not specified</small></div>';
             }
 
+            if (slots.general_availability === "N/A" || slots.days_available.length === 0) {
+                return '<div class="availability-info not-available"><small>Availability not specified</small></div>';
+            }
+
             const time = slots.general_availability;
             const availableDays = slots.days_available.map(day => day.toLowerCase());
             const allDays = [

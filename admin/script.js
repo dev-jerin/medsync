@@ -2185,11 +2185,13 @@ saveScheduleBtn.addEventListener('click', async () => {
             return;
         }
 
+        // --- ADD THESE VARIABLES ---
         const complexScheduleData = {};
-        const daysAvailable = [];
+        const daysAvailable = []; 
         let minTime = "23:59";
         let maxTime = "00:00";
         let isValid = true;
+        // --- END ADD ---
 
         document.querySelectorAll('.day-schedule-card').forEach(dayCard => {
             const day = dayCard.dataset.day;
@@ -2207,48 +2209,48 @@ saveScheduleBtn.addEventListener('click', async () => {
                     const from = convert12hTo24h(fromHour, fromMinute, fromPeriod);
                     const to = convert12hTo24h(toHour, toMinute, toPeriod);
 
-                    if (to <= from) {
+                    if (to <= from) { // <-- ADDED VALIDATION
                         isValid = false;
                     }
-
-                    // Find min/max times for the simple format
-                    if (from < minTime) minTime = from;
-                    if (to > maxTime) maxTime = to;
+                    if (from < minTime) minTime = from; // <-- ADDED
+                    if (to > maxTime) maxTime = to; // <-- ADDED
                     
                     slots.push({ from, to, limit: parseInt(limit, 10) });
                 }
             });
-            
             complexScheduleData[day] = slots;
-            if (slots.length > 0) {
+            if (slots.length > 0) { // <-- ADDED
                 daysAvailable.push(day.toLowerCase());
             }
         });
 
-        if (!isValid) {
+        if (!isValid) { // <-- ADDED
             showNotification(`Error: 'To' time must be after 'From' time in all slots.`, 'error');
             return;
         }
 
+        // --- ADD THIS LOGIC BLOCK ---
         let generalAvailability = "N/A";
         if (minTime !== "23:59" && maxTime !== "00:00") {
-            // Convert 24h min/max to 12h AM/PM for the simple format
             const minTime12h = convert24hTo12h(minTime);
             const maxTime12h = convert24hTo12h(maxTime);
             generalAvailability = `${minTime12h.hour}:${minTime12h.minute} ${minTime12h.period} - ${maxTime12h.hour}:${maxTime12h.minute} ${maxTime12h.period}`;
         }
         
-        // Create the final JSON object with *both* formats
+        // This is the complete object that the user dashboard expects
         const finalScheduleData = {
-            ...complexScheduleData, // This is for the admin panel to read
-            "general_availability": generalAvailability, // This is for the user panel
-            "days_available": daysAvailable // This is for the user panel
+            ...complexScheduleData,
+            "general_availability": generalAvailability,
+            "days_available": daysAvailable
         };
+        // --- END ADD ---
 
         const formData = new FormData();
         formData.append('action', 'update_doctor_schedule');
         formData.append('doctor_id', doctorId);
-        formData.append('slots', JSON.stringify(finalScheduleData)); // Save the new combined JSON
+        // --- CHANGE THIS LINE ---
+        formData.append('slots', JSON.stringify(finalScheduleData)); // <-- USE THE NEW `finalScheduleData`
+        // --- END CHANGE ---
         formData.append('csrf_token', csrfToken);
         
         handleFormSubmit(formData);
