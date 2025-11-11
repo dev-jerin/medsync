@@ -73,7 +73,6 @@ $active_doctors = $active_doctors_stmt->get_result()->fetch_assoc()['c'];
 $pending_appointments_stmt = $conn->prepare("SELECT COUNT(*) as c FROM appointments WHERE status = 'pending'");
 $pending_appointments_stmt->execute();
 $pending_appointments = $pending_appointments_stmt->get_result()->fetch_assoc()['c']; 
-$conn->close();
 
 ?>
 <!DOCTYPE html>

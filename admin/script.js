@@ -2178,12 +2178,19 @@ const toggleRoleFields = () => {
         }
     });
 
-    saveScheduleBtn.addEventListener('click', async () => {
+saveScheduleBtn.addEventListener('click', async () => {
         const doctorId = selectedDoctorId.value;
-        if (!doctorId) return showNotification('Please select a doctor first.', 'error');
-        
-        const scheduleData = {};
+        if (!doctorId) {
+            showNotification('Please select a doctor first.', 'error');
+            return;
+        }
+
+        const complexScheduleData = {};
+        const daysAvailable = [];
+        let minTime = "23:59";
+        let maxTime = "00:00";
         let isValid = true;
+
         document.querySelectorAll('.day-schedule-card').forEach(dayCard => {
             const day = dayCard.dataset.day;
             const slots = [];
@@ -2199,21 +2206,51 @@ const toggleRoleFields = () => {
                 if (fromHour && fromMinute && fromPeriod && toHour && toMinute && toPeriod && limit) {
                     const from = convert12hTo24h(fromHour, fromMinute, fromPeriod);
                     const to = convert12hTo24h(toHour, toMinute, toPeriod);
+
+                    if (to <= from) {
+                        isValid = false;
+                    }
+
+                    // Find min/max times for the simple format
+                    if (from < minTime) minTime = from;
+                    if (to > maxTime) maxTime = to;
                     
-                    if (to <= from) { isValid = false; }
                     slots.push({ from, to, limit: parseInt(limit, 10) });
                 }
             });
-            scheduleData[day] = slots;
+            
+            complexScheduleData[day] = slots;
+            if (slots.length > 0) {
+                daysAvailable.push(day.toLowerCase());
+            }
         });
 
-        if (!isValid) return showNotification(`Error: 'To' time must be after 'From' time in all slots.`, 'error');
+        if (!isValid) {
+            showNotification(`Error: 'To' time must be after 'From' time in all slots.`, 'error');
+            return;
+        }
+
+        let generalAvailability = "N/A";
+        if (minTime !== "23:59" && maxTime !== "00:00") {
+            // Convert 24h min/max to 12h AM/PM for the simple format
+            const minTime12h = convert24hTo12h(minTime);
+            const maxTime12h = convert24hTo12h(maxTime);
+            generalAvailability = `${minTime12h.hour}:${minTime12h.minute} ${minTime12h.period} - ${maxTime12h.hour}:${maxTime12h.minute} ${maxTime12h.period}`;
+        }
+        
+        // Create the final JSON object with *both* formats
+        const finalScheduleData = {
+            ...complexScheduleData, // This is for the admin panel to read
+            "general_availability": generalAvailability, // This is for the user panel
+            "days_available": daysAvailable // This is for the user panel
+        };
 
         const formData = new FormData();
         formData.append('action', 'update_doctor_schedule');
         formData.append('doctor_id', doctorId);
-        formData.append('slots', JSON.stringify(scheduleData));
+        formData.append('slots', JSON.stringify(finalScheduleData)); // Save the new combined JSON
         formData.append('csrf_token', csrfToken);
+        
         handleFormSubmit(formData);
     });
 
