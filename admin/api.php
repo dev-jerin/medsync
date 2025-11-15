@@ -1251,7 +1251,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         
                         // Execute mysqldump command
                         $command = sprintf(
-                            'mysqldump --user=%s --password=%s --host=%s %s > %s 2>&1',
+                            'mysqldump --user=%s --password=%s --host=%s %s > %s',
                             escapeshellarg($dbuser),
                             escapeshellarg($dbpass),
                             escapeshellarg($dbhost),
