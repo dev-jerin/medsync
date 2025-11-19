@@ -1198,7 +1198,7 @@ require_once 'api.php';
             </div>
             <div class="modal-body">
                 <!-- Patient Information Display (shown when editing) -->
-                <div id="patient-info-display" style="display:none; background: #f0f7ff; border-left: 4px solid #0067FF; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
+                <div id="patient-info-display" style="display:none; background: #f0f7ff; color: #333; border-left: 4px solid #0067FF; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
                     <h4 style="margin: 0 0 10px 0; color: #0067FF; font-size: 16px;">
                         <i class="fas fa-user-circle"></i> Patient Information
                     </h4>
