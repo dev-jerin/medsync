@@ -1041,7 +1041,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="summary-icon"><i class="fas fa-pills"></i></div>
                 <div class="summary-info">
                     <h4>Prescribed on: <strong>${new Date(prescription.prescription_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</strong></h4>
-                    <p>Prescribing Physician: <strong>Dr. ${prescription.doctor_name}</strong> | Status: <span class="status ${statusClass}">${formattedStatus}</span></p>
+                    <p>Prescribing Physician: <strong>${prescription.doctor_name}</strong> | Status: <span class="status ${statusClass}">${formattedStatus}</span></p>
                 </div>
             </div>
             <div class="summary-card-actions">
@@ -1346,7 +1346,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 row.innerHTML = `
                     <td data-label="Test Date">${new Date(result.test_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
                     <td data-label="Test Name"><strong>${result.test_name}</strong></td>
-                    <td data-label="Ordering Doctor">Dr. ${result.doctor_name || 'N/A'}</td>
+                    <td data-label="Ordering Doctor">${result.doctor_name || 'N/A'}</td>
                     <td data-label="Status"><span class="status ${statusClass}">${result.status.charAt(0).toUpperCase() + result.status.slice(1)}</span></td>
                     <td data-label="Actions">
                         <button class="btn-primary btn-sm view-lab-details-btn" data-result-id="${result.id}" ${result.status !== 'completed' ? 'disabled' : ''}>View Details</button>
