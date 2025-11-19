@@ -27,6 +27,10 @@ $doctor_sql = "SELECT COUNT(id) AS doctor_count FROM users WHERE role_id = 2 AND
 $doctor_result = $conn->query($doctor_sql);
 $doctor_count = ($doctor_result && $doctor_result->num_rows > 0) ? $doctor_result->fetch_assoc()['doctor_count'] : 0;
 
+// "Live" Stat: Appointments Today
+$today_appts_res = $conn->query("SELECT COUNT(id) AS c FROM appointments WHERE DATE(appointment_date) = CURDATE()");
+$today_appts = $today_appts_res ? $today_appts_res->fetch_assoc()['c'] : 0;
+
 // 4. Close the connection as it's no longer needed for rendering the rest of this page.
 $conn->close();
 ?>
@@ -177,32 +181,31 @@ $conn->close();
             </div>
         </section>
 
-        <section id="impact" class="impact-section">
-    <div class="container">
-        <div class="section-title">
-            <h2 class="anim-fade-up">Our Impact in Numbers</h2>
-            <p class="anim-fade-up" style="--delay: 0.2s;">We are proud of the positive change we bring to our community's health and well-being.</p>
-        </div>
-        <div class="impact-grid">
-            <div class="impact-card anim-fade-up" style="--delay: 0s;">
-                <h3><?php echo $user_count; ?></h3>
-                <p>Happy Users</p>
+<section id="impact" class="impact-section">
+            <div class="container">
+                <div class="section-title">
+                    <h2 class="anim-fade-up">Real-Time Stats</h2>
+                </div>
+                <div class="impact-grid">
+                    <div class="impact-card anim-fade-up">
+                        <h3><?php echo $user_count; ?>+</h3>
+                        <p>Registered Users</p>
+                    </div>
+                    <div class="impact-card anim-fade-up" style="--delay: 0.2s;">
+                        <h3><?php echo $doctor_count; ?></h3>
+                        <p>Specialist Doctors</p>
+                    </div>
+                    <div class="impact-card anim-fade-up" style="--delay: 0.4s;">
+                        <h3><?php echo $today_appts; ?></h3>
+                        <p>Appointments Today</p>
+                    </div>
+                    <div class="impact-card anim-fade-up" style="--delay: 0.6s;">
+                        <h3>24/7</h3>
+                        <p>Emergency Service</p>
+                    </div>
+                </div>
             </div>
-            <div class="impact-card anim-fade-up" style="--delay: 0.2s;">
-                <h3><?php echo $doctor_count; ?></h3>
-                <p>Specialist Doctors</p>
-            </div>
-            <div class="impact-card anim-fade-up" style="--delay: 0.4s;">
-                <h3>98%</h3>
-                <p>Patient Satisfaction</p>
-            </div>
-            <div class="impact-card anim-fade-up" style="--delay: 0.6s;">
-                <h3>40%</h3>
-                <p>Reduction in Wait Times</p>
-            </div>
-        </div>
-    </div>
-</section>
+        </section>
 
         <section id="testimonials" class="testimonials-section">
             <div class="container">

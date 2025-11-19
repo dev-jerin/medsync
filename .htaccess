@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------------
-# MedSync Apache Configuration v2.4 - For Local Development
+# MedSync Apache Configuration v1.0 - For Local Development
 # ----------------------------------------------------------------------
 
 RewriteEngine On
@@ -26,13 +26,13 @@ Options -MultiViews
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)/$ $1 [R=301,L]
 
-# Rule 2 (NEW): Explicitly block requests with extra path info after a .php file.
+# Rule 2 : Explicitly block requests with extra path info after a .php file.
 # This is a key part of the fix. It finds invalid URLs like "/dashboard.php/foo"
 # and immediately triggers a 404 error, preventing the 500 error.
 RewriteCond %{THE_REQUEST} \.php/
 RewriteRule .? - [R=404,L]
 
-# Rule 3 (IMPROVED): Add the .php extension for clean URLs.
+# Rule 3 : Add the .php extension for clean URLs.
 # This is now safer and prevents rewrite loops.
 # - It won't apply to existing files or directories.
 # - Most importantly, it checks if the .php file actually exists before rewriting.
