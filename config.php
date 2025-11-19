@@ -55,7 +55,7 @@ if (!$conn_check->connect_error) {
         if ($stmt_block->num_rows > 0) {
             http_response_code(403);
             // Ensure this path exists relative to where this file is included
-            header("Location: /error/403.php");
+            header("Location: /medsync/error/403");
             exit("Access Denied.");
         }
         $stmt_block->close();
