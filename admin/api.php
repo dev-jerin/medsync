@@ -180,7 +180,7 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         if ($role_name === 'doctor') {
                             $is_available = isset($_POST['is_available']) ? (int)$_POST['is_available'] : 1;
                             $department_id = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
-                            $specialty_id = !empty($_POST['specialty_id']) ? (int)$_POST['specialty_id'] : null; // Get specialty_id
+                            $specialty_id = !empty($_POST['specialty_id']) ? (int)$_POST['specialty_id'] : null;
 
                             $stmt_doctor = $conn->prepare("INSERT INTO doctors (user_id, specialty_id, qualifications, department_id, is_available) VALUES (?, ?, ?, ?, ?)");
                             $stmt_doctor->bind_param("iisii", $user_id, $specialty_id, $_POST['qualifications'], $department_id, $is_available);
@@ -190,6 +190,25 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                             $stmt_staff->bind_param("isi", $user_id, $_POST['shift'], $_POST['assigned_department_id']);
                             $stmt_staff->execute();
                         }
+
+                        // --- Send Welcome Email ---
+                        try {
+                            
+                            $subject = 'Welcome to MedSync, ' . $name . '!';
+                            $ip_address = $_SERVER['REMOTE_ADDR'];
+                            
+                            // Generate HTML body
+                            $email_body = getWelcomeEmailTemplate($name, $username, $display_user_id, $ip_address);
+                            
+                            // Send email
+                            // Using 'MedSync Admin' or a generic name as the sender name
+                            send_mail('MedSync Welcome Team', $email, $subject, $email_body);
+                            
+                        } catch (Exception $emailError) {
+                            // Log error but do not stop the user creation process
+                            error_log("Failed to send welcome email to $email: " . $emailError->getMessage());
+                        }
+                        // ------------------------------
 
                         // --- Audit Log ---
                         $log_details = "Created a new user '{$username}' (ID: {$display_user_id}) with the role '{$role_name}'.";
@@ -648,8 +667,9 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                         throw new Exception('Invalid user ID.');
                     }
                     $id = (int) $_POST['id'];
-                    // --- Audit Log: Fetch user info before deactivating ---
-                    $stmt_old = $conn->prepare("SELECT username, display_user_id FROM users WHERE id = ?");
+// --- Audit Log: Fetch user info before deactivating ---
+                    // UPDATED: Added name and email to the select query
+                    $stmt_old = $conn->prepare("SELECT username, display_user_id, name, email FROM users WHERE id = ?");
                     $stmt_old->bind_param("i", $id);
                     $stmt_old->execute();
                     $old_user_data = $stmt_old->get_result()->fetch_assoc();
@@ -660,6 +680,38 @@ if (isset($_GET['fetch']) || (isset($_POST['action']) && $_SERVER['REQUEST_METHO
                     if ($stmt->execute()) {
                         $log_details = "Deactivated user '{$old_user_data['username']}' (ID: {$old_user_data['display_user_id']}).";
                         log_activity($conn, $admin_user_id_for_log, 'deactivate_user', $id, $log_details);
+
+                        // --- NEW: Send Deactivation Notification Email ---
+                        if (!empty($old_user_data['email'])) {
+                            try {
+                                // Prepare change array for the template
+                                $changes = ['Account Status' => ['old' => 'Active', 'new' => 'Inactive']];
+                                
+                                date_default_timezone_set('Asia/Kolkata');
+                                $current_datetime = date('d M Y, h:i A');
+                                
+                                // Fetch current admin's name for the email signature
+                                $admin_name_stmt = $conn->prepare("SELECT name FROM users WHERE id = ?");
+                                $admin_name_stmt->bind_param("i", $admin_user_id_for_log);
+                                $admin_name_stmt->execute();
+                                $admin_name_res = $admin_name_stmt->get_result()->fetch_assoc();
+                                $admin_name = $admin_name_res['name'] ?? 'Administrator';
+
+                                $email_body = getAccountModificationTemplate(
+                                    $old_user_data['name'], 
+                                    $old_user_data['username'], 
+                                    $changes, 
+                                    $current_datetime, 
+                                    $admin_name
+                                );
+                                
+                                send_mail('MedSync Admin', $old_user_data['email'], 'Your MedSync Account Status Updated', $email_body);
+                            } catch (Exception $e) {
+                                error_log("Failed to send deactivation email: " . $e->getMessage());
+                            }
+                        }
+                        // ------------------------------------------------
+
                         $response = ['success' => true, 'message' => 'User deactivated successfully.'];
                     } else {
                         throw new Exception('Failed to deactivate user.');
