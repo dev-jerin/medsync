@@ -165,11 +165,19 @@ function checkAndFinalizeDischarge($conn, $admission_id) {
         $admission_data = $stmt_adm->get_result()->fetch_assoc();
         $stmt_adm->close();
 
-        if ($admission_data) {
+            if ($admission_data) {
+            // 1. Update the main admissions table
             $stmt_discharge = $conn->prepare("UPDATE admissions SET discharge_date = NOW() WHERE id = ? AND discharge_date IS NULL");
             $stmt_discharge->bind_param("i", $admission_id);
             $stmt_discharge->execute();
             $stmt_discharge->close();
+
+            // 2. Sync the date to the discharge_clearance table for the PDF
+            // This ensures the date is set even if the doctor hasn't manually saved the summary form.
+            $stmt_dc = $conn->prepare("UPDATE discharge_clearance SET discharge_date = CURDATE() WHERE admission_id = ? AND discharge_date IS NULL");
+            $stmt_dc->bind_param("i", $admission_id);
+            $stmt_dc->execute();
+            $stmt_dc->close();
 
             if ($admission_data['accommodation_id']) {
                 $stmt_acc = $conn->prepare("UPDATE accommodations SET status = 'cleaning', patient_id = NULL, doctor_id = NULL WHERE id = ?");
@@ -1008,7 +1016,6 @@ if (isset($_GET['fetch']) || isset($_POST['action'])) {
                     }
                     $stmt->close();
                     break;
-// ... more cases
 
                 case 'updatePersonalInfo':
                     $conn->begin_transaction();
