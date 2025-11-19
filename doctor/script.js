@@ -381,9 +381,9 @@ document.addEventListener("DOMContentLoaded", function() {
             // Dynamically create action buttons based on the request's status
             let actionsHtml = `<button class="action-btn view-discharge-status" data-id="${req.admission_id}" data-patient-name="${req.patient_name}"><i class="fas fa-tasks"></i> Status</button>`;
             
-            if (req.status !== 'Completed') {
-                actionsHtml += `<button class="action-btn write-discharge-summary" data-id="${req.admission_id}" data-patient-name="${req.patient_name}" data-admission-date="${req.admission_date}"><i class="fas fa-file-medical-alt"></i> Summary</button>`;
-            }
+            // MODIFIED: Always show the summary button so doctors can edit it anytime
+            actionsHtml += `<button class="action-btn write-discharge-summary" data-id="${req.admission_id}" data-patient-name="${req.patient_name}" data-admission-date="${req.admission_date}"><i class="fas fa-file-medical-alt"></i> Summary</button>`;
+            
             // Allow downloading the summary if it's ready or completed
             if (req.status === 'Ready for Discharge' || req.status === 'Completed') {
                  actionsHtml += `<button class="action-btn download-discharge-summary" data-id="${req.admission_id}"><i class="fas fa-download"></i> PDF</button>`;

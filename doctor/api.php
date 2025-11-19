@@ -122,16 +122,22 @@ if (isset($_GET['action']) && $_GET['action'] == 'download_prescription') {
     // Fetch all data needed for the PDF
     $stmt = $conn->prepare("
         SELECT 
-            pr.prescription_date, pr.notes,
-            p.name AS patient_name, p.display_user_id AS patient_display_id,
+            p.name AS patient_name, p.display_user_id AS patient_display_id, p.gender, p.date_of_birth,
+            a.admission_date,
+            -- UPDATED: Use MAX to get the latest saved date/text from the multiple clearance rows
+            MAX(dc.discharge_date) as discharge_date, 
+            MAX(dc.summary_text) as summary_text,
             d.name AS doctor_name, d.display_user_id AS doctor_display_id,
             s.name as specialty
-        FROM prescriptions pr
-        JOIN users p ON pr.patient_id = p.id
-        JOIN users d ON pr.doctor_id = d.id
+        FROM admissions a
+        JOIN users p ON a.patient_id = p.id
+        LEFT JOIN discharge_clearance dc ON a.id = dc.admission_id
+        LEFT JOIN users d ON dc.doctor_id = d.id
         LEFT JOIN doctors doc ON d.id = doc.user_id
         LEFT JOIN specialities s ON doc.specialty_id = s.id
-        WHERE pr.id = ? AND pr.doctor_id = ?
+        WHERE a.id = ? AND a.doctor_id = ?
+        GROUP BY a.id -- UPDATED: Grouping required when using aggregate functions like MAX
+        LIMIT 1
     ");
     $stmt->bind_param("ii", $prescription_id, $current_user_id);
     $stmt->execute();
@@ -1951,6 +1957,10 @@ function generateDischargeSummaryPdf($data) {
         $age = $birthDate->diff($today)->y;
     }
 
+    $formatted_discharge_date = !empty($data['discharge_date']) 
+        ? date("F j, Y", strtotime($data['discharge_date'])) 
+        : 'N/A';
+
     $html = '
     <!DOCTYPE html>
     <html>
@@ -1996,7 +2006,7 @@ function generateDischargeSummaryPdf($data) {
                 </tr>
                 <tr>
                     <td><strong>Admission Date:</strong> ' . date("F j, Y, g:i a", strtotime($data['admission_date'])) . '</td>
-                    <td><strong>Discharge Date:</strong> ' . date("F j, Y", strtotime($data['discharge_date'])) . '</td>
+                    <td><strong>Discharge Date:</strong> ' . $formatted_discharge_date . '</td>
                 </tr>
             </table>
         </div>
