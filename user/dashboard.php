@@ -68,9 +68,12 @@ require_once 'api.php';
                     <div class="profile-dropdown-wrapper">
                         <img src="../uploads/profile_pictures/<?php echo $profile_picture; ?>" alt="User Avatar" class="profile-avatar" id="profile-avatar">
                         <div class="profile-dropdown" id="profile-dropdown">
-                            <div class="dropdown-header">
-                                <h5><?php echo $username; ?></h5>
-                                <p><?php echo $display_user_id; ?></p>
+                            <div class="dropdown-header" style="display: flex; align-items: center; gap: 1rem;">
+                                <img src="../uploads/profile_pictures/<?php echo $profile_picture; ?>" alt="Profile Picture" class="profile-avatar" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
+                                <div>
+                                    <h5 style="margin: 0;"><?php echo $username; ?></h5>
+                                    <p style="margin: 0;"><?php echo $display_user_id; ?></p>
+                                </div>
                             </div>
                             <a href="#" class="dropdown-item" data-page="profile">
                                 <i class="fas fa-user-edit"></i>
