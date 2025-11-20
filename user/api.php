@@ -11,7 +11,6 @@
 
 require_once '../config.php'; // Includes session_start() and database connection ($conn)
 require_once '../vendor/autoload.php'; // Assuming Composer autoload for Dompdf
-require_once '../whatsapp/send_whatsapp.php'; // ADDED: WhatsApp integration helper
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
@@ -634,51 +633,34 @@ if (isset($_GET['action']) || isset($_POST['action'])) {
                     $response = ['success' => true, 'data' => $records];
                     break;
 
-case 'get_notifications':
-    $filter = $_GET['filter'] ?? 'all';
-    
-    // 1. Fetch All Notifications (or just unread ones if requested)
-    $sql = "SELECT id, message, is_read, created_at as timestamp FROM notifications 
-            WHERE (recipient_user_id = ? OR recipient_role = ? OR recipient_role = 'all')";
-    if ($filter === 'unread') $sql .= " AND is_read = 0";
-    $sql .= " ORDER BY created_at DESC";
+                case 'get_notifications':
+                    $filter = $_GET['filter'] ?? 'all';
+                    $sql = "SELECT id, message, is_read, created_at as timestamp FROM notifications 
+                            WHERE (recipient_user_id = ? OR recipient_role = ? OR recipient_role = 'all')";
+                    if ($filter === 'unread') $sql .= " AND is_read = 0";
+                    $sql .= " ORDER BY created_at DESC";
 
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("is", $user_id, $user_role);
-    $stmt->execute();
-    $notifications = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-    
-    // 2. Get Unread Count (Standard logic)
-    $stmt_count = $conn->prepare("SELECT COUNT(id) as unread_count FROM notifications WHERE (recipient_user_id = ? OR recipient_role = ? OR recipient_role = 'all') AND is_read = 0");
-    $stmt_count->bind_param("is", $user_id, $user_role);
-    $stmt_count->execute();
-    $unread_count = $stmt_count->get_result()->fetch_assoc()['unread_count'];
-    $stmt_count->close();
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("is", $user_id, $user_role);
+                    $stmt->execute();
+                    $notifications = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                    $stmt->close();
+                    
+                    $stmt_count = $conn->prepare("SELECT COUNT(id) as unread_count FROM notifications WHERE (recipient_user_id = ? OR recipient_role = ? OR recipient_role = 'all') AND is_read = 0");
+                    $stmt_count->bind_param("is", $user_id, $user_role);
+                    $stmt_count->execute();
+                    $unread_count = $stmt_count->get_result()->fetch_assoc()['unread_count'];
+                    $stmt_count->close();
 
-    // 3. Assign Types based on keywords
-    foreach ($notifications as &$notification) {
-        $msg = strtolower($notification['message']);
-        if (strpos($msg, 'lab') !== false) $notification['type'] = 'labs';
-        elseif (strpos($msg, 'bill') !== false || strpos($msg, 'payment') !== false) $notification['type'] = 'billing';
-        elseif (strpos($msg, 'prescription') !== false) $notification['type'] = 'prescriptions';
-        elseif (strpos($msg, 'appointment') !== false) $notification['type'] = 'appointments';
-        else $notification['type'] = 'general'; 
-    }
-    unset($notification); // break reference
-
-    // 4. FILTERING LOGIC (New Fix)
-    // If filter is specific (e.g., 'appointments'), remove others.
-    if ($filter !== 'all' && $filter !== 'unread') {
-        $notifications = array_filter($notifications, function($n) use ($filter) {
-            return $n['type'] === $filter;
-        });
-        // CRITICAL: Re-index the array so it sends as a JSON Array [ ], not an Object { }
-        $notifications = array_values($notifications);
-    }
-
-    $response = ['success' => true, 'notifications' => $notifications, 'unread_count' => $unread_count];
-    break;
+                    foreach ($notifications as &$notification) {
+                        if (strpos(strtolower($notification['message']), 'lab') !== false) $notification['type'] = 'labs';
+                        elseif (strpos(strtolower($notification['message']), 'bill') !== false || strpos(strtolower($notification['message']), 'payment') !== false) $notification['type'] = 'billing';
+                        elseif (strpos(strtolower($notification['message']), 'prescription') !== false) $notification['type'] = 'prescriptions';
+                        elseif (strpos(strtolower($notification['message']), 'appointment') !== false) $notification['type'] = 'appointments';
+                        else $notification['type'] = 'general'; // Default to a neutral 'general' type
+                    }
+                    $response = ['success' => true, 'notifications' => $notifications, 'unread_count' => $unread_count];
+                    break;
                 
                 case 'get_live_tokens':
                     $sql_tokens = "SELECT 
@@ -801,13 +783,11 @@ case 'get_notifications':
                         'past' => []
                     ];
                 
-                    // Added 'a.token_status' to the SELECT query
                     $sql = "SELECT 
                                 a.id, 
                                 a.appointment_date, 
                                 a.token_number, 
                                 a.status,
-                                a.token_status, 
                                 doc_user.name as doctor_name,
                                 sp.name AS specialty
                             FROM appointments a
@@ -823,17 +803,7 @@ case 'get_notifications':
                     $result = $stmt->get_result();
                 
                     while ($row = $result->fetch_assoc()) {
-                        // LOGIC CHANGE: 
-                        // An appointment is upcoming ONLY if date is today/future, status is scheduled, 
-                        // AND token_status is NOT skipped or completed.
-                        $is_skipped = ($row['token_status'] === 'skipped');
-                        $is_completed_token = ($row['token_status'] === 'completed');
-                        
-                        $is_upcoming = (new DateTime($row['appointment_date']) >= new DateTime('today')) 
-                                       && ($row['status'] == 'scheduled')
-                                       && !$is_skipped 
-                                       && !$is_completed_token;
-                        
+                        $is_upcoming = (new DateTime($row['appointment_date']) >= new DateTime('today')) && ($row['status'] == 'scheduled');
                         if ($is_upcoming) {
                             $appointments['upcoming'][] = $row;
                         } else {
@@ -841,8 +811,6 @@ case 'get_notifications':
                         }
                     }
                     $stmt->close();
-                    
-                    // Sort upcoming by date ascending (nearest first)
                     usort($appointments['upcoming'], function($a, $b) {
                         return strtotime($a['appointment_date']) - strtotime($b['appointment_date']);
                     });
@@ -1234,52 +1202,6 @@ case 'get_notifications':
 
                     if ($stmt->affected_rows > 0) {
                         log_user_activity($conn, $user_id, 'made_payment', "Paid bill TXN{$bill_id} via {$payment_mode}.");
-
-                        // --- WHATSAPP LOGIC FOR RECEIPT ---
-                        $stmt_receipt_data = $conn->prepare("
-                            SELECT t.id, t.created_at, t.description, t.amount, t.status, t.paid_at, t.payment_mode,
-                                   u.name as patient_name, u.display_user_id, u.phone
-                            FROM transactions t JOIN users u ON t.user_id = u.id
-                            WHERE t.id = ? AND u.id = ?
-                        ");
-                        $stmt_receipt_data->bind_param("ii", $bill_id, $user_id);
-                        $stmt_receipt_data->execute();
-                        $receipt_data = $stmt_receipt_data->get_result()->fetch_assoc();
-                        $stmt_receipt_data->close();
-                        
-                        if ($receipt_data && !empty($receipt_data['phone'])) {
-                            // 1. Generate PDF (using same logic as PDF download endpoint)
-                            $html = getReceiptHtml($receipt_data); // Assumes getReceiptHtml is correctly defined above
-                            
-                            $options = new Options();
-                            $options->set('isHtml5ParserEnabled', true);
-                            $dompdf = new Dompdf($options);
-                            $dompdf->loadHtml($html);
-                            $dompdf->setPaper('A4', 'portrait');
-                            $dompdf->render();
-                            
-                            // 2. Save PDF to a temporary, public-facing directory
-                            $public_folder = __DIR__ . '/../uploads/temp_whatsapp/';
-                            if (!is_dir($public_folder)) {
-                                mkdir($public_folder, 0755, true);
-                            }
-                            $filename = "receipt_TXN{$bill_id}.pdf";
-                            file_put_contents($public_folder . $filename, $dompdf->output());
-
-                            // 3. Construct the public URL (USER MUST CONFIGURE BASE_URL)
-                            $base_url = $_SERVER['HTTP_HOST'] . '/medsync'; // Example: yourdomain.com/medsync
-                            $media_url = "http://{$base_url}/uploads/temp_whatsapp/{$filename}";
-                            
-                            $wa_msg = "✅ Payment Successful! Thank you for paying bill TXN{$bill_id}. \n\n" . 
-                                      "🔗 Your receipt PDF is attached/linked (File is hosted temporarily for 24h).";
-                                      
-                            // 4. Send WhatsApp message with Media URL
-                            if (send_whatsapp_message($receipt_data['phone'], $wa_msg, $media_url)) {
-                                log_user_activity($conn, $user_id, 'whatsapp_sent', "Sent receipt PDF for TXN{$bill_id} via WhatsApp.");
-                            }
-                        }
-                        // --- END WHATSAPP LOGIC ---
-
                         $response = ['success' => true, 'message' => 'Payment successful!'];
                     } else {
                         throw new Exception("Payment failed. The bill may already be paid or could not be found.");
@@ -1373,39 +1295,11 @@ case 'get_notifications':
                     $stmt_insert->bind_param("iisi", $user_id, $doctor_id, $appointment_datetime, $new_token);
                 
                     if ($stmt_insert->execute()) {
-                        // --- 1. Fetch Doctor Name for Log & WA ---
                         $stmt_doctor = $conn->prepare("SELECT name FROM users WHERE id = ?");
                         $stmt_doctor->bind_param("i", $doctor_id);
                         $stmt_doctor->execute();
                         $doctor_name = $stmt_doctor->get_result()->fetch_assoc()['name'];
                         $stmt_doctor->close();
-
-                        // --- 2. Fetch Patient Phone and Name for WhatsApp ---
-                        $stmt_patient_contact = $conn->prepare("SELECT phone, name FROM users WHERE id = ?");
-                        $stmt_patient_contact->bind_param("i", $user_id);
-                        $stmt_patient_contact->execute();
-                        $pat_data = $stmt_patient_contact->get_result()->fetch_assoc();
-                        $patient_phone = $pat_data['phone'];
-                        $patient_first_name = explode(' ', $pat_data['name'])[0];
-                        $stmt_patient_contact->close();
-                        
-                        // --- 3. Send WhatsApp Message (If phone number exists) ---
-                        if (!empty($patient_phone)) {
-                            
-                            $formatted_time = $final_appointment_datetime_obj->format('g:i A');
-                            $formatted_date = $final_appointment_datetime_obj->format('d M Y');
-
-                            $wa_msg = "🎉 Hi {$patient_first_name}! Your appointment is confirmed! ✅\n\n" .
-                                      "👨‍⚕️ Doctor: Dr. {$doctor_name}\n" .
-                                      "🗓 Date: {$formatted_date}\n" .
-                                      "⏰ Time: {$formatted_time}\n" .
-                                      "🔢 Token: #{$new_token}\n\n" .
-                                      "Thank you for choosing MedSync! We look forward to seeing you. 🏥💙";
-
-                            send_whatsapp_message($patient_phone, $wa_msg);
-                        }
-
-                        // --- 4. Log Activity ---
                         log_user_activity($conn, $user_id, 'booked_appointment', "Booked an appointment with Dr. {$doctor_name} for {$date} (Token #{$new_token}).");
                         
                         $response = ['success' => true, 'message' => "Appointment booked successfully! Your token number is #{$new_token} for " . $final_appointment_datetime_obj->format('g:i A') . "."];
