@@ -744,18 +744,32 @@ const createNotificationElement = (notification) => {
             }
     
             // Render Past Appointments
+            // Render Past Appointments
             if (past.length > 0) {
                 if(pastEmpty) pastEmpty.style.display = 'none';
                 pastBody.innerHTML = past.map(app => {
-                     const appDate = new Date(app.appointment_date);
+                    const appDate = new Date(app.appointment_date);
                     const formattedDate = appDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
                     const formattedTime = appDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                    
+                    // LOGIC CHANGE: Visual Override for Skipped Status
+                    let displayStatus = app.status;
+                    let statusClass = app.status.toLowerCase();
+
+                    if (app.token_status === 'skipped') {
+                        displayStatus = 'Skipped';
+                        statusClass = 'skipped'; // This will be red (defined in styles.css)
+                    }
+
+                    // Capitalize first letter
+                    displayStatus = displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1);
+
                     return `
                         <tr>
                             <td data-label="Doctor"><strong>${app.doctor_name}</strong><br><small>${app.specialty}</small></td>
                             <td data-label="Date & Time">${formattedDate}, ${formattedTime}</td>
                             <td data-label="Token No.">#${String(app.token_number).padStart(2, '0')}</td>
-                            <td data-label="Status"><span class="status ${app.status.toLowerCase()}">${app.status}</span></td>
+                            <td data-label="Status"><span class="status ${statusClass}">${displayStatus}</span></td>
                         </tr>
                     `;
                 }).join('');
