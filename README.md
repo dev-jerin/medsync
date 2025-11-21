@@ -13,10 +13,6 @@
   <img src="https://img.shields.io/badge/Status-In--Development-orange?style=for-the-badge" alt="Project Status">
 </p>
 
-<p align="center">
-  <strong><a href="https://medsync.great-site.net/">View Live Demo</a></strong>
-</p>
-
 ![Home page](docs/screenshots/home.png)
 
 <p align="center">
