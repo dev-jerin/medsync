@@ -144,20 +144,11 @@ git clone https://github.com/dev-jerin/medsync.git
 1. Update the admin details in database for initial login as a new admin.
 2.  Update your system email and Gmail App Password in the `system_settings` table in the database for PHPMailer to work.
 3. Go to [Firebase Console](https://console.firebase.google.com/) and enable google authentication.
-4.  Add your Firebase configuration to `_private/firebase_config.php`.
-```
-<?php
-$firebaseConfig = [
-    "apiKey" => "",
-    "authDomain" => "",
-    "projectId" => "",
-    "storageBucket" => "",
-    "messagingSenderId" => "",
-    "appId" => "",
-];
-?>
-```
-5.  Add your Firebase service account credentials JSON file to `_private/firebase_credentials.json`.
+4.  Add your Firebase configuration to `.env` (see `.env.example`).
+5.  Set up your Firebase service account credentials:
+    *   Download your service account JSON file from the Firebase Console.
+    *   Rename it to `firebase_credentials.json` and place it in the `_private/` directory.
+    *   (Optional) You can use `_private/firebase_credentials.example.json` as a reference for the expected structure.
 6. Create your Google reCAPTCHA KEY SECRET from [here](https://www.google.com/recaptcha/admin/create)
 
 ### 4. Install Dependencies

@@ -1,0 +1,20 @@
+# Deny all access to this directory (Apache 2.4+)
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+
+# Fallback for older Apache versions (2.2)
+<IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+</IfModule>
+
+# Prevent directory listing
+Options -Indexes
+
+# If you want to allow access from CLI/local machine only, uncomment and adjust:
+# <IfModule mod_allowmethods.c>
+#     <RequireAny>
+#         Require ip 127.0.0.1
+#     </RequireAny>
+# </IfModule>

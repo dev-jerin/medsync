@@ -6,7 +6,7 @@ vendor
 composer.lock
 lab_reports
 STUDY.txt
-_private
+_private/firebase_credentials.json
 composer.lock
 
 # Environment variables
