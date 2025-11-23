@@ -13,4 +13,4 @@ composer.lock
 .env
 
 # Testing directory - should not be in production
-tests/
+tests
