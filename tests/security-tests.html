@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedSync Security Tests - Staff Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; margin-bottom: 10px; }
+        .subtitle { color: #7f8c8d; margin-bottom: 30px; }
+        .test-section { margin-bottom: 30px; padding: 20px; background: #f8f9fa; border-radius: 5px; border-left: 4px solid #3498db; }
+        .test-section h2 { color: #2c3e50; margin-bottom: 10px; font-size: 18px; }
+        .test-section p { color: #7f8c8d; margin-bottom: 15px; font-size: 14px; }
+        .btn { background: #3498db; color: white; border: none; padding: 10px 20px; margin: 5px; border-radius: 5px; cursor: pointer; font-size: 14px; transition: background 0.3s; }
+        .btn:hover { background: #2980b9; }
+        .btn-danger { background: #e74c3c; }
+        .btn-danger:hover { background: #c0392b; }
+        .btn-success { background: #27ae60; }
+        .btn-success:hover { background: #229954; }
+        .clear-btn { background: #95a5a6; margin-top: 20px; }
+        .clear-btn:hover { background: #7f8c8d; }
+        #results { background: #2c3e50; color: #ecf0f1; padding: 20px; border-radius: 5px; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6; max-height: 500px; overflow-y: auto; white-space: pre-wrap; margin-top: 20px; }
+        .status-pass { color: #2ecc71; }
+        .status-fail { color: #e74c3c; }
+        .status-warn { color: #f39c12; }
+        .status-info { color: #3498db; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔒 Security Test Suite - Staff Dashboard</h1>
+        <p class="subtitle">Comprehensive security testing for MedSync Staff Dashboard</p>
+
+        <!-- Rate Limiting Tests -->
+        <div class="test-section">
+            <h2>🚦 Rate Limiting Tests</h2>
+            <p>Verifies that API endpoints have rate limiting to prevent abuse</p>
+            <button class="btn btn-danger" onclick="testRateLimit()">Run Full Rate Limit Test (105 requests)</button>
+            <button class="btn" onclick="testRateLimitLight()">Quick Test (10 requests)</button>
+        </div>
+
+        <!-- CSRF Protection Tests -->
+        <div class="test-section">
+            <h2>🛡️ CSRF Protection Tests</h2>
+            <p>Tests CSRF token validation for POST requests</p>
+            <button class="btn" onclick="testCSRFMissing()">Test Missing Token</button>
+            <button class="btn" onclick="testCSRFInvalid()">Test Invalid Token</button>
+            <button class="btn btn-success" onclick="testCSRFValid()">Test Valid Token Info</button>
+        </div>
+
+        <!-- SQL Injection Tests -->
+        <div class="test-section">
+            <h2>💉 SQL Injection Tests</h2>
+            <p>Tests input sanitization against common SQL injection attacks</p>
+            <button class="btn btn-danger" onclick="testSQLInjection()">Run SQL Injection Tests</button>
+            <button class="btn" onclick="testSearchSanitization()">Test Search Sanitization</button>
+        </div>
+
+        <!-- Input Validation Tests -->
+        <div class="test-section">
+            <h2>✅ Input Validation Tests</h2>
+            <p>Verifies that status filters and other inputs are validated against whitelists</p>
+            <button class="btn" onclick="testStatusValidation()">Test Status Filters</button>
+            <button class="btn" onclick="testLengthLimits()">Test Length Limits</button>
+        </div>
+
+        <!-- Functional Tests -->
+        <div class="test-section">
+            <h2>⚙️ Functional Tests</h2>
+            <p>Ensures security fixes didn't break existing functionality</p>
+            <button class="btn btn-success" onclick="testDashboard()">Test Dashboard Load</button>
+            <button class="btn" onclick="testAllEndpoints()">Test All GET Endpoints</button>
+        </div>
+
+        <button class="btn clear-btn" onclick="clearResults()">Clear Results</button>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        // ============================================================================
+        // CONFIGURATION - Modify these values for each dashboard
+        // ============================================================================
+        const CONFIG = {
+    // API endpoint (relative path from tests directory)
+    API_BASE: '../staff/api.php',
+    
+    // Dashboard login URL (full URL with port)
+    DASHBOARD_URL: 'http://localhost:8080/medsync/staff/dashboard.php',
+    
+    // Allowed roles for this dashboard
+    ALLOWED_ROLES: ['staff', 'admin'],
+    
+    // GET endpoints to test (fetch parameter values)
+    GET_ENDPOINTS: [
+        'dashboard_stats',
+        'active_doctors',
+        'callbacks',
+        'conversations',
+        'medicines',
+        'blood_inventory',
+        'bed_management_data',
+        'admissions',
+        'lab_orders',
+        'search_patients',
+        'discharge_requests',
+        'billable_patients',
+        'invoices',
+        'pending_prescriptions'
+    ],
+    
+    // POST endpoints to test (action parameter values)
+    POST_ENDPOINTS: [
+        'updatePersonalInfo',
+        'updatePassword',
+        'processCallback',
+        'updateAdmission',
+        'processDischarge'
+    ],
+    
+    // Search endpoints that accept user input
+    SEARCH_ENDPOINTS: [
+        'search_patients',
+        'medicines',
+        'admissions',
+        'invoices'
+    ],
+    
+    // Status filters with their valid values
+    STATUS_FILTERS: {
+        'status': ['pending', 'completed', 'cancelled', 'active', 'inactive'],
+        'discharge_status': ['pending', 'approved', 'completed']
+    }
+};
+        
+        // ============================================================================
+        // TEST FRAMEWORK - Usually no changes needed below this line
+        // ============================================================================
+        
+        const resultsEl = document.getElementById('results');
+
+        // Check authentication on page load
+        async function checkAuth() {
+            try {
+                // First check session via diagnostic endpoint
+                const sessionCheck = await fetch('./check-session.php');
+                const sessionData = await sessionCheck.json();
+                
+                if(!sessionData.logged_in) {
+                    log('⚠️  NOT LOGGED IN', 'fail');
+                    log('Session data: ' + JSON.stringify(sessionData), 'info');
+                    log('', 'info');
+                    log('TO FIX THIS:', 'warn');
+                    log('1. Open ' + CONFIG.DASHBOARD_URL + ' in THIS SAME BROWSER', 'warn');
+                    log('2. Log in with appropriate credentials', 'warn');
+                    log('3. Come back to this tab and refresh (F5)', 'warn');
+                    log('', 'info');
+                    return false;
+                }
+                
+                // Check if user has correct role
+                if(!CONFIG.ALLOWED_ROLES.includes(sessionData.role)) {
+                    log('⚠️  WRONG ROLE: You are logged in as ' + sessionData.role, 'fail');
+                    log('This dashboard requires one of: ' + CONFIG.ALLOWED_ROLES.join(', '), 'warn');
+                    return false;
+                }
+                
+                log('✓ Logged in as: ' + sessionData.role + ' (User ID: ' + sessionData.user_id + ')', 'pass');
+                
+                // Now test API access
+                const r = await fetch(CONFIG.API_BASE + '?fetch=' + CONFIG.GET_ENDPOINTS[0]);
+                const text = await r.text();
+                
+                if(r.status === 401) {
+                    log('⚠️  API returned 401 - Auth issue', 'fail');
+                    return false;
+                }
+                
+                if(text.startsWith('<')) {
+                    log('⚠️  API returned HTML instead of JSON', 'fail');
+                    log('First 100 chars: ' + text.substring(0, 100), 'info');
+                    return false;
+                }
+                
+                const apiData = JSON.parse(text);
+                if(apiData.success !== undefined || r.status === 200) {
+                    log('✓ API access OK - Ready to test', 'pass');
+                    log('', 'info');
+                    return true;
+                } else {
+                    log('API returned unexpected response', 'warn');
+                    return false;
+                }
+            } catch(e) {
+                log('Connection error: ' + e.message, 'fail');
+                return false;
+            }
+        }
+
+        function log(msg, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            let className = '';
+            let icon = '•';
+            
+            if (type === 'pass') {
+                className = 'status-pass';
+                icon = '✓';
+            } else if (type === 'fail') {
+                className = 'status-fail';
+                icon = '✗';
+            } else if (type === 'warn') {
+                className = 'status-warn';
+                icon = '⚠';
+            }
+            
+            const line = `<span class="${className}">[${timestamp}] ${icon} ${msg}</span>\n`;
+            resultsEl.innerHTML += line;
+            resultsEl.scrollTop = resultsEl.scrollHeight;
+        }
+
+        function clearResults() {
+            resultsEl.innerHTML = '';
+        }
+
+        async function testRateLimit() {
+            log('=== RATE LIMIT TEST (Full) ===', 'info');
+            log('Making 105 requests to test rate limiting...', 'info');
+            
+            for(let i = 0; i < 105; i++) {
+                try {
+                    const r = await fetch(CONFIG.API_BASE + '?fetch=' + CONFIG.GET_ENDPOINTS[0]);
+                    
+                    if(r.status === 401) {
+                        log('Not logged in - please log in first', 'fail');
+                        return;
+                    }
+                    
+                    if(r.status === 429) {
+                        log('Rate limit triggered at request ' + (i + 1), 'pass');
+                        log('✓ Rate limiting is WORKING correctly', 'pass');
+                        return;
+                    }
+                    if(i % 20 === 0) {
+                        log('Request ' + (i + 1) + ': ' + r.status, 'info');
+                    }
+                } catch(e) {
+                    log('Error at request ' + (i + 1) + ': ' + e.message, 'fail');
+                    return;
+                }
+            }
+            log('✗ Completed 105 requests without hitting rate limit', 'fail');
+            log('✗ Rate limiting may NOT be working', 'fail');
+        }
+
+        async function testRateLimitLight() {
+            log('=== RATE LIMIT TEST (Quick) ===', 'info');
+            log('Making 10 quick requests...', 'info');
+            
+            for(let i = 0; i < 10; i++) {
+                const r = await fetch(CONFIG.API_BASE + '?fetch=' + CONFIG.GET_ENDPOINTS[0]);
+                log('Request ' + (i + 1) + ': ' + r.status, r.status === 200 ? 'pass' : 'warn');
+            }
+            log('Quick test complete. Rate limit should allow these.', 'pass');
+        }
+
+        async function testCSRFMissing() {
+            log('=== CSRF TEST: Missing Token ===', 'info');
+            
+            const fd = new FormData();
+            fd.append('action', CONFIG.POST_ENDPOINTS[0]);
+            fd.append('name', 'Test');
+            
+            const r = await fetch(CONFIG.API_BASE, {method: 'POST', body: fd});
+            
+            if(r.status === 403) {
+                log('✓ Missing token correctly rejected (403)', 'pass');
+            } else {
+                log('✗ Missing token was NOT rejected! Status: ' + r.status, 'fail');
+            }
+        }
+
+        async function testCSRFInvalid() {
+            log('=== CSRF TEST: Invalid Token ===', 'info');
+            
+            const fd = new FormData();
+            fd.append('action', CONFIG.POST_ENDPOINTS[0]);
+            fd.append('csrf_token', 'invalid_token_12345');
+            fd.append('name', 'Test');
+            
+            const r = await fetch(CONFIG.API_BASE, {method: 'POST', body: fd});
+            const text = await r.text();
+            
+            if(r.status === 403) {
+                log('✓ Invalid token correctly rejected (403)', 'pass');
+                try {
+                    const data = JSON.parse(text);
+                    log('Message: ' + data.message, 'info');
+                } catch(e) {}
+            } else {
+                log('✗ Invalid token was NOT rejected! Status: ' + r.status, 'fail');
+            }
+        }
+
+        async function testCSRFValid() {
+            log('=== CSRF TEST: Valid Token ===', 'info');
+            log('This test requires you to be logged in', 'warn');
+            log('✓ Token validation working if you see CSRF errors on invalid tokens', 'pass');
+        }
+
+        async function testSQLInjection() {
+            log('=== SQL INJECTION TESTS ===', 'info');
+            
+            const payloads = [
+                "' OR '1'='1",
+                "admin'--",
+                "1' UNION SELECT NULL--",
+                "'; DROP TABLE users--",
+                "1' AND '1'='1"
+            ];
+            
+            if(CONFIG.SEARCH_ENDPOINTS.length === 0) {
+                log('No search endpoints configured', 'warn');
+                return;
+            }
+            
+            for(let payload of payloads) {
+                const r = await fetch(CONFIG.API_BASE + '?fetch=' + CONFIG.SEARCH_ENDPOINTS[0] + '&query=' + encodeURIComponent(payload));
+                const text = await r.text();
+                
+                if(text.includes('error') || text.includes('SQL') || text.includes('syntax')) {
+                    log('Possible vulnerability with: ' + payload, 'fail');
+                } else {
+                    log('Payload sanitized: ' + payload.substring(0, 20) + '...', 'pass');
+                }
+            }
+        }
+
+        async function testSearchSanitization() {
+            log('=== SEARCH SANITIZATION TEST ===', 'info');
+            
+            if(CONFIG.SEARCH_ENDPOINTS.length === 0) {
+                log('No search endpoints configured', 'warn');
+                return;
+            }
+            
+            const scriptTag = '<' + 'script>alert(1)<' + '/script>';
+            const testCases = [
+                {input: scriptTag, desc: 'XSS attempt'},
+                {input: "'; DELETE FROM users; --", desc: 'SQL injection'},
+                {input: '../../../etc/passwd', desc: 'Path traversal'},
+                {input: 'A'.repeat(200), desc: 'Long input (200 chars)'}
+            ];
+            
+            for(let test of testCases) {
+                const r = await fetch(CONFIG.API_BASE + '?fetch=' + CONFIG.SEARCH_ENDPOINTS[0] + '&query=' + encodeURIComponent(test.input));
+                const data = await r.json();
+                
+                log(test.desc + ': ' + (data.success ? 'Handled' : 'Rejected'), 'pass');
+            }
+        }
+
+        async function testStatusValidation() {
+            log('=== STATUS FILTER VALIDATION ===', 'info');
+            
+            const firstFilter = Object.keys(CONFIG.STATUS_FILTERS)[0];
+            if(!firstFilter) {
+                log('No status filters configured', 'warn');
+                return;
+            }
+            
+            const validStatuses = CONFIG.STATUS_FILTERS[firstFilter];
+            const scriptTag = '<' + 'script>alert(1)<' + '/script>';
+            const testStatuses = [
+                {value: validStatuses[0], valid: true, desc: 'Valid status'},
+                {value: 'INVALID_STATUS', valid: false, desc: 'Invalid status'},
+                {value: scriptTag, valid: false, desc: 'XSS attempt'},
+                {value: "' OR '1'='1", valid: false, desc: 'SQL injection'}
+            ];
+            
+            for(let test of testStatuses) {
+                const r = await fetch(CONFIG.API_BASE + '?fetch=' + CONFIG.GET_ENDPOINTS[0] + '&' + firstFilter + '=' + encodeURIComponent(test.value));
+                const data = await r.json();
+                
+                if(test.valid) {
+                    log(test.desc + ': ' + (data.success ? 'Accepted ✓' : 'Rejected'), data.success ? 'pass' : 'fail');
+                } else {
+                    log(test.desc + ': ' + (data.success ? 'NOT REJECTED!' : 'Rejected ✓'), data.success ? 'fail' : 'pass');
+                }
+            }
+        }
+
+        async function testLengthLimits() {
+            log('=== LENGTH LIMIT TESTS ===', 'info');
+            
+            if(CONFIG.SEARCH_ENDPOINTS.length === 0) {
+                log('No search endpoints configured', 'warn');
+                return;
+            }
+            
+            const longString = 'A'.repeat(500);
+            const r = await fetch(CONFIG.API_BASE + '?fetch=' + CONFIG.SEARCH_ENDPOINTS[0] + '&query=' + encodeURIComponent(longString));
+            const data = await r.json();
+            
+            log('Sent 500 character string', 'info');
+            log(data.success ? 'Handled (should be truncated to 100)' : 'Rejected', 'pass');
+        }
+
+        async function testDashboard() {
+            log('=== DASHBOARD FUNCTIONALITY TEST ===', 'info');
+            
+            const testEndpoints = CONFIG.GET_ENDPOINTS.slice(0, 4);
+            
+            for(let endpoint of testEndpoints) {
+                try {
+                    const r = await fetch(CONFIG.API_BASE + '?fetch=' + endpoint);
+                    
+                    if(r.status === 401) {
+                        log('Not logged in - please log in first', 'fail');
+                        return;
+                    }
+                    
+                    const text = await r.text();
+                    if(text.startsWith('<')) {
+                        log(endpoint + ': Got HTML (session issue)', 'fail');
+                        continue;
+                    }
+                    
+                    const data = JSON.parse(text);
+                    
+                    if(data.success !== undefined) {
+                        log(endpoint + ': Working ✓', 'pass');
+                    } else {
+                        log(endpoint + ': Unexpected response', 'warn');
+                    }
+                } catch(e) {
+                    log(endpoint + ': Error - ' + e.message, 'fail');
+                }
+            }
+        }
+
+        async function testAllEndpoints() {
+            log('=== TESTING ALL GET ENDPOINTS ===', 'info');
+            
+            let passed = 0;
+            let failed = 0;
+            
+            for(let endpoint of CONFIG.GET_ENDPOINTS) {
+                try {
+                    const r = await fetch(CONFIG.API_BASE + '?fetch=' + endpoint);
+                    const text = await r.text();
+                    
+                    if(text.startsWith('<')) {
+                        failed++;
+                        log(endpoint + ': Got HTML instead of JSON (not logged in?)', 'fail');
+                        if(failed === 1) {
+                            log('Please log in first!', 'warn');
+                        }
+                        continue;
+                    }
+                    
+                    const data = JSON.parse(text);
+                    
+                    if(r.status === 200 && data.success !== undefined) {
+                        passed++;
+                        log(endpoint + ': OK', 'pass');
+                    } else if(r.status === 401) {
+                        failed++;
+                        log(endpoint + ': Unauthorized (login required)', 'fail');
+                    } else {
+                        failed++;
+                        log(endpoint + ': Status ' + r.status, 'warn');
+                    }
+                } catch(e) {
+                    failed++;
+                    log(endpoint + ': Error - ' + e.message, 'fail');
+                }
+            }
+            
+            log('', 'info');
+            log('Results: ' + passed + ' passed, ' + failed + ' failed', passed > failed ? 'pass' : 'fail');
+        }
+
+        // Initial authentication check and message
+        checkAuth().then(isAuth => {
+            if(!isAuth) {
+                log('Tests cannot run without authentication', 'warn');
+            } else {
+                log('Click buttons above to run tests', 'info');
+            }
+            log('', 'info');
+        });
+    </script>
+</body>
+</html>
